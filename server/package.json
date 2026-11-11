@@ -4,6 +4,12 @@
   "private": true,
   "type": "module",
   "description": "山海经 Odyssey — 旅程记录服务端",
+  "license": "AGPL-3.0-only",
+  "author": "Hang JIANG <jianghang2020@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jhello/odyssey.git"
+  },
   "engines": {
     "node": ">=22.5"
   },

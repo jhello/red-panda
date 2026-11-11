@@ -1,0 +1,51 @@
+name: CLA Assistant
+
+# 贡献者首次提交 PR 时，机器人会要求其签署 CLA.md。
+# 签署后签名保存在 cla-signatures 分支的 signatures/version1/cla.json。
+#
+# 启用前需要：
+#   1. 在仓库 Settings → Secrets and variables → Actions 中新增
+#      CLA_ASSISTANT_PAT，值为一个有 contents/pull-requests/actions/statuses
+#      写权限的 fine-grained PAT（或经典 PAT 的 repo 权限）。
+#   2. 确保 Actions 已启用。
+# 说明见 docs/LICENSING.md。
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  cla-assistant:
+    runs-on: ubuntu-latest
+    steps:
+      - name: CLA Assistant
+        if: >-
+          (github.event.comment.body == 'recheck' ||
+           github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') ||
+          github.event_name == 'pull_request_target'
+        uses: contributor-assistant/github-action@v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.CLA_ASSISTANT_PAT }}
+        with:
+          path-to-signatures: 'signatures/version1/cla.json'
+          path-to-document: 'https://github.com/jhello/odyssey/blob/main/CLA.md'
+          branch: 'cla-signatures'
+          allowlist: jhello,dependabot[bot],github-actions[bot]
+          custom-notsigned-prcomment: >-
+            感谢你的贡献！首次提交 PR 前，请先阅读并签署
+            [贡献者许可协议（CLA）](https://github.com/jhello/odyssey/blob/main/CLA.md)。
+            阅读后在下方回复以下内容即可完成签署：
+            <br/><br/>
+            `I have read the CLA Document and I hereby sign the CLA`
+          custom-pr-sign-comment: 'I have read the CLA Document and I hereby sign the CLA'
+          custom-allsigned-prcomment: '所有贡献者均已签署 CLA ✅'
+          lock-pullrequest-aftermerge: true
