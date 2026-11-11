@@ -80,6 +80,7 @@ export OPENAI_MODEL=gpt-4o-mini
 | [docs/ANDROID.md](docs/ANDROID.md) | 构建 APK、Wi-Fi ADB 配对调试、日志、端口转发、常见问题 |
 | [docs/API.md](docs/API.md) | HTTP 接口说明与示例 |
 | [docs/LICENSING.md](docs/LICENSING.md) | 许可证、商业授权、CLA 与贡献流程 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南、开发环境、PR 规范 |
 
 ## 测试
 
