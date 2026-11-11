@@ -1,0 +1,20 @@
+{
+  "name": "山海经 · Odyssey",
+  "short_name": "山海经",
+  "description": "记录属于你的山海旅程",
+  "lang": "zh-CN",
+  "start_url": "/app/",
+  "scope": "/app/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f2e8",
+  "theme_color": "#f7f2e8",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

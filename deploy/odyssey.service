@@ -1,0 +1,35 @@
+[Unit]
+Description=Odyssey (山海经) journey server
+Documentation=file:///opt/odyssey/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 修改为实际运行用户与项目路径
+User=odyssey
+Group=odyssey
+WorkingDirectory=/opt/odyssey
+
+# 可选：从受权限保护的文件读取密钥，避免把密钥写进本单元
+# EnvironmentFile=-/etc/odyssey/odyssey.env
+Environment=NODE_ENV=production
+Environment=HOST=0.0.0.0
+Environment=PORT=8787
+Environment=ODYSSEY_DATA_DIR=/opt/odyssey/data
+
+ExecStart=/usr/bin/node /opt/odyssey/server/src/server.js
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+# 安全加固（按需调整）
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/odyssey/data
+
+[Install]
+WantedBy=multi-user.target

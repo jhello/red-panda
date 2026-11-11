@@ -1,0 +1,21 @@
+# Runtime data
+data/
+.env
+.env.local
+
+# Build output
+build/
+android/.gradle/
+android/app/build/
+android/local.properties
+android/app/src/main/assets/www/
+android/.idea/
+*.iml
+
+# Dev signing material
+*.jks
+*.keystore
+
+# Logs / OS noise
+*.log
+.DS_Store

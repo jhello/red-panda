@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>山海经 · 服务看板</title>
+    <meta name="theme-color" content="#f7f2e8" />
+    <link rel="icon" href="/app/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/dashboard/dashboard.css" />
+  </head>
+  <body>
+    <div class="gate" id="gate" hidden>
+      <form class="gate-card" id="gate-form">
+        <div class="gate-brand">
+          <span class="seal">山海</span>
+          <div>
+            <h1>服务看板</h1>
+            <p>ODYSSEY CONTROL</p>
+          </div>
+        </div>
+        <p class="gate-sub">输入服务端启动时打印的管理员令牌。</p>
+        <label class="gate-field">
+          <span>管理员令牌</span>
+          <input id="gate-token" type="password" autocomplete="off" spellcheck="false" placeholder="粘贴令牌" required />
+        </label>
+        <p class="gate-error" id="gate-error" hidden></p>
+        <button class="gate-btn" type="submit">进入看板</button>
+        <p class="gate-hint">令牌保存在服务端的 <code>data/admin-token</code>，也可用环境变量 <code>ODYSSEY_ADMIN_TOKEN</code> 指定。</p>
+      </form>
+    </div>
+
+    <div class="dashboard" id="dashboard" hidden>
+      <header class="dash-header">
+        <div class="brand">
+          <span class="seal">山海</span>
+          <div class="brand-text">
+            <strong>山海经</strong>
+            <span>ODYSSEY · 服务看板</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <span class="status-pill" id="status-pill"><i></i> 运行中</span>
+          <span class="refresh-note" id="refresh-note">每 5 秒自动刷新</span>
+          <button class="dash-btn" id="refresh" type="button">刷新</button>
+          <button class="dash-btn ghost" id="logout" type="button">退出</button>
+        </div>
+      </header>
+
+      <main class="dash-main">
+        <section class="hero">
+          <div>
+            <p class="eyebrow">SERVER OVERVIEW</p>
+            <h1>服务看板</h1>
+            <p class="sub" id="server-line">正在读取服务器状态…</p>
+          </div>
+          <div class="hero-meta" id="hero-meta"></div>
+        </section>
+
+        <section class="stats" id="summary"></section>
+
+        <section class="grid">
+          <article class="panel users-panel">
+            <div class="panel-head">
+              <h2>用户</h2>
+              <span class="panel-count" id="user-count"></span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>用户名</th>
+                    <th>旅程</th>
+                    <th>最近活动</th>
+                    <th>注册时间</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody id="users-body"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel requests-panel">
+            <div class="panel-head">
+              <h2>最近请求</h2>
+              <span class="panel-count" id="request-count"></span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>时间</th>
+                    <th>方法</th>
+                    <th>路径</th>
+                    <th>状态</th>
+                    <th>耗时</th>
+                  </tr>
+                </thead>
+                <tbody id="requests-body"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel info-panel">
+          <div class="panel-head">
+            <h2>服务器信息</h2>
+            <span class="panel-count" id="info-updated"></span>
+          </div>
+          <div class="info-grid" id="info"></div>
+        </section>
+      </main>
+
+      <footer class="dash-footer">
+        <span>山海经 · Odyssey <span id="version"></span></span>
+        <span>数据只保存在这台服务器上</span>
+      </footer>
+    </div>
+
+    <script src="/dashboard/dashboard.js"></script>
+  </body>
+</html>
