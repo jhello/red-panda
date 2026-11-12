@@ -45,8 +45,8 @@ if ! command -v zip >/dev/null; then
   exit 1
 fi
 
-if [[ -n "${ODYSSEY_SERVER_URL+x}" ]]; then
-  DEFAULT_SERVER="$ODYSSEY_SERVER_URL"
+if [[ -n "${RED_PANDA_SERVER_URL+x}" ]]; then
+  DEFAULT_SERVER="$RED_PANDA_SERVER_URL"
 else
   LAN_IP="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}' || true)"
   DEFAULT_SERVER="http://${LAN_IP:-127.0.0.1}:${PORT:-8787}"
@@ -61,11 +61,11 @@ cp -a "$ROOT/web/." "$OUT_DIR/assets/www/"
 node -e '
 const fs = require("node:fs");
 const [server, file] = process.argv.slice(1);
-fs.writeFileSync(file, `window.ODYSSEY_CONFIG = ${JSON.stringify({ defaultServer: server, version: "1.0.0" }, null, 2)};\n`);
+fs.writeFileSync(file, `window.REDPANDA_CONFIG = ${JSON.stringify({ defaultServer: server, version: "1.0.0" }, null, 2)};\n`);
 ' "$DEFAULT_SERVER" "$OUT_DIR/assets/www/config.js"
 
 # aapt2 needs a package attribute; AGP 9 wants it out of the source manifest.
-sed 's/<manifest /<manifest package="com.odyssey.app" /' \
+sed 's/<manifest /<manifest package="com.redpanda.app" /' \
   "$APP_DIR/AndroidManifest.xml" > "$OUT_DIR/AndroidManifest.xml"
 
 echo "==> 编译资源"
@@ -103,35 +103,35 @@ mapfile -t CLASSES < <(find "$OUT_DIR/classes" -name '*.class' -print)
 echo "==> 对齐与签名"
 "$BT/zipalign" -f 4 "$OUT_DIR/app-unsigned.apk" "$OUT_DIR/app-aligned.apk"
 
-KEYSTORE="${ODYSSEY_KEYSTORE:-$HOME/.odyssey/odyssey-dev.jks}"
+KEYSTORE="${RED_PANDA_KEYSTORE:-$HOME/.red-panda/red-panda-dev.jks}"
 mkdir -p "$(dirname "$KEYSTORE")"
 if [[ ! -f "$KEYSTORE" ]]; then
   echo "    生成开发签名证书: $KEYSTORE"
   keytool -genkeypair \
     -keystore "$KEYSTORE" \
-    -storepass odyssey \
-    -keypass odyssey \
-    -alias odyssey \
+    -storepass red-panda \
+    -keypass red-panda \
+    -alias red-panda \
     -keyalg RSA \
     -keysize 2048 \
     -validity 10000 \
-    -dname "CN=Odyssey Dev, OU=Odyssey, O=Odyssey, L=Local, ST=Local, C=CN" \
+    -dname "CN=Red Panda Dev, OU=Red Panda, O=Red Panda, L=Local, ST=Local, C=CN" \
     >/dev/null 2>&1
 fi
 
 "$BT/apksigner" sign \
   --ks "$KEYSTORE" \
-  --ks-key-alias odyssey \
-  --ks-pass pass:odyssey \
-  --key-pass pass:odyssey \
-  --out "$OUT_DIR/odyssey.apk" \
+  --ks-key-alias red-panda \
+  --ks-pass pass:red-panda \
+  --key-pass pass:red-panda \
+  --out "$OUT_DIR/red-panda.apk" \
   "$OUT_DIR/app-aligned.apk"
 
-"$BT/apksigner" verify "$OUT_DIR/odyssey.apk" >/dev/null
+"$BT/apksigner" verify "$OUT_DIR/red-panda.apk" >/dev/null
 rm -f "$OUT_DIR/app-aligned.apk"
 
 echo ""
-echo "完成: $OUT_DIR/odyssey.apk"
+echo "完成: $OUT_DIR/red-panda.apk"
 echo "默认服务器: $DEFAULT_SERVER"
-echo "安装到已连接手机: adb install -r \"$OUT_DIR/odyssey.apk\""
-echo "启动: adb shell am start -n com.odyssey.app/.MainActivity"
+echo "安装到已连接手机: adb install -r \"$OUT_DIR/red-panda.apk\""
+echo "启动: adb shell am start -n com.redpanda.app/.MainActivity"

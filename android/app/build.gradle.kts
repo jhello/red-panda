@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace = "com.odyssey.app"
+    namespace = "com.redpanda.app"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.odyssey.app"
+        applicationId = "com.redpanda.app"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
@@ -29,12 +29,12 @@ android {
 // The Android app reuses the same web UI as the HTML5 version.
 // Generate assets at build time so web/ remains the single source of truth.
 val webSource = rootProject.file("../web")
-val generatedAssets = layout.buildDirectory.dir("generated/odysseyAssets")
-val odysseyServer = providers.gradleProperty("odysseyServer").orElse("http://127.0.0.1:8787")
+val generatedAssets = layout.buildDirectory.dir("generated/redPandaAssets")
+val redPandaServer = providers.gradleProperty("redPandaServer").orElse("http://127.0.0.1:8787")
 
 val generateWebAssets by tasks.registering {
     inputs.dir(webSource)
-    inputs.property("odysseyServer", odysseyServer)
+    inputs.property("redPandaServer", redPandaServer)
     outputs.dir(generatedAssets)
 
     doLast {
@@ -43,7 +43,7 @@ val generateWebAssets by tasks.registering {
         target.mkdirs()
         webSource.copyRecursively(target, overwrite = true)
         target.resolve("config.js").writeText(
-            "window.ODYSSEY_CONFIG = { defaultServer: \"${odysseyServer.get()}\", version: \"1.0.0\" };\n"
+            "window.REDPANDA_CONFIG = { defaultServer: \"${redPandaServer.get()}\", version: \"1.0.0\" };\n"
         )
     }
 }

@@ -37,12 +37,12 @@ jobs:
           PERSONAL_ACCESS_TOKEN: ${{ secrets.CLA_ASSISTANT_PAT }}
         with:
           path-to-signatures: 'signatures/version1/cla.json'
-          path-to-document: 'https://github.com/jhello/odyssey/blob/main/CLA.md'
+          path-to-document: 'https://github.com/jhello/red-panda/blob/main/CLA.md'
           branch: 'cla-signatures'
           allowlist: jhello,dependabot[bot],github-actions[bot]
           custom-notsigned-prcomment: >-
             感谢你的贡献！首次提交 PR 前，请先阅读并签署
-            [贡献者许可协议（CLA）](https://github.com/jhello/odyssey/blob/main/CLA.md)。
+            [贡献者许可协议（CLA）](https://github.com/jhello/red-panda/blob/main/CLA.md)。
             阅读后在下方回复以下内容即可完成签署：
             <br/><br/>
             `I have read the CLA Document and I hereby sign the CLA`

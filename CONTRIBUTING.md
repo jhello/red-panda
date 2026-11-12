@@ -1,6 +1,6 @@
 # 贡献指南
 
-感谢你愿意为「山海经 · Odyssey」贡献代码、文档或想法！
+感谢你愿意为「小熊猫 · Red Panda」贡献代码、文档或想法！
 
 ## 行为准则
 
@@ -10,7 +10,7 @@
 
 ## 开始之前
 
-1. 先搜索 [Issues](https://github.com/jhello/odyssey/issues)，避免重复；
+1. 先搜索 [Issues](https://github.com/jhello/red-panda/issues)，避免重复；
 2. 较大的改动建议先开 Issue 讨论方向，再动手；
 3. 提交代码前请阅读并签署 [CLA](CLA.md)（首次 PR 时机器人会提示）。
 

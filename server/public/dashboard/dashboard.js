@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const TOKEN_KEY = 'odyssey.adminToken';
+  const TOKEN_KEY = 'red-panda.adminToken';
   let token = sessionStorage.getItem(TOKEN_KEY) || '';
   let timer = null;
   let hasData = false;

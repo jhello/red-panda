@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Odyssey"
+rootProject.name = "Red Panda"
 include(":app")

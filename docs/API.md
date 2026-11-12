@@ -46,8 +46,8 @@ application/json; charset=utf-8`），`204` 响应无正文。
 ```json
 {
   "ok": true,
-  "service": "odyssey",
-  "name": "山海经",
+  "service": "red-panda",
+  "name": "小熊猫",
   "version": "1.0.0",
   "time": "2026-11-11T13:47:23.392Z"
 }
@@ -119,7 +119,7 @@ application/json; charset=utf-8`），`204` 响应无正文。
 
 邮箱未验证时返回 `403`（`email_not_verified`），此时可以调用重发接口。
 
-会话采用滑动过期：每次使用令牌都会把有效期续到 `ODYSSEY_SESSION_DAYS` 天之后，
+会话采用滑动过期：每次使用令牌都会把有效期续到 `RED_PANDA_SESSION_DAYS` 天之后，
 所以只要还在使用就不会被登出；手动登出、修改密码或重置密码会立即失效。
 
 ### `POST /api/auth/resend-verification`
@@ -253,7 +253,7 @@ application/json; charset=utf-8`），`204` 响应无正文。
 ## AI
 
 需要认证。AI 未配置时返回 `503`（`ai_not_configured`）；
-配置了 `ODYSSEY_AI_MOCK=1` 时返回离线假数据。
+配置了 `RED_PANDA_AI_MOCK=1` 时返回离线假数据。
 
 ### `POST /api/ai/journey-description`
 
@@ -282,7 +282,7 @@ application/json; charset=utf-8`），`204` 响应无正文。
 
 ```json
 {
-  "system": "你是山海经世界的向导。",
+  "system": "你是「小熊猫」旅程应用的向导。",
   "messages": [
     { "role": "user", "content": "给我讲讲青丘之狐。" }
   ]
@@ -317,7 +317,7 @@ application/json; charset=utf-8`），`204` 响应无正文。
 ```json
 {
   "server": {
-    "name": "Odyssey",
+    "name": "Red Panda",
     "version": "1.0.0",
     "startedAt": "2026-11-11T13:47:21.582Z",
     "uptimeSeconds": 12,
@@ -335,7 +335,7 @@ application/json; charset=utf-8`），`204` 响应无正文。
     "memory": { "rss": 68411392, "heapUsed": 8795912, "heapTotal": 12582912 },
     "loadavg": [1.71, 1.68, 1.57],
     "cpuCount": 8,
-    "dbPath": "/…/data/odyssey.db",
+    "dbPath": "/…/data/red-panda.db",
     "dbSizeBytes": 40960
   },
   "ai": { "configured": false, "mock": false, "model": "gpt-4o-mini", "baseUrl": "https://api.openai.com/v1" },

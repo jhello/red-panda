@@ -1,4 +1,4 @@
-package com.odyssey.app;
+package com.redpanda.app;
 
 import android.app.Activity;
 import android.content.Intent;

@@ -1,8 +1,8 @@
-# 山海经 · Odyssey
+# 小熊猫 · Red Panda
 
 一个自托管的「旅程记录」应用：Android 客户端 + Linux 服务端。
 
-- **山海经** 是中文名，**Odyssey** 是英文名。
+- **小熊猫** 是中文名，**Red Panda** 是英文名。
 - 旅程目前只有 **名称** 和 **描述** 两个字段。
 - **邮箱注册**：使用邮箱注册，点击验证邮件里的链接激活账户后才能登录。
 - 支持 **登录 / 登出 / 修改密码 / 忘记密码重置**，每个用户只能看到自己的旅程。
@@ -16,7 +16,7 @@
 ## 目录结构
 
 ```
-odyssey/
+red-panda/
 ├── web/                  # 共享前端（HTML/CSS/JS），Android 与 HTML5 共用
 ├── server/               # 零依赖 Node.js 服务端
 │   ├── src/              # HTTP 路由、SQLite、鉴权、AI 代理
@@ -54,15 +54,15 @@ HTML5 应用  http://192.168.10.65:8787/app/
 - 停止：`./scripts/stop-server.sh`
 
 默认邮件模式为 `log`：注册/重置邮件会写入 `data/outbox/`，验证链接也会
-打印在 `data/server.log`。要真正收信，请配置 `ODYSSEY_MAIL_MODE` 与
-`ODYSSEY_PUBLIC_URL`，详见 [docs/SERVER.md](docs/SERVER.md)。
+打印在 `data/server.log`。要真正收信，请配置 `RED_PANDA_MAIL_MODE` 与
+`RED_PANDA_PUBLIC_URL`，详见 [docs/SERVER.md](docs/SERVER.md)。
 
 ### 2. 构建并安装 Android 客户端
 
 需要 Android SDK（`~/Android/Sdk`）和 JDK 17+。
 
 ```bash
-./scripts/build-android.sh          # 生成 build/android/odyssey.apk
+./scripts/build-android.sh          # 生成 build/android/red-panda.apk
 ./scripts/dev-android.sh            # 构建 + 安装 + adb reverse + 启动
 ```
 
@@ -78,7 +78,7 @@ export OPENAI_MODEL=gpt-4o-mini
 ```
 
 未配置时「AI 生成描述」会返回清晰的 503 提示，其他功能不受影响。
-也可以设置 `ODYSSEY_AI_MOCK=1` 使用离线假数据。
+也可以设置 `RED_PANDA_AI_MOCK=1` 使用离线假数据。
 
 ## 文档
 
@@ -117,4 +117,4 @@ node --test
 - 贡献代码前请阅读并签署 [CLA](CLA.md)，签署方式见
   [docs/LICENSING.md](docs/LICENSING.md)。
 
-「山海经」「Odyssey」名称与 Logo 不包含在许可证授权范围内。
+「小熊猫」「Red Panda」名称与 Logo 不包含在许可证授权范围内。

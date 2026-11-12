@@ -16,12 +16,12 @@ const base = lan?.url ?? urls[0].url;
 
 const mailHint = {
   log: `log · 邮件写入 ${config.mail.outboxDir}`,
-  command: `command · ${config.mail.command || '未配置 ODYSSEY_MAIL_COMMAND'}`,
-  http: `http · ${config.mail.apiUrl || '未配置 ODYSSEY_MAIL_API_URL'}`,
+  command: `command · ${config.mail.command || '未配置 RED_PANDA_MAIL_COMMAND'}`,
+  http: `http · ${config.mail.apiUrl || '未配置 RED_PANDA_MAIL_API_URL'}`,
 }[mailer.mode] ?? `${mailer.mode}（未知模式）`;
 
 console.log('');
-console.log('  山海经 · ODYSSEY');
+console.log('  小熊猫 · RED PANDA');
 console.log('  ─────────────────────────────────────────────');
 console.log(`  控制台      ${base}/`);
 console.log(`  HTML5 应用  ${base}/app/`);
@@ -45,18 +45,18 @@ let closing = false;
 async function shutdown(signal) {
   if (closing) return;
   closing = true;
-  console.log(`\n[odyssey] 收到 ${signal}，正在停止服务…`);
+  console.log(`\n[red-panda] 收到 ${signal}，正在停止服务…`);
   const force = setTimeout(() => {
-    console.error('[odyssey] 停止超时，强制退出');
+    console.error('[red-panda] 停止超时，强制退出');
     process.exit(1);
   }, 5000);
   force.unref();
   try {
     await app.close();
-    console.log('[odyssey] 已停止。');
+    console.log('[red-panda] 已停止。');
     process.exit(0);
   } catch (error) {
-    console.error('[odyssey] 停止失败:', error);
+    console.error('[red-panda] 停止失败:', error);
     process.exit(1);
   }
 }

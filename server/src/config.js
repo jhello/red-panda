@@ -32,22 +32,22 @@ function readOrCreateAdminToken(dataDir, envToken) {
  * Everything is optional; sensible local-first defaults are used.
  */
 export function loadConfig(env = process.env) {
-  const dataDir = path.resolve(value(env, 'ODYSSEY_DATA_DIR', path.join(PROJECT_ROOT, 'data')));
+  const dataDir = path.resolve(value(env, 'RED_PANDA_DATA_DIR', path.join(PROJECT_ROOT, 'data')));
   fs.mkdirSync(dataDir, { recursive: true });
 
-  const dbPath = path.resolve(value(env, 'ODYSSEY_DB', path.join(dataDir, 'odyssey.db')));
+  const dbPath = path.resolve(value(env, 'RED_PANDA_DB', path.join(dataDir, 'red-panda.db')));
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
-  const admin = readOrCreateAdminToken(dataDir, value(env, 'ODYSSEY_ADMIN_TOKEN', ''));
+  const admin = readOrCreateAdminToken(dataDir, value(env, 'RED_PANDA_ADMIN_TOKEN', ''));
   const port = Number(value(env, 'PORT', '8787'));
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
     throw new Error(`PORT 不是合法端口: ${port}`);
   }
 
-  const sessionDays = Number(value(env, 'ODYSSEY_SESSION_DAYS', '30'));
-  const verifyHours = Number(value(env, 'ODYSSEY_VERIFY_HOURS', '24'));
-  const resetMinutes = Number(value(env, 'ODYSSEY_RESET_MINUTES', '60'));
-  const publicUrl = value(env, 'ODYSSEY_PUBLIC_URL', '').replace(/\/+$/, '');
+  const sessionDays = Number(value(env, 'RED_PANDA_SESSION_DAYS', '30'));
+  const verifyHours = Number(value(env, 'RED_PANDA_VERIFY_HOURS', '24'));
+  const resetMinutes = Number(value(env, 'RED_PANDA_RESET_MINUTES', '60'));
+  const publicUrl = value(env, 'RED_PANDA_PUBLIC_URL', '').replace(/\/+$/, '');
 
   return {
     version: pkg.version,
@@ -61,21 +61,21 @@ export function loadConfig(env = process.env) {
     verificationHours: Number.isFinite(verifyHours) && verifyHours > 0 ? verifyHours : 24,
     resetMinutes: Number.isFinite(resetMinutes) && resetMinutes > 0 ? resetMinutes : 60,
     publicUrl: publicUrl || null,
-    webDir: path.resolve(value(env, 'ODYSSEY_WEB_DIR', path.join(PROJECT_ROOT, 'web'))),
+    webDir: path.resolve(value(env, 'RED_PANDA_WEB_DIR', path.join(PROJECT_ROOT, 'web'))),
     dashboardDir: path.join(SERVER_DIR, 'public', 'dashboard'),
     mail: {
-      mode: value(env, 'ODYSSEY_MAIL_MODE', 'log').toLowerCase(),
-      from: value(env, 'ODYSSEY_MAIL_FROM', 'Odyssey <no-reply@odyssey.local>'),
+      mode: value(env, 'RED_PANDA_MAIL_MODE', 'log').toLowerCase(),
+      from: value(env, 'RED_PANDA_MAIL_FROM', 'Red Panda <no-reply@red-panda.local>'),
       outboxDir: path.join(dataDir, 'outbox'),
-      command: value(env, 'ODYSSEY_MAIL_COMMAND', ''),
-      apiUrl: value(env, 'ODYSSEY_MAIL_API_URL', ''),
-      apiKey: value(env, 'ODYSSEY_MAIL_API_KEY', ''),
+      command: value(env, 'RED_PANDA_MAIL_COMMAND', ''),
+      apiUrl: value(env, 'RED_PANDA_MAIL_API_URL', ''),
+      apiKey: value(env, 'RED_PANDA_MAIL_API_KEY', ''),
     },
     ai: {
       apiKey: value(env, 'OPENAI_API_KEY', ''),
       baseUrl: value(env, 'OPENAI_BASE_URL', 'https://api.openai.com/v1').replace(/\/+$/, ''),
       model: value(env, 'OPENAI_MODEL', 'gpt-4o-mini'),
-      mock: value(env, 'ODYSSEY_AI_MOCK', '0') === '1',
+      mock: value(env, 'RED_PANDA_AI_MOCK', '0') === '1',
     },
   };
 }

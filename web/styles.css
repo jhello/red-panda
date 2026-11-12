@@ -149,7 +149,7 @@ img.seal {
   object-fit: cover;
   border: 0;
   padding: 0;
-  background: var(--paper);
+  background: transparent;
 }
 
 .pulse {

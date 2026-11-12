@@ -2,7 +2,7 @@
 
 ## 一、项目许可证
 
-「山海经 · Odyssey」以 **GNU Affero General Public License v3.0 only
+「小熊猫 · Red Panda」以 **GNU Affero General Public License v3.0 only
 （AGPL-3.0-only）** 发布。完整条款见仓库根目录的 [LICENSE](../LICENSE)。
 
 选择 AGPL-3.0 的原因：
@@ -103,8 +103,8 @@ CLA 不是版权转让（copyright assignment），你仍然可以自由使用�
 
 ## 六、商标
 
-AGPL-3.0 **不授予商标权**。你可以在事实性描述中说明“基于 Odyssey 构建”，
-但不得使用「山海经」「Odyssey」名称或 Logo 暗示官方背书。商业授权不自动包含
+AGPL-3.0 **不授予商标权**。你可以在事实性描述中说明“基于 Red Panda 构建”，
+但不得使用「小熊猫」「Red Panda」名称或 Logo 暗示官方背书。商业授权不自动包含
 商标许可，如有需要请单独协商。
 
 ## 七、常见问题

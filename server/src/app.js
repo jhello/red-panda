@@ -355,7 +355,7 @@ export function createApp(config, options = {}) {
     }));
     return {
       server: {
-        name: 'Odyssey',
+        name: 'Red Panda',
         version: config.version,
         startedAt: state.startedAt.toISOString(),
         uptimeSeconds: Math.floor((now - state.startedAt.getTime()) / 1000),
@@ -395,8 +395,8 @@ export function createApp(config, options = {}) {
     status: 200,
     body: {
       ok: true,
-      service: 'odyssey',
-      name: '山海经',
+      service: 'red-panda',
+      name: '小熊猫',
       version: config.version,
       time: new Date().toISOString(),
     },
@@ -426,7 +426,7 @@ export function createApp(config, options = {}) {
       try {
         await sendVerificationEmail(existing);
       } catch (error) {
-        console.error('[odyssey] 验证邮件发送失败:', error);
+        console.error('[red-panda] 验证邮件发送失败:', error);
         throw new HttpError(502, '账户已存在，但验证邮件发送失败，请稍后重试', 'mail_failed');
       }
       return {
@@ -453,7 +453,7 @@ export function createApp(config, options = {}) {
     try {
       await sendVerificationEmail(user);
     } catch (error) {
-      console.error('[odyssey] 验证邮件发送失败:', error);
+      console.error('[red-panda] 验证邮件发送失败:', error);
       throw new HttpError(502, '账户已创建，但验证邮件发送失败，请稍后重试', 'mail_failed');
     }
 
@@ -529,7 +529,7 @@ export function createApp(config, options = {}) {
       try {
         await sendVerificationEmail(user);
       } catch (error) {
-        console.error('[odyssey] 验证邮件发送失败:', error);
+        console.error('[red-panda] 验证邮件发送失败:', error);
       }
     }
     return {
@@ -551,7 +551,7 @@ export function createApp(config, options = {}) {
         if (user.email_verified) await sendResetEmail(user);
         else await sendVerificationEmail(user);
       } catch (error) {
-        console.error('[odyssey] 邮件发送失败:', error);
+        console.error('[red-panda] 邮件发送失败:', error);
       }
     }
     return {
@@ -697,7 +697,7 @@ export function createApp(config, options = {}) {
           {
             role: 'system',
             content:
-              '你是《山海经》世界的向导，擅长用简洁、富有画面感的中文为旅程写简介。' +
+              '你是「小熊猫」旅程应用的向导，擅长用简洁、富有画面感的中文为旅程写简介。' +
               '只输出简介正文，不要标题、不要引号，控制在 120 字以内。',
           },
           {
@@ -850,7 +850,7 @@ export function createApp(config, options = {}) {
         sendJson(res, status, { error: error.message, code: error.code });
       } else {
         status = 500;
-        console.error('[odyssey] unhandled error:', error);
+        console.error('[red-panda] unhandled error:', error);
         sendJson(res, 500, { error: '服务器内部错误', code: 'internal_error' });
       }
     } finally {
@@ -873,10 +873,10 @@ export function createApp(config, options = {}) {
         });
         if (state.requestLog.length > 200) state.requestLog.shift();
         console.log(
-          `[odyssey] ${req.method} ${pathname} → ${status} (${duration}ms)`,
+          `[red-panda] ${req.method} ${pathname} → ${status} (${duration}ms)`,
         );
       } else if (status >= 500) {
-        console.error(`[odyssey] ${req.method} ${pathname} → ${status} (${duration}ms)`);
+        console.error(`[red-panda] ${req.method} ${pathname} → ${status} (${duration}ms)`);
       }
     }
   });
@@ -886,7 +886,7 @@ export function createApp(config, options = {}) {
       db.deleteExpiredSessions();
       db.deleteExpiredTokens();
     } catch (error) {
-      console.error('[odyssey] session cleanup failed:', error);
+      console.error('[red-panda] session cleanup failed:', error);
     }
   }, 60 * 60 * 1000);
   cleanup.unref();

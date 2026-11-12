@@ -2,9 +2,9 @@
   'use strict';
 
   const STORAGE = {
-    token: 'odyssey.token',
-    server: 'odyssey.server',
-    user: 'odyssey.user',
+    token: 'red-panda.token',
+    server: 'red-panda.server',
+    user: 'red-panda.user',
   };
 
   const app = document.getElementById('app');
@@ -86,7 +86,7 @@
   }
 
   function defaultServer() {
-    const configured = normalizeServer(window.ODYSSEY_CONFIG?.defaultServer || '');
+    const configured = normalizeServer(window.REDPANDA_CONFIG?.defaultServer || '');
     if (configured) return configured;
     if (location.protocol === 'http:' || location.protocol === 'https:') {
       return normalizeServer(location.origin);
@@ -261,7 +261,7 @@
     }
     if (!response.ok) throw new Error(`服务返回 HTTP ${response.status}`);
     const data = await response.json().catch(() => null);
-    if (!data || data.ok !== true) throw new Error('这个地址不是山海经服务端');
+    if (!data || data.ok !== true) throw new Error('这个地址不是小熊猫服务端');
     return data;
   }
 
@@ -269,10 +269,10 @@
 
   const brand = `
     <div class="brand">
-      <img class="seal" src="logo.png" alt="山海经" />
+      <img class="seal" src="logo.png" alt="小熊猫" />
       <div class="brand-text">
-        <span class="brand-cn">山海经</span>
-        <span class="brand-en">Odyssey</span>
+        <span class="brand-cn">小熊猫</span>
+        <span class="brand-en">Red Panda</span>
       </div>
     </div>`;
 
@@ -289,8 +289,8 @@
     return `
       <div class="screen center-screen">
         <div class="loading">
-          <img class="seal seal-lg pulse" src="logo.png" alt="山海经" />
-          <p class="muted">正在翻开山海经…</p>
+          <img class="seal seal-lg pulse" src="logo.png" alt="小熊猫" />
+          <p class="muted">正在打开小熊猫…</p>
         </div>
       </div>`;
   }
@@ -377,9 +377,9 @@
     app.innerHTML = `
       <div class="screen setup-screen">
         <div class="auth-hero">
-          <img class="seal seal-lg" src="logo.png" alt="山海经" />
-          <h1 class="auth-title">山海经</h1>
-          <p class="auth-en">ODYSSEY</p>
+          <img class="seal seal-lg" src="logo.png" alt="小熊猫" />
+          <h1 class="auth-title">小熊猫</h1>
+          <p class="auth-en">RED PANDA</p>
         </div>
         <div class="card auth-card">
           <h2 class="setup-title">连接你的服务器</h2>
@@ -413,7 +413,7 @@
         const health = await pingServer(server);
         localStorage.setItem(STORAGE.server, server);
         state.server = server;
-        toast(`已连接 · ${health.name || '山海经'} v${health.version || ''}`);
+        toast(`已连接 · ${health.name || '小熊猫'} v${health.version || ''}`);
         state.authTab = 'login';
         location.hash = '#/login';
         await init();
@@ -442,9 +442,9 @@
     app.innerHTML = `
       <div class="screen auth-screen">
         <div class="auth-hero">
-          <img class="seal seal-lg" src="logo.png" alt="山海经" />
-          <h1 class="auth-title">山海经</h1>
-          <p class="auth-en">ODYSSEY</p>
+          <img class="seal seal-lg" src="logo.png" alt="小熊猫" />
+          <h1 class="auth-title">小熊猫</h1>
+          <p class="auth-en">RED PANDA</p>
           <p class="auth-tag">把走过的路，写进山海之间</p>
         </div>
 
@@ -562,9 +562,9 @@
     app.innerHTML = `
       <div class="screen auth-screen">
         <div class="auth-hero">
-          <img class="seal seal-lg" src="logo.png" alt="山海经" />
-          <h1 class="auth-title">山海经</h1>
-          <p class="auth-en">ODYSSEY</p>
+          <img class="seal seal-lg" src="logo.png" alt="小熊猫" />
+          <h1 class="auth-title">小熊猫</h1>
+          <p class="auth-en">RED PANDA</p>
         </div>
 
         <div class="card auth-card">
@@ -618,9 +618,9 @@
     app.innerHTML = `
       <div class="screen auth-screen">
         <div class="auth-hero">
-          <img class="seal seal-lg" src="logo.png" alt="山海经" />
-          <h1 class="auth-title">山海经</h1>
-          <p class="auth-en">ODYSSEY</p>
+          <img class="seal seal-lg" src="logo.png" alt="小熊猫" />
+          <h1 class="auth-title">小熊猫</h1>
+          <p class="auth-en">RED PANDA</p>
         </div>
 
         <div class="card auth-card">
@@ -674,9 +674,9 @@
       app.innerHTML = `
         <div class="screen auth-screen">
           <div class="auth-hero">
-            <img class="seal seal-lg" src="logo.png" alt="山海经" />
-            <h1 class="auth-title">山海经</h1>
-            <p class="auth-en">ODYSSEY</p>
+            <img class="seal seal-lg" src="logo.png" alt="小熊猫" />
+            <h1 class="auth-title">小熊猫</h1>
+            <p class="auth-en">RED PANDA</p>
           </div>
           <div class="card auth-card">
             <h2 class="setup-title">重置链接无效</h2>
@@ -691,9 +691,9 @@
     app.innerHTML = `
       <div class="screen auth-screen">
         <div class="auth-hero">
-          <img class="seal seal-lg" src="logo.png" alt="山海经" />
-          <h1 class="auth-title">山海经</h1>
-          <p class="auth-en">ODYSSEY</p>
+          <img class="seal seal-lg" src="logo.png" alt="小熊猫" />
+          <h1 class="auth-title">小熊猫</h1>
+          <p class="auth-en">RED PANDA</p>
         </div>
 
         <div class="card auth-card">
@@ -755,7 +755,7 @@
           <section class="hero">
             <p class="eyebrow">你好，${esc(state.user.displayName || state.user.username)}</p>
             <h1 class="hero-title">山河远阔，<br />从这里启程。</h1>
-            <p class="hero-sub">把走过的路，写进属于你的山海经。</p>
+            <p class="hero-sub">把走过的路，写进属于你的旅程。</p>
           </section>
 
           <section class="actions">
@@ -1132,7 +1132,7 @@
 
           <section class="card panel">
             <h2 class="panel-title">关于</h2>
-            <p class="panel-sub">山海经 · Odyssey ${esc(window.ODYSSEY_CONFIG?.version || '1.0.0')}</p>
+            <p class="panel-sub">小熊猫 · Red Panda ${esc(window.REDPANDA_CONFIG?.version || '1.0.0')}</p>
             <p class="panel-sub">数据保存在你自己的服务器上。</p>
           </section>
         </main>
@@ -1158,7 +1158,7 @@
         const previous = state.server;
         localStorage.setItem(STORAGE.server, next);
         state.server = next;
-        ok.textContent = `连接成功 · ${health.name || '山海经'} v${health.version || ''}`;
+        ok.textContent = `连接成功 · ${health.name || '小熊猫'} v${health.version || ''}`;
         ok.hidden = false;
 
         if (previous && previous !== next) {

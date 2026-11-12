@@ -4,8 +4,8 @@ Android 端是一个很薄的 **WebView 外壳**：原生代码只负责窗口�
 返回键和调试开关，真正的界面是 `web/` 里的同一套 HTML/CSS/JS。
 因此改界面只需要改 `web/`，再重新构建 APK。
 
-- 包名：`com.odyssey.app`
-- 应用名：**山海经**
+- 包名：`com.redpanda.app`
+- 应用名：**小熊猫**（中文系统）/ **Red Panda**（其他语言系统）
 - 最低版本：Android 8.0（API 26）
 - 目标版本：Android 16（API 36）
 
@@ -45,7 +45,7 @@ Android 端是一个很薄的 **WebView 外壳**：原生代码只负责窗口�
 ./scripts/build-android.sh
 ```
 
-产物：`build/android/odyssey.apk`（已用开发证书签名）。
+产物：`build/android/red-panda.apk`（已用开发证书签名）。
 
 脚本做了什么：
 
@@ -60,7 +60,7 @@ Android 端是一个很薄的 **WebView 外壳**：原生代码只负责窗口�
 默认地址取构建时本机的局域网 IP（`http://<IP>:8787`）。也可以覆盖：
 
 ```bash
-ODYSSEY_SERVER_URL=http://192.168.10.65:8787 ./scripts/build-android.sh
+RED_PANDA_SERVER_URL=http://192.168.10.65:8787 ./scripts/build-android.sh
 ```
 
 或用 `PORT` 改变端口：
@@ -74,11 +74,11 @@ PORT=9000 ./scripts/build-android.sh
 
 ### 自定义签名
 
-默认使用 `~/.odyssey/odyssey-dev.jks`（首次构建自动生成，密码都是
-`odyssey`）。要换证书：
+默认使用 `~/.red-panda/red-panda-dev.jks`（首次构建自动生成，密码都是
+`red-panda`）。要换证书：
 
 ```bash
-ODYSSEY_KEYSTORE=/path/to/release.jks ./scripts/build-android.sh
+RED_PANDA_KEYSTORE=/path/to/release.jks ./scripts/build-android.sh
 ```
 
 生产分发请使用你自己的 release 证书，并妥善保管。
@@ -89,10 +89,10 @@ ODYSSEY_KEYSTORE=/path/to/release.jks ./scripts/build-android.sh
 
 ```bash
 # 只安装
-adb install -r build/android/odyssey.apk
+adb install -r build/android/red-panda.apk
 
 # 启动
-adb shell am start -n com.odyssey.app/.MainActivity
+adb shell am start -n com.redpanda.app/.MainActivity
 
 # 一条龙：构建 + 安装 + 端口转发 + 启动
 ./scripts/dev-android.sh
@@ -137,11 +137,11 @@ adb-ACMMVB4515012175-PkOAyY._adb-tls-connect._tcp    device
 ### 3. 安装、启动、看日志
 
 ```bash
-adb install -r build/android/odyssey.apk
-adb shell am start -n com.odyssey.app/.MainActivity
+adb install -r build/android/red-panda.apk
+adb shell am start -n com.redpanda.app/.MainActivity
 
 # 应用日志
-adb logcat | grep -i odyssey
+adb logcat | grep -i red-panda
 
 # 只看崩溃
 adb logcat -b crash
@@ -153,7 +153,7 @@ adb logcat -b crash
 
 1. 手机打开应用。
 2. 电脑 Chrome 访问 `chrome://inspect`。
-3. 找到 `com.odyssey.app` 的 WebView，点击 **inspect**。
+3. 找到 `com.redpanda.app` 的 WebView，点击 **inspect**。
 
 如果没有出现设备，先做端口转发：
 
@@ -167,7 +167,7 @@ adb forward tcp:9222 localabstract:webview_devtools_remote_<PID>
 
 然后在 Chrome 打开 `chrome://inspect`，或直接用 CDP 调试
 （`http://127.0.0.1:9222/json`）。PID 可在
-`adb shell pidof com.odyssey.app` 查到。
+`adb shell pidof com.redpanda.app` 查到。
 
 ### 5. 端口转发（推荐用于调试）
 
@@ -215,7 +215,7 @@ Gradle 构建会在 `preBuild` 阶段把 `../web` 复制进 assets，并可通�
 属性指定默认服务器：
 
 ```bash
-./gradlew assembleDebug -PodysseyServer=http://192.168.10.65:8787
+./gradlew assembleDebug -PredPandaServer=http://192.168.10.65:8787
 ```
 
 > 没有提交 `gradlew` 时，可用系统 Gradle，或在 Android Studio 中打开
@@ -234,14 +234,14 @@ Gradle 构建会在 `preBuild` 阶段把 `../web` 复制进 assets，并可通�
 签名不一致。先卸载再装：
 
 ```bash
-adb uninstall com.odyssey.app
-adb install build/android/odyssey.apk
+adb uninstall com.redpanda.app
+adb install build/android/red-panda.apk
 ```
 
 **应用白屏**
 - 多半是服务器地址不对或服务未启动；
 - 先在手机浏览器打开 `http://<电脑IP>:8787/app/` 验证；
-- 用 `adb logcat | grep -i odyssey` 看错误。
+- 用 `adb logcat | grep -i red-panda` 看错误。
 
 **改完界面没变化**
 Android 构建会把 `web/` 复制进 APK，需要重新

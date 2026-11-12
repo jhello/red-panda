@@ -4,7 +4,7 @@
 
 版本 1.0 · 2026-11-11
 
-感谢你为「山海经 · Odyssey」（以下简称“本项目”）贡献代码、文档、设计或其他内容。
+感谢你为「小熊猫 · Red Panda」（以下简称“本项目”）贡献代码、文档、设计或其他内容。
 本协议用于明确你向项目维护者授予的权利，使你能够放心贡献，同时让维护者能够持续
 维护本项目，并在必要时提供商业授权。
 
@@ -24,7 +24,7 @@ I have read the CLA Document and I hereby sign the CLA
 - **“贡献”**：指你有意提交给本项目的任何原创作品，包括源代码、文档、设计、
   测试、配置及其他材料。
 - **“维护者”**：指本项目当前的版权持有人 **Hang JIANG** 及其指定的继承人。
-- **“本项目”**：指「山海经 · Odyssey」代码仓库及其衍生作品。
+- **“本项目”**：指「小熊猫 · Red Panda」代码仓库及其衍生作品。
 
 ## 2. 版权许可
 
@@ -72,7 +72,7 @@ I have read the CLA Document and I hereby sign the CLA
 
 Version 1.0 · 2026-11-11
 
-Thank you for contributing to **Odyssey (山海经)** (the “Project”). This Agreement
+Thank you for contributing to **Red Panda (小熊猫)** (the “Project”). This Agreement
 clarifies the rights you grant to the Project maintainer so that you can contribute
 with confidence and the maintainer can keep maintaining the Project and offer
 commercial licensing when needed.
@@ -94,7 +94,7 @@ it covers all your future contributions to the Project.
   intentionally submit to the Project.
 - **“Maintainer”** means **Hang JIANG**, the current copyright holder of the
   Project, and their designated successors.
-- **“Project”** means the Odyssey (山海经) repository and its derivative works.
+- **“Project”** means the Red Panda (小熊猫) repository and its derivative works.
 
 ## 2. Copyright License
 

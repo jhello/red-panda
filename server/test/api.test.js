@@ -7,13 +7,13 @@ import { after, test } from 'node:test';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'odyssey-test-'));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'red-panda-test-'));
 const config = loadConfig({
   ...process.env,
-  ODYSSEY_DATA_DIR: tempDir,
-  ODYSSEY_DB: path.join(tempDir, 'test.db'),
-  ODYSSEY_ADMIN_TOKEN: 'test-admin-token',
-  ODYSSEY_AI_MOCK: '1',
+  RED_PANDA_DATA_DIR: tempDir,
+  RED_PANDA_DB: path.join(tempDir, 'test.db'),
+  RED_PANDA_ADMIN_TOKEN: 'test-admin-token',
+  RED_PANDA_AI_MOCK: '1',
   PORT: '0',
   HOST: '127.0.0.1',
 });
@@ -101,7 +101,7 @@ test('健康检查是公开的', async () => {
   const result = await request('/api/health');
   assert.equal(result.status, 200);
   assert.equal(result.data.ok, true);
-  assert.equal(result.data.name, '山海经');
+  assert.equal(result.data.name, '小熊猫');
 });
 
 test('管理看板接口需要管理员令牌', async () => {
@@ -113,7 +113,7 @@ test('管理看板接口需要管理员令牌', async () => {
 
   const ok = await request('/api/admin/status', { admin: 'test-admin-token' });
   assert.equal(ok.status, 200);
-  assert.equal(ok.data.server.name, 'Odyssey');
+  assert.equal(ok.data.server.name, 'Red Panda');
   assert.equal(ok.data.ai.mock, true);
   assert.equal(ok.data.stats.users, 0);
 });
@@ -405,7 +405,7 @@ test('静态页面：看板与 HTML5 应用', async () => {
 
   const appPage = await request('/app/');
   assert.equal(appPage.status, 200);
-  assert.match(appPage.text, /山海经/);
+  assert.match(appPage.text, /小熊猫/);
 
   const script = await request('/app/app.js');
   assert.equal(script.status, 200);

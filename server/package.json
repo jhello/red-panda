@@ -1,14 +1,14 @@
 {
-  "name": "odyssey-server",
+  "name": "red-panda-server",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "山海经 Odyssey — 旅程记录服务端",
+  "description": "小熊猫 Red Panda — 旅程记录服务端",
   "license": "AGPL-3.0-only",
   "author": "Hang JIANG <jianghang2020@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jhello/odyssey.git"
+    "url": "git+https://github.com/jhello/red-panda.git"
   },
   "engines": {
     "node": ">=22.5"

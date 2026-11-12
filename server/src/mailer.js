@@ -32,16 +32,16 @@ function sendLog(config, message) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const file = path.join(dir, `${stamp}-${sanitize(message.to)}.eml`);
   fs.writeFileSync(file, buildRawMessage(config, message), 'utf8');
-  console.log(`[odyssey] [mail:log] → ${message.to} · ${message.subject}`);
-  console.log(`[odyssey] [mail:log] 已写入 ${file}`);
+  console.log(`[red-panda] [mail:log] → ${message.to} · ${message.subject}`);
+  console.log(`[red-panda] [mail:log] 已写入 ${file}`);
   const link = /https?:\/\/\S+/.exec(message.text)?.[0];
-  if (link) console.log(`[odyssey] [mail:log] 链接: ${link}`);
+  if (link) console.log(`[red-panda] [mail:log] 链接: ${link}`);
 }
 
 function sendCommand(config, message) {
   const command = config.mail.command;
   if (!command) {
-    throw new Error('ODYSSEY_MAIL_MODE=command 需要设置 ODYSSEY_MAIL_COMMAND（例如 "msmtp -t"）');
+    throw new Error('RED_PANDA_MAIL_MODE=command 需要设置 RED_PANDA_MAIL_COMMAND（例如 "msmtp -t"）');
   }
   return new Promise((resolve, reject) => {
     const child = spawn('sh', ['-c', command], { stdio: ['pipe', 'ignore', 'pipe'] });
@@ -64,7 +64,7 @@ function sendCommand(config, message) {
 async function sendHttp(config, message) {
   const url = config.mail.apiUrl;
   if (!url) {
-    throw new Error('ODYSSEY_MAIL_MODE=http 需要设置 ODYSSEY_MAIL_API_URL');
+    throw new Error('RED_PANDA_MAIL_MODE=http 需要设置 RED_PANDA_MAIL_API_URL');
   }
   const headers = { 'Content-Type': 'application/json' };
   if (config.mail.apiKey) headers.Authorization = `Bearer ${config.mail.apiKey}`;
