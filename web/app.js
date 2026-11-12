@@ -198,7 +198,6 @@
       plan: {
         placeholders: ['我想去雅典卫城', '下周去卢浮宫和橘园美术馆', '去看新天鹅堡的雪景'],
         artAlt: ['黄昏中的雅典卫城', '暮色里的卢浮宫', '雪中的新天鹅堡'],
-        artNote: 'AI 生成 · 印象派演绎',
         confirm: '先这样',
         thinking: '我想想',
         edit: '编辑',
@@ -465,7 +464,6 @@
           'To see the snow at Neuschwanstein Castle',
         ],
         artAlt: ['The Acropolis at dusk', 'The Louvre at twilight', 'Neuschwanstein in the snow'],
-        artNote: 'AI generated · impressionist take',
         confirm: "Let's go with that",
         thinking: 'Thinking…',
         edit: 'Edit',
@@ -734,7 +732,6 @@
           'Um den Schnee am Neuschwanstein zu sehen',
         ],
         artAlt: ['Die Akropolis in der Dämmerung', 'Der Louvre im Abendlicht', 'Neuschwanstein im Schnee'],
-        artNote: 'KI-generiert · impressionistisch interpretiert',
         confirm: 'So machen wir’s',
         thinking: 'Ich überlege…',
         edit: 'Bearbeiten',
@@ -1795,7 +1792,6 @@
         ? `
         <figure class="plan-art${fading ? ' is-out' : ''}">
           <img src="${artFile}" alt="${esc(artAlt)}" />
-          <figcaption class="plan-art-note">${t('plan.artNote')}</figcaption>
         </figure>`
         : '';
 
@@ -1812,7 +1808,6 @@
     let body;
     if (plan.editing) {
       body = `
-        ${art(false)}
         <form id="plan-form" novalidate>
           <div class="plan-card">
             <div class="plan-card-top">
@@ -1859,10 +1854,9 @@
         </section>`;
     } else if (plan.busy) {
       body = `
-        ${art(true)}
         <div class="plan-card">
           <div class="plan-card-top">
-            <p class="plan-card-text is-rising">${esc(plan.text)}</p>
+            <p class="plan-card-text">${esc(plan.text)}</p>
             ${tools(true)}
           </div>
           <div class="plan-card-bottom">
@@ -1877,7 +1871,7 @@
       body = `
         <div class="plan-card">
           <div class="plan-card-top">
-            <p class="plan-card-text is-rising">${esc(plan.text)}</p>
+            <p class="plan-card-text">${esc(plan.text)}</p>
             ${tools(true)}
           </div>
         </div>
@@ -2012,13 +2006,33 @@
     // An empty input falls back to the suggestion shown in the placeholder.
     const text = (planState.text || planState.suggestion || '').trim();
     if (!text) return;
+
+    // 原地过渡：油画淡出并收起，输入框就地变成固化文字，按钮变成「我想想」
+    const art = document.querySelector('.plan-art');
+    if (art) art.classList.add('is-out');
+    const input = document.getElementById('plan-input');
+    if (input) {
+      const frozen = document.createElement('p');
+      frozen.className = 'plan-card-text is-rising';
+      frozen.textContent = text;
+      input.replaceWith(frozen);
+    }
+    const button = document.querySelector('.plan-card-btn');
+    if (button) {
+      button.innerHTML = `<span>${t('plan.thinking')}</span><span class="plan-spin" aria-hidden="true"></span>`;
+      button.disabled = true;
+      button.removeAttribute('data-action');
+    }
+
     planState.text = text;
     planState.locked = true;
     planState.editing = false;
     planState.editingItem = null;
     planState.error = '';
     planState.items = [];
-    runPlan(text);
+
+    // 等过渡走完再发请求，避免画面跳动
+    setTimeout(() => runPlan(text), 360);
   }
 
   async function runPlan(text) {
