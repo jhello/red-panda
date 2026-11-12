@@ -183,6 +183,22 @@ application/json; charset=utf-8`），`204` 响应无正文。
 }
 ```
 
+### `PUT /api/me/usual-origin`
+
+需要认证。保存最多 20 个常用出发地。新客户端发送 `origins` 数组；旧版单地点对象仍可兼容：
+
+```json
+{ "origins": [{ "name": "家", "country": "中国", "city": "上海市", "district": "徐汇区", "street": "天钥桥路", "streetNumber": "88号" }] }
+```
+
+### `POST /api/me/usual-origin/parse`
+
+需要认证。把自然语言地点描述交给 AI 解析，请求 `{ "text": "上海市徐汇区天钥桥路88号" }`，返回结构化的 `origin` 对象。
+
+### `POST /api/me/usual-origin/search` 和 `POST /api/me/usual-origin/reverse`
+
+需要认证。通过 Photon（OpenStreetMap 数据）搜索地点候选，或按 `{ "lat": 31.18, "lon": 121.43, "locale": "zh" }` 反查附近地址。搜索请求使用 `{ "query": "上海体育场", "locale": "zh" }`，返回最多 6 个候选。地图图层使用 OpenStreetMap，需保留地图上的署名信息。
+
 ### `PUT /api/me/password`
 
 需要认证。修改密码：

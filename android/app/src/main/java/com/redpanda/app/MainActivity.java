@@ -1,6 +1,8 @@
 package com.redpanda.app;
 
 import android.app.Activity;
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Insets;
@@ -14,6 +16,7 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.widget.FrameLayout;
 import android.webkit.WebChromeClient;
+import android.webkit.GeolocationPermissions;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -27,9 +30,12 @@ import android.webkit.WebViewClient;
 public class MainActivity extends Activity {
     private static final String START_URL = "file:///android_asset/www/index.html";
     private static final int PAPER_COLOR = Color.rgb(247, 242, 232);
+    private static final int GEOLOCATION_REQUEST_CODE = 7101;
 
     private WebView webView;
     private FrameLayout root;
+    private GeolocationPermissions.Callback geolocationCallback;
+    private String geolocationOrigin;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -48,6 +54,7 @@ public class MainActivity extends Activity {
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
+        settings.setGeolocationEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setAllowFileAccess(true);
@@ -60,7 +67,21 @@ public class MainActivity extends Activity {
         settings.setMediaPlaybackRequiresUserGesture(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+                if (hasLocationPermission()) {
+                    callback.invoke(origin, true, false);
+                    return;
+                }
+                geolocationOrigin = origin;
+                geolocationCallback = callback;
+                requestPermissions(new String[] {
+                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                }, GEOLOCATION_REQUEST_CODE);
+            }
+        });
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -120,6 +141,21 @@ public class MainActivity extends Activity {
                 flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
             }
             window.getDecorView().setSystemUiVisibility(flags);
+        }
+    }
+
+    private boolean hasLocationPermission() {
+        return checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                || checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == GEOLOCATION_REQUEST_CODE && geolocationCallback != null) {
+            geolocationCallback.invoke(geolocationOrigin, hasLocationPermission(), false);
+            geolocationCallback = null;
+            geolocationOrigin = null;
         }
     }
 

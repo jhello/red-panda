@@ -443,6 +443,19 @@ test('常用出发地支持多个地点并兼容旧版单对象', async () => {
   });
   assert.equal(parsed.status, 200);
   assert.equal(parsed.data.origin.name, '上海浦东张江路 88 号');
+
+  const anonymousSearch = await request('/api/me/usual-origin/search', {
+    method: 'POST', body: { query: '上海体育场', locale: 'zh' },
+  });
+  assert.equal(anonymousSearch.status, 401);
+  const shortSearch = await request('/api/me/usual-origin/search', {
+    method: 'POST', token, body: { query: '上', locale: 'zh' },
+  });
+  assert.equal(shortSearch.status, 400);
+  const invalidReverse = await request('/api/me/usual-origin/reverse', {
+    method: 'POST', token, body: { lat: 100, lon: 0, locale: 'zh' },
+  });
+  assert.equal(invalidReverse.status, 400);
 });
 
 test('AI 描述接口（mock 模式）', async () => {

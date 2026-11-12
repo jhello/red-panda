@@ -987,6 +987,39 @@ export function createApp(config, options = {}) {
     return { status: 200, body: { origin: Object.fromEntries(fields.map((key) => [key, String(origin[key] || '').slice(0, 160)])) } };
   }, { auth: true });
 
+  route('POST', /^\/api\/me\/usual-origin\/search$/, async ({ body }) => {
+    const query = typeof body.query === 'string' ? body.query.trim().slice(0, 160) : '';
+    if (query.length < 2) throw new HttpError(400, '地点搜索至少需要 2 个字符', 'validation_error');
+    const url = new URL('https://photon.komoot.io/api/');
+    url.searchParams.set('q', query);
+    url.searchParams.set('limit', '6');
+    url.searchParams.set('lang', normalizeLocale(body.locale) === 'zh' ? 'default' : (normalizeLocale(body.locale) || 'en'));
+    let response;
+    try { response = await fetch(url, { signal: AbortSignal.timeout(20_000) }); }
+    catch { throw new HttpError(502, '地点搜索暂时不可用，请稍后重试。', 'place_search_unavailable'); }
+    if (!response.ok) throw new HttpError(502, '地点搜索暂时不可用，请稍后重试。', 'place_search_unavailable');
+    const data = await response.json();
+    return { status: 200, body: { features: Array.isArray(data.features) ? data.features.slice(0, 6) : [] } };
+  }, { auth: true });
+
+  route('POST', /^\/api\/me\/usual-origin\/reverse$/, async ({ body }) => {
+    const lat = Number(body.lat);
+    const lon = Number(body.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      throw new HttpError(400, '地图坐标无效', 'validation_error');
+    }
+    const url = new URL('https://photon.komoot.io/reverse');
+    url.searchParams.set('lat', String(lat));
+    url.searchParams.set('lon', String(lon));
+    url.searchParams.set('lang', normalizeLocale(body.locale) === 'zh' ? 'default' : (normalizeLocale(body.locale) || 'en'));
+    let response;
+    try { response = await fetch(url, { signal: AbortSignal.timeout(20_000) }); }
+    catch { throw new HttpError(502, '地址解析暂时不可用，请稍后重试。', 'place_search_unavailable'); }
+    if (!response.ok) throw new HttpError(502, '地址解析暂时不可用，请稍后重试。', 'place_search_unavailable');
+    const data = await response.json();
+    return { status: 200, body: { features: Array.isArray(data.features) ? data.features.slice(0, 2) : [] } };
+  }, { auth: true });
+
   route(
     'PUT',
     /^\/api\/me\/locale$/,

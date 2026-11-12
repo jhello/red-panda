@@ -350,6 +350,8 @@
         originSaved: '常用出发地已保存',
         originInput: '输入地点，如“上海市浦东新区张江路 88 号”',
         originMap: '地图选点', originMapHint: '点击地图或拖动图钉选择位置', originMapUse: '使用此地点', originEmpty: '还没有常用地点',
+        originEdit: '编辑', originUpdate: '保存修改', originCancel: '取消编辑', originLocate: '定位到当前位置', originSearching: '正在搜索地点…', originNoResults: '没有找到地点', originSearchAttribution: '地点数据 © OpenStreetMap contributors', originLocationError: '无法获取当前位置，请检查定位权限。',
+        originSecureRequired: '网页定位需要 HTTPS，请用安全连接打开页面，或使用 Android App。',
         resetPassword: '重置密码',
         resetPasswordSub: '忘记密码时，输入邮箱后我们会发送重置邮件。',
         aboutTitle: '关于',
@@ -680,6 +682,8 @@
         originSaved: 'Departure place saved',
         originInput: 'Enter a place, e.g. “88 Zhangjiang Road, Pudong, Shanghai”',
         originMap: 'Pick on map', originMapHint: 'Click the map or drag the pin to choose a place', originMapUse: 'Use this place', originEmpty: 'No saved places yet',
+        originEdit: 'Edit', originUpdate: 'Save changes', originCancel: 'Cancel edit', originLocate: 'Locate me', originSearching: 'Searching places…', originNoResults: 'No places found', originSearchAttribution: 'Place data © OpenStreetMap contributors', originLocationError: 'Could not get your location. Check location permission.',
+        originSecureRequired: 'Web location requires HTTPS. Open this page securely or use the Android app.',
         resetPassword: 'Reset password',
         resetPasswordSub: 'Forgot your password? We will send you a reset link.',
         aboutTitle: 'About',
@@ -1012,6 +1016,8 @@
         originSaved: 'Abfahrtsort gespeichert',
         originInput: 'Ort eingeben, z. B. „Zhangjiang-Straße 88, Shanghai“',
         originMap: 'Auf Karte wählen', originMapHint: 'Karte anklicken oder Markierung ziehen', originMapUse: 'Diesen Ort verwenden', originEmpty: 'Noch keine gespeicherten Orte',
+        originEdit: 'Bearbeiten', originUpdate: 'Änderungen speichern', originCancel: 'Bearbeitung abbrechen', originLocate: 'Mein Standort', originSearching: 'Orte werden gesucht…', originNoResults: 'Keine Orte gefunden', originSearchAttribution: 'Ortsdaten © OpenStreetMap contributors', originLocationError: 'Standort nicht verfügbar. Bitte Standortberechtigung prüfen.',
+        originSecureRequired: 'Der Web-Standort benötigt HTTPS. Öffne die Seite sicher oder nutze die Android-App.',
         resetPassword: 'Passwort zurücksetzen',
         resetPasswordSub: 'Passwort vergessen? Wir senden dir einen Reset-Link.',
         aboutTitle: 'Über',
@@ -3408,10 +3414,12 @@
             <form id="origin-form" class="origin-entry" novalidate>
               <input name="text" maxlength="1000" placeholder="${esc(t('settings.originInput'))}" aria-label="${esc(t('settings.originInput'))}" />
               <button class="btn origin-map" type="button" id="origin-map" title="${esc(t('settings.originMap'))}" aria-label="${esc(t('settings.originMap'))}">⌖</button>
-              <button class="btn primary" type="submit">＋</button>
+              <button class="btn primary" type="submit" id="origin-submit">＋</button>
+              <button class="btn origin-cancel-edit" type="button" id="origin-cancel-edit" hidden>${esc(t('settings.originCancel'))}</button>
             </form>
+            <div id="origin-suggestions" class="origin-suggestions" hidden></div>
             <p class="form-error" id="origin-error" hidden></p>
-            <div id="origin-map-modal" class="origin-map-modal" hidden><div class="origin-map-head"><strong>${esc(t('settings.originMap'))}</strong><button type="button" class="btn" id="origin-map-close">×</button></div><div id="origin-map-canvas"></div><p>${esc(t('settings.originMapHint'))}</p><button class="btn primary block" id="origin-map-use" type="button" disabled>${esc(t('settings.originMapUse'))}</button></div>
+            <div id="origin-map-modal" class="origin-map-modal" hidden><div class="origin-map-head"><strong>${esc(t('settings.originMap'))}</strong><div class="origin-map-actions"><button type="button" class="btn origin-locate" id="origin-locate">◎ ${esc(t('settings.originLocate'))}</button><button type="button" class="btn" id="origin-map-close">×</button></div></div><div id="origin-map-canvas"></div><p>${esc(t('settings.originMapHint'))}</p><p class="form-error origin-map-error" id="origin-map-error" hidden></p><button class="btn primary block" id="origin-map-use" type="button" disabled>${esc(t('settings.originMapUse'))}</button></div>
           </section>` : ''}
 
           ${
@@ -3471,61 +3479,211 @@
 
     const passwordForm = document.getElementById('password-form');
     const originForm = document.getElementById('origin-form');
+    const originFields = ['name', 'country', 'province', 'city', 'district', 'township', 'street', 'streetNumber'];
+    const originInput = originForm?.elements.text;
+    const originSuggestions = document.getElementById('origin-suggestions');
+    let editingOriginIndex = null;
+    let selectedPlace = null;
+    let resolvedPlace = null;
+    let photonFeatures = [];
+    let searchTimer = null;
+    let searchSequence = 0;
+    let mapInstance = null;
+    let mapMarker = null;
+    let mapAddress = null;
+    const currentOrigins = () => Array.isArray(state.user.usualOrigin)
+      ? [...state.user.usualOrigin]
+      : (state.user.usualOrigin && Object.values(state.user.usualOrigin).some(Boolean) ? [state.user.usualOrigin] : []);
+    const featureOrigin = (props = {}) => ({
+      name: props.name || '', country: props.country || '', province: props.state || props.province || '',
+      city: props.city || props.town || props.village || '', district: props.district || props.suburb || props.city_district || props.county || '',
+      township: props.locality || props.town || props.village || '', street: props.street || props.road || '',
+      streetNumber: props.housenumber || props.house_number || '',
+    });
+    const originAddressText = (origin) => [
+      origin.name,
+      [origin.street, origin.streetNumber].filter(Boolean).join(' '),
+      origin.township, origin.district, origin.city, origin.province, origin.country,
+    ].filter(Boolean).filter((part, index, parts) => parts.indexOf(part) === index).join('，');
+    const featureLabel = (feature) => originAddressText(featureOrigin(feature?.properties || {}));
+    const setOriginEditMode = (index) => {
+      editingOriginIndex = index;
+      const submit = document.getElementById('origin-submit');
+      submit.textContent = index === null ? '＋' : t('settings.originUpdate');
+      document.getElementById('origin-cancel-edit').hidden = index === null;
+    };
     const renderOrigins = () => {
       const list = document.getElementById('origin-list');
       if (!list) return;
-      const origins = Array.isArray(state.user.usualOrigin) ? state.user.usualOrigin : (state.user.usualOrigin && Object.values(state.user.usualOrigin).some(Boolean) ? [state.user.usualOrigin] : []);
-      list.innerHTML = origins.map((origin, index) => `<div class="origin-chip"><span class="origin-pin">⌖</span><span><strong>${esc(origin.name || origin.city || origin.country || '—')}</strong><small>${esc([origin.district, origin.city, origin.province, origin.country].filter(Boolean).join(' · '))}</small></span><button type="button" class="origin-remove" data-origin-remove="${index}" aria-label="×">×</button></div>`).join('') || `<p class="origin-empty">${esc(t('settings.originEmpty'))}</p>`;
+      list.innerHTML = currentOrigins().map((origin, index) => `<div class="origin-chip"><button type="button" class="origin-chip-main" data-origin-edit="${index}" title="${esc(t('settings.originEdit'))}"><span class="origin-pin">⌖</span><span class="origin-chip-copy"><strong>${esc(origin.name || origin.city || origin.country || '—')}</strong><small>${esc([origin.district, origin.city, origin.province, origin.country].filter(Boolean).join(' · '))}</small></span><span class="origin-edit-mark">✎</span></button><button type="button" class="origin-remove" data-origin-remove="${index}" aria-label="×">×</button></div>`).join('') || `<p class="origin-empty">${esc(t('settings.originEmpty'))}</p>`;
     };
     renderOrigins();
     document.getElementById('origin-list')?.addEventListener('click', async (event) => {
-      const index = Number(event.target.closest('[data-origin-remove]')?.dataset.originRemove);
-      if (!Number.isInteger(index)) return;
-      const origins = [...(Array.isArray(state.user.usualOrigin) ? state.user.usualOrigin : (state.user.usualOrigin && Object.values(state.user.usualOrigin).some(Boolean) ? [state.user.usualOrigin] : []))];
-      origins.splice(index, 1);
-      try { const result = await api('/api/me/usual-origin', { method: 'PUT', body: { origins } }); state.user.usualOrigin = result.usualOrigin; localStorage.setItem(STORAGE.user, JSON.stringify(state.user)); renderOrigins(); }
-      catch (error) { showError('origin-error', error.message); }
+      const removeButton = event.target.closest('[data-origin-remove]');
+      if (removeButton) {
+        const index = Number(removeButton.dataset.originRemove);
+        const origins = currentOrigins();
+        origins.splice(index, 1);
+        try { const result = await api('/api/me/usual-origin', { method: 'PUT', body: { origins } }); state.user.usualOrigin = result.usualOrigin; localStorage.setItem(STORAGE.user, JSON.stringify(state.user)); renderOrigins(); }
+        catch (error) { showError('origin-error', error.message); }
+        if (editingOriginIndex === index) { originForm.reset(); selectedPlace = null; resolvedPlace = null; setOriginEditMode(null); }
+        else if (editingOriginIndex !== null && editingOriginIndex > index) setOriginEditMode(editingOriginIndex - 1);
+        return;
+      }
+      const editButton = event.target.closest('[data-origin-edit]');
+      if (!editButton) return;
+      const index = Number(editButton.dataset.originEdit);
+      const origin = currentOrigins()[index];
+      if (!origin) return;
+      setOriginEditMode(index);
+      originInput.value = originAddressText(origin);
+      selectedPlace = null;
+      resolvedPlace = { ...origin };
+      originSuggestions.hidden = true;
+      originInput.focus();
+    });
+    const saveOrigin = async (origin, editingIndex = editingOriginIndex) => {
+      const origins = currentOrigins();
+      if (editingIndex === null) origins.push(origin);
+      else origins[editingIndex] = origin;
+      const result = await api('/api/me/usual-origin', { method: 'PUT', body: { origins } });
+      state.user.usualOrigin = result.usualOrigin;
+      localStorage.setItem(STORAGE.user, JSON.stringify(state.user));
+      originForm.reset();
+      selectedPlace = null;
+      resolvedPlace = null;
+      setOriginEditMode(null);
+      renderOrigins();
+      toast(t('settings.originSaved'));
+    };
+    const renderSuggestions = (features, message = '') => {
+      photonFeatures = features;
+      originSuggestions.innerHTML = features.map((feature, index) => `<button type="button" class="origin-suggestion" data-origin-suggestion="${index}"><strong>${esc(feature.properties?.name || '—')}</strong><small>${esc(featureLabel(feature))}</small></button>`).join('')
+        + (message ? `<p class="origin-suggestion-note">${esc(message)}</p>` : (features.length ? `<p class="origin-suggestion-note">${esc(t('settings.originSearchAttribution'))}</p>` : ''));
+      originSuggestions.hidden = !features.length && !message;
+    };
+    originInput?.addEventListener('input', () => {
+      selectedPlace = null;
+      resolvedPlace = null;
+      clearTimeout(searchTimer);
+      const query = originInput.value.trim();
+      const sequence = ++searchSequence;
+      if (query.length < 2) { renderSuggestions([]); return; }
+      searchTimer = setTimeout(async () => {
+        renderSuggestions([], t('settings.originSearching'));
+        try {
+          const data = await api('/api/me/usual-origin/search', { method: 'POST', body: { query, locale: getLocale() } });
+          if (sequence !== searchSequence || originInput.value.trim() !== query) return;
+          const features = Array.isArray(data.features) ? data.features : [];
+          renderSuggestions(features, features.length ? '' : t('settings.originNoResults'));
+        } catch {
+          if (sequence === searchSequence) renderSuggestions([], t('settings.originNoResults'));
+        }
+      }, 350);
+    });
+    originSuggestions?.addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-origin-suggestion]');
+      if (!button) return;
+      const feature = photonFeatures[Number(button.dataset.originSuggestion)];
+      if (!feature) return;
+      selectedPlace = feature.properties || {};
+      resolvedPlace = featureOrigin(selectedPlace);
+      const selectedInputValue = featureLabel(feature);
+      originInput.value = selectedInputValue;
+      renderSuggestions([], t('settings.originSearching'));
+      const [lon, lat] = feature.geometry?.coordinates || [];
+      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+        try {
+          const data = await api('/api/me/usual-origin/reverse', { method: 'POST', body: { lat, lon, locale: getLocale() } });
+          if (originInput.value !== selectedInputValue) return;
+          const nearest = featureOrigin(data.features?.[0]?.properties || {});
+          resolvedPlace = Object.fromEntries(originFields.map((field) => [field, nearest[field] || resolvedPlace[field] || '']));
+          resolvedPlace.name = selectedPlace.name || resolvedPlace.name;
+        } catch { /* Keep the selected search result if reverse lookup is unavailable. */ }
+      }
+      originInput.value = originAddressText(resolvedPlace);
+      renderSuggestions([]);
+      originInput.focus();
+    });
+    document.getElementById('origin-cancel-edit')?.addEventListener('click', () => {
+      originForm.reset();
+      selectedPlace = null;
+      resolvedPlace = null;
+      renderSuggestions([]);
+      setOriginEditMode(null);
     });
     if (originForm) originForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       hideError('origin-error');
-      const button = originForm.querySelector('button[type="submit"]');
+      const button = document.getElementById('origin-submit');
+      const editingIndex = editingOriginIndex;
+      const rawText = originInput.value.trim();
+      if (!rawText) { showError('origin-error', t('settings.originNoResults')); return; }
+      renderSuggestions([]);
       setBusy(button, true, t('busy.saving'));
       try {
-        const parsed = await api('/api/me/usual-origin/parse', { method: 'POST', body: { text: originForm.elements.text.value.trim() } });
-        const currentOrigins = Array.isArray(state.user.usualOrigin) ? state.user.usualOrigin : (state.user.usualOrigin && Object.values(state.user.usualOrigin).some(Boolean) ? [state.user.usualOrigin] : []);
-        const origins = [...currentOrigins, parsed.origin];
-        const result = await api('/api/me/usual-origin', { method: 'PUT', body: { origins } });
-        state.user.usualOrigin = result.usualOrigin;
-        localStorage.setItem(STORAGE.user, JSON.stringify(state.user));
-        originForm.reset(); renderOrigins();
-        toast(t('settings.originSaved'));
+        const context = resolvedPlace ? `\n已选地点的结构化地址信息：${originAddressText(resolvedPlace)}` : '';
+        const parsed = await api('/api/me/usual-origin/parse', { method: 'POST', body: { text: `${rawText}${context}` } });
+        const origin = Object.fromEntries(originFields.map((field) => [field, parsed.origin?.[field] || resolvedPlace?.[field] || '']));
+        await saveOrigin(origin, editingIndex);
       } catch (error) {
         showError('origin-error', error.message);
       } finally {
         setBusy(button, false);
+        if (editingOriginIndex === null) button.textContent = '＋';
       }
     });
     const mapModal = document.getElementById('origin-map-modal');
-    let selectedAddress = null;
+    const reversePhoton = async (lat, lon) => {
+      const data = await api('/api/me/usual-origin/reverse', { method: 'POST', body: { lat, lon, locale: getLocale() } });
+      const props = data.features?.[0]?.properties;
+      if (!props) throw new Error('reverse_empty');
+      return featureOrigin(props);
+    };
+    const pickMapLocation = async (latlng) => {
+      mapMarker.setLatLng(latlng);
+      mapAddress = null;
+      const use = document.getElementById('origin-map-use');
+      use.disabled = true;
+      try {
+        mapAddress = await reversePhoton(latlng.lat, latlng.lng);
+        use.disabled = false;
+      } catch { showError('origin-map-error', t('settings.originNoResults')); }
+    };
     document.getElementById('origin-map')?.addEventListener('click', async () => {
       mapModal.hidden = false;
-      if (!window.L) { await new Promise((resolve, reject) => { const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; document.head.append(link); const script = document.createElement('script'); script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'; script.onload = resolve; script.onerror = reject; document.head.append(script); }); }
-      if (!window.originMapInstance) {
-        const map = window.L.map('origin-map-canvas').setView([35.68, 139.69], 4); window.originMapInstance = map;
-        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19 }).addTo(map);
-        const marker = window.L.marker([35.68, 139.69], { draggable: true }).addTo(map);
-        const pick = async (latlng) => { marker.setLatLng(latlng); selectedAddress = null; const use = document.getElementById('origin-map-use'); use.disabled = true; try { const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latlng.lat}&lon=${latlng.lng}`); selectedAddress = await response.json(); use.disabled = false; } catch { showError('origin-error', '地图地址解析失败'); } };
-        map.on('click', (e) => pick(e.latlng)); marker.on('dragend', (e) => pick(e.target.getLatLng()));
-        if (navigator.geolocation) navigator.geolocation.getCurrentPosition(({coords}) => { map.setView([coords.latitude, coords.longitude], 15); pick({lat: coords.latitude, lng: coords.longitude}); });
+      try {
+        if (!window.L) await new Promise((resolve, reject) => { const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; document.head.append(link); const script = document.createElement('script'); script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'; script.onload = resolve; script.onerror = reject; document.head.append(script); });
+        if (!mapInstance) {
+          mapInstance = window.L.map('origin-map-canvas').setView([35.68, 139.69], 4);
+          window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19 }).addTo(mapInstance);
+          mapMarker = window.L.marker([35.68, 139.69], { draggable: true }).addTo(mapInstance);
+          mapInstance.on('click', (e) => pickMapLocation(e.latlng));
+          mapMarker.on('dragend', (e) => pickMapLocation(e.target.getLatLng()));
+        }
+        setTimeout(() => mapInstance.invalidateSize(), 0);
+      } catch {
+        showError('origin-map-error', t('settings.originNoResults'));
       }
-      window.originMapInstance.invalidateSize();
+    });
+    document.getElementById('origin-locate')?.addEventListener('click', () => {
+      hideError('origin-map-error');
+      if (!window.isSecureContext && location.protocol !== 'file:') { showError('origin-map-error', t('settings.originSecureRequired')); return; }
+      if (!navigator.geolocation) { showError('origin-map-error', t('settings.originLocationError')); return; }
+      const button = document.getElementById('origin-locate');
+      button.disabled = true;
+      navigator.geolocation.getCurrentPosition(({ coords }) => {
+        const latlng = { lat: coords.latitude, lng: coords.longitude };
+        mapInstance.flyTo([coords.latitude, coords.longitude], 16, { animate: true, duration: 0.7 });
+        button.disabled = false;
+        pickMapLocation(latlng);
+      }, () => { showError('origin-map-error', t('settings.originLocationError')); button.disabled = false; }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
     });
     document.getElementById('origin-map-close')?.addEventListener('click', () => { mapModal.hidden = true; });
     document.getElementById('origin-map-use')?.addEventListener('click', async () => {
-      const a = selectedAddress?.address || {}; const country = a.country || ''; const province = a.state || a.province || ''; const city = a.city || a.town || a.village || a.county || '';
-      const origin = { name: [a.road, a.house_number, city].filter(Boolean).join(' ') || selectedAddress?.name || city || country, country, province, city, district: a.city_district || a.suburb || a.county || '', township: a.town || a.village || '', street: a.road || '', streetNumber: a.house_number || '' };
-      try { const currentOrigins = Array.isArray(state.user.usualOrigin) ? state.user.usualOrigin : (state.user.usualOrigin && Object.values(state.user.usualOrigin).some(Boolean) ? [state.user.usualOrigin] : []); const origins = [...currentOrigins, origin]; const result = await api('/api/me/usual-origin', { method: 'PUT', body: { origins } }); state.user.usualOrigin = result.usualOrigin; localStorage.setItem(STORAGE.user, JSON.stringify(state.user)); renderOrigins(); mapModal.hidden = true; toast(t('settings.originSaved')); } catch (error) { showError('origin-error', error.message); }
+      if (!mapAddress) return;
+      const origin = { ...mapAddress, name: mapAddress.name || mapAddress.street || mapAddress.city || mapAddress.country };
+      try { await saveOrigin(origin); mapModal.hidden = true; } catch (error) { showError('origin-map-error', error.message); }
     });
 
     if (passwordForm) {

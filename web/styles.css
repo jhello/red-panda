@@ -1013,23 +1013,38 @@ img.seal {
 }
 
 .origin-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-.origin-chip { display: flex; align-items: center; gap: 9px; max-width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 14px; background: #fffdf9; }
+.origin-chip { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; padding: 3px 7px 3px 0; border: 1px solid var(--line); border-radius: 14px; background: #fffdf9; }
+.origin-chip-main { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 5px 0 5px 7px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .origin-pin { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; border-radius: 10px; background: #f2eee5; color: var(--ink); }
-.origin-chip > span:nth-child(2) { display: grid; min-width: 0; }
+.origin-chip-copy { display: grid; min-width: 0; }
 .origin-chip strong, .origin-chip small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .origin-chip strong { font-size: 13px; }
 .origin-chip small, .origin-empty { color: var(--muted); font-size: 11px; }
 .origin-chip small { max-width: 240px; }
+.origin-edit-mark { color: var(--muted); font-size: 12px; }
 .origin-remove { border: 0; background: none; color: var(--muted); font-size: 19px; cursor: pointer; }
 .origin-empty { margin: 8px 2px; }
 .origin-entry { display: flex; gap: 7px; }
 .origin-entry input { flex: 1; min-width: 0; padding: 11px 13px; border: 1px solid var(--line); border-radius: 13px; background: #fffdf9; font-size: 14px; }
 .origin-entry .btn { min-width: 42px; padding: 8px 12px; }
+.origin-entry .origin-cancel-edit { min-width: 0; font-size: 12px; white-space: nowrap; }
+.origin-entry .origin-cancel-edit[hidden] { display: none; }
+.origin-suggestions { position: relative; z-index: 4; display: grid; gap: 2px; max-height: 260px; margin-top: 5px; overflow: auto; border: 1px solid var(--line); border-radius: 13px; background: #fffdf9; box-shadow: var(--shadow-soft); }
+.origin-suggestions[hidden] { display: none; }
+.origin-suggestion { display: grid; gap: 2px; padding: 10px 13px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.origin-suggestion:hover, .origin-suggestion:focus-visible { background: #f4efe5; }
+.origin-suggestion strong { font-size: 13px; }
+.origin-suggestion small, .origin-suggestion-note { color: var(--muted); font-size: 11px; }
+.origin-suggestion-note { margin: 6px 12px; }
 .origin-map-modal { position: fixed; z-index: 1000; inset: 8vh max(16px, calc((100vw - 560px) / 2)); padding: 16px; border: 1px solid var(--line); border-radius: 20px; background: var(--card); box-shadow: 0 20px 80px #0004; }
 .origin-map-modal[hidden] { display: none; }
 .origin-map-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.origin-map-actions { display: flex; align-items: center; gap: 7px; }
+.origin-map-actions .btn { min-width: 38px; padding: 7px 10px; }
+.origin-map-actions .origin-locate { min-width: 0; font-size: 12px; }
 #origin-map-canvas { height: min(55vh, 460px); border-radius: 12px; }
 .origin-map-modal p { color: var(--muted); font-size: 12px; }
+.origin-map-modal .origin-map-error { margin: 8px 0; }
 
 .kv {
   display: grid;
