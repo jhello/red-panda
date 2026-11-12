@@ -1805,6 +1805,19 @@
 
     if (draftOverlayOpen) startCreateCooldown();
 
+    const veil = document.getElementById('draft-veil');
+    if (veil) {
+      veil.addEventListener('click', (event) => {
+        if (event.target !== veil) return;
+        // 点空白处：展开的草稿先收回列表，否则收起草稿列表
+        if (expandedDraftId) {
+          collapseExpanded();
+          return;
+        }
+        closeDraftOverlay();
+      });
+    }
+
     api('/api/journeys')
       .then(({ journeys }) => {
         state.journeys = journeys;
@@ -1827,30 +1840,89 @@
     button.disabled = true;
     button.classList.add('is-cooling');
     button.textContent = String(left);
-    const timer = setInterval(() => {
+    cooldownTimer = setInterval(() => {
       left -= 1;
       if (left > 0) {
         button.textContent = String(left);
         return;
       }
-      clearInterval(timer);
+      stopCreateCooldown();
+    }, 1000);
+  }
+
+  /** 收起浮层时立刻停掉倒计时。 */
+  function stopCreateCooldown() {
+    if (cooldownTimer) {
+      clearInterval(cooldownTimer);
+      cooldownTimer = null;
+    }
+    const button = document.querySelector('.nav-create');
+    if (button) {
       button.disabled = false;
       button.classList.remove('is-cooling');
       button.textContent = '＋';
-    }, 1000);
+    }
+  }
+
+  /** 压入一条历史，让系统返回键先收起草稿而不是退出应用。 */
+  function pushOverlayHistory() {
+    if (overlayPushed) return;
+    try {
+      history.pushState({ redPandaOverlay: true }, '', location.href);
+      overlayPushed = true;
+    } catch {
+      overlayPushed = false;
+    }
+  }
+
+  function dropOverlayHistory() {
+    if (!overlayPushed) return;
+    overlayPushed = false;
+    suppressPopCount += 1;
+    history.back();
   }
 
   function openDraftOverlay() {
     draftOverlayOpen = true;
     createCooldownUntil = Date.now() + 2000;
     renderHome();
+    pushOverlayHistory();
   }
 
   function closeDraftOverlay() {
     draftOverlayOpen = false;
     expandedDraftId = null;
+    stopCreateCooldown();
     const veil = document.getElementById('draft-veil');
     if (veil) veil.hidden = true;
+    dropOverlayHistory();
+  }
+
+  /** 展开的草稿收回成列表（浮层保持打开）。 */
+  function collapseExpanded() {
+    if (!expandedDraftId) return;
+    expandedDraftId = null;
+    refreshDraftList();
+  }
+
+  /** 从浮层跳到别的路由：改写压入的历史条目，避免多出一层返回。 */
+  function leaveOverlayTo(hash) {
+    if (overlayPushed) {
+      overlayPushed = false;
+      try {
+        history.replaceState({ redPandaOverlay: false }, '', hash);
+      } catch {
+        // 忽略：仍然按普通跳转处理
+      }
+    }
+    draftOverlayOpen = false;
+    expandedDraftId = null;
+    stopCreateCooldown();
+    if (location.hash === hash) {
+      render();
+    } else {
+      location.hash = hash;
+    }
   }
 
   function refreshDraftList() {
@@ -1919,6 +1991,9 @@
   let draftOverlayOpen = false;
   let expandedDraftId = null;
   let createCooldownUntil = 0;
+  let cooldownTimer = null;
+  let overlayPushed = false;
+  let suppressPopCount = 0;
 
   function periodIndexForHour(periods, hour) {
     const hours = periods.map((p) => p.hour);
@@ -2734,6 +2809,7 @@
     if (!target) return;
     switch (target.dataset.action) {
       case 'settings':
+        if (draftOverlayOpen) closeDraftOverlay();
         navigate('#/settings');
         break;
       case 'new': {
@@ -2752,12 +2828,14 @@
         break;
       }
       case 'journeys':
+        if (draftOverlayOpen) closeDraftOverlay();
         navigate('#/journeys');
         break;
       case 'discover':
         toast(t('nav.discoverSoon'));
         break;
       case 'current-journey':
+        if (draftOverlayOpen) closeDraftOverlay();
         if (state.currentJourney) navigate(`#/journey/${state.currentJourney.id}`);
         else if (state.journeys.length > 0) navigate(`#/journey/${state.journeys[0].id}`);
         else navigate('#/journeys');
@@ -2802,8 +2880,7 @@
         const draft = loadDrafts().find((entry) => entry.id === target.dataset.draftId);
         if (!draft) break;
         pendingDraft = draft;
-        closeDraftOverlay();
-        navigate('#/new');
+        leaveOverlayTo('#/new');
         break;
       }
       case 'plan-draft-expand': {
@@ -2845,6 +2922,29 @@
   });
 
   window.addEventListener('hashchange', render);
+
+  /**
+   * 系统返回：草稿浮层展开时先收回列表，浮层打开时收起草稿列表，
+   * 两种情况都不会退出应用。
+   */
+  window.addEventListener('popstate', () => {
+    if (suppressPopCount > 0) {
+      suppressPopCount -= 1;
+      return;
+    }
+    if (!draftOverlayOpen) return;
+    overlayPushed = false; // 系统已经弹出了我们压入的那条历史
+    if (expandedDraftId) {
+      expandedDraftId = null;
+      refreshDraftList();
+      pushOverlayHistory(); // 继续把返回留在应用内
+      return;
+    }
+    draftOverlayOpen = false;
+    stopCreateCooldown();
+    const veil = document.getElementById('draft-veil');
+    if (veil) veil.hidden = true;
+  });
 
   // ---- boot ---------------------------------------------------------------
 
