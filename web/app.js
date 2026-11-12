@@ -1591,21 +1591,11 @@
     app.innerHTML = `
       <div class="screen">
         <main class="page home-page">
-          <section class="hero">
-            <p class="eyebrow">${t('home.greeting', { name: esc(state.user.displayName || state.user.username) })}</p>
-            <h1 class="hero-title">${t('home.title')}</h1>
-          </section>
-
           <nav class="main-nav">
             <button class="nav-btn nav-journeys" data-action="current-journey">${t('nav.current')}</button>
             <button class="nav-btn nav-create" data-action="new" aria-label="${t('new.title')}">＋</button>
             <button class="nav-btn nav-me" data-action="settings">${t('nav.me')}</button>
           </nav>
-
-          <footer class="home-foot">
-            <span>${t('home.countText')}</span>
-            <button class="link" data-action="logout">${t('home.logout')}</button>
-          </footer>
         </main>
       </div>`;
 
