@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
   display_name   TEXT,
   password_hash  TEXT NOT NULL,
   email_verified INTEGER NOT NULL DEFAULT 0,
+  locale         TEXT NOT NULL DEFAULT '',
   created_at     TEXT NOT NULL,
   last_login_at  TEXT,
   last_seen_at   TEXT
@@ -69,6 +70,7 @@ function migrate(db) {
     ['email_lower', 'email_lower TEXT'],
     ['display_name', 'display_name TEXT'],
     ['email_verified', 'email_verified INTEGER NOT NULL DEFAULT 0'],
+    ['locale', "locale TEXT NOT NULL DEFAULT ''"],
   ];
   for (const [name, ddl] of additions) {
     if (!columns.has(name)) db.exec(`ALTER TABLE users ADD COLUMN ${ddl}`);
@@ -88,8 +90,8 @@ export function openDatabase(dbPath) {
   const statements = {
     insertUser: db.prepare(
       `INSERT INTO users
-        (username, username_lower, email, email_lower, display_name, password_hash, email_verified, created_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (username, username_lower, email, email_lower, display_name, password_hash, email_verified, locale, created_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ),
     userByName: db.prepare('SELECT * FROM users WHERE username_lower = ?'),
     userByEmail: db.prepare('SELECT * FROM users WHERE email_lower = ?'),
@@ -98,13 +100,13 @@ export function openDatabase(dbPath) {
     touchSeen: db.prepare('UPDATE users SET last_seen_at = ? WHERE id = ?'),
     verifyEmail: db.prepare('UPDATE users SET email_verified = 1 WHERE id = ?'),
     updatePassword: db.prepare('UPDATE users SET password_hash = ? WHERE id = ?'),
-
+    updateLocale: db.prepare('UPDATE users SET locale = ? WHERE id = ?'),
     insertSession: db.prepare(
       'INSERT INTO sessions (token_hash, user_id, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?)',
     ),
     sessionByHash: db.prepare(
       `SELECT s.token_hash, s.user_id, s.expires_at, s.last_seen_at,
-              u.username, u.email, u.display_name, u.email_verified,
+              u.username, u.email, u.display_name, u.email_verified, u.locale,
               u.created_at AS user_created_at
        FROM sessions s JOIN users u ON u.id = s.user_id
        WHERE s.token_hash = ?`,
@@ -149,7 +151,7 @@ export function openDatabase(dbPath) {
     countJourneys: db.prepare('SELECT COUNT(*) AS n FROM journeys'),
     countSessions: db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE expires_at > ?'),
     listUsers: db.prepare(
-      `SELECT u.id, u.username, u.email, u.display_name, u.email_verified,
+      `SELECT u.id, u.username, u.email, u.display_name, u.email_verified, u.locale,
               u.created_at, u.last_login_at, u.last_seen_at,
               (SELECT COUNT(*) FROM journeys j WHERE j.user_id = u.id) AS journey_count
        FROM users u
@@ -161,7 +163,7 @@ export function openDatabase(dbPath) {
   return {
     raw: db,
 
-    createUser({ email, passwordHash, displayName, now }) {
+    createUser({ email, passwordHash, displayName, locale, now }) {
       const lower = String(email).trim().toLowerCase();
       const name = displayName || lower.split('@')[0] || lower;
       const result = statements.insertUser.run(
@@ -172,6 +174,7 @@ export function openDatabase(dbPath) {
         name,
         passwordHash,
         0,
+        locale || '',
         now,
         now,
       );
@@ -204,6 +207,10 @@ export function openDatabase(dbPath) {
 
     setPassword(userId, passwordHash) {
       statements.updatePassword.run(passwordHash, userId);
+    },
+
+    setLocale(userId, locale) {
+      statements.updateLocale.run(locale, userId);
     },
 
     createSession({ tokenHash, userId, now, expiresAt }) {

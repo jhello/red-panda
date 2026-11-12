@@ -123,6 +123,28 @@ function normalizeEmail(value) {
   return email;
 }
 
+const SUPPORTED_LOCALES = new Set(['zh', 'en', 'de']);
+
+/** Accept "zh", "en", "de" and common BCP-47 tags such as zh-Hans-DE or de-AT. */
+function normalizeLocale(value) {
+  const text = String(value ?? '').trim().toLowerCase();
+  if (SUPPORTED_LOCALES.has(text)) return text;
+  if (/^zh\b|^zh[-_]/.test(text)) return 'zh';
+  if (/^en\b|^en[-_]/.test(text)) return 'en';
+  if (/^de\b|^de[-_]/.test(text)) return 'de';
+  return '';
+}
+
+/** Language for a user's emails: stored preference → request → Accept-Language. */
+function localeForUser(user, body, req) {
+  return (
+    normalizeLocale(user?.locale) ||
+    normalizeLocale(body?.locale) ||
+    normalizeLocale(req?.headers?.['accept-language']) ||
+    'zh'
+  );
+}
+
 function validatePassword(value) {
   const password = typeof value === 'string' ? value : '';
   if (password.length < 8) throw new HttpError(400, '密码至少需要 8 个字符', 'validation_error');
@@ -137,6 +159,7 @@ function publicUser(row) {
     displayName: row.display_name || row.username,
     username: row.username,
     emailVerified: Boolean(row.email_verified),
+    locale: row.locale || 'zh',
     createdAt: row.created_at,
   };
 }
@@ -244,6 +267,7 @@ export function createApp(config, options = {}) {
         email: row.email,
         display_name: row.display_name,
         email_verified: row.email_verified,
+        locale: row.locale,
         created_at: row.user_created_at,
       },
     };
@@ -306,7 +330,7 @@ export function createApp(config, options = {}) {
     return lan?.url || `http://127.0.0.1:${port}`;
   }
 
-  async function sendVerificationEmail(user) {
+  async function sendVerificationEmail(user, context = {}) {
     const token = newSessionToken();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + config.verificationHours * 60 * 60 * 1000);
@@ -317,12 +341,17 @@ export function createApp(config, options = {}) {
       expiresAt: expiresAt.toISOString(),
     });
     const link = `${publicBaseUrl()}/api/auth/verify?token=${encodeURIComponent(token)}`;
-    const mail = verificationEmail({ link, email: user.email, hours: config.verificationHours });
+    const mail = verificationEmail({
+      link,
+      email: user.email,
+      hours: config.verificationHours,
+      locale: localeForUser(user, context.body, context.req),
+    });
     await mailer.send({ to: user.email, ...mail });
     return link;
   }
 
-  async function sendResetEmail(user) {
+  async function sendResetEmail(user, context = {}) {
     const token = newSessionToken();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + config.resetMinutes * 60 * 1000);
@@ -333,7 +362,12 @@ export function createApp(config, options = {}) {
       expiresAt: expiresAt.toISOString(),
     });
     const link = `${publicBaseUrl()}/app/#/reset-password?token=${encodeURIComponent(token)}`;
-    const mail = resetEmail({ link, email: user.email, minutes: config.resetMinutes });
+    const mail = resetEmail({
+      link,
+      email: user.email,
+      minutes: config.resetMinutes,
+      locale: localeForUser(user, context.body, context.req),
+    });
     await mailer.send({ to: user.email, ...mail });
     return link;
   }
@@ -414,6 +448,8 @@ export function createApp(config, options = {}) {
     checkEmailRate(ip);
     const email = normalizeEmail(body.email);
     const password = validatePassword(body.password);
+    const locale =
+      normalizeLocale(body.locale) || normalizeLocale(req.headers['accept-language']) || 'zh';
     const now = new Date().toISOString();
 
     const existing = db.findUserByEmail(email);
@@ -423,8 +459,9 @@ export function createApp(config, options = {}) {
       }
       // Unverified accounts may re-register: update the password and resend.
       db.setPassword(existing.id, hashPassword(password));
+      db.setLocale(existing.id, locale);
       try {
-        await sendVerificationEmail(existing);
+        await sendVerificationEmail(db.findUserById(existing.id));
       } catch (error) {
         console.error('[red-panda] 验证邮件发送失败:', error);
         throw new HttpError(502, '账户已存在，但验证邮件发送失败，请稍后重试', 'mail_failed');
@@ -441,7 +478,7 @@ export function createApp(config, options = {}) {
 
     let userId;
     try {
-      userId = db.createUser({ email, passwordHash: hashPassword(password), now });
+      userId = db.createUser({ email, passwordHash: hashPassword(password), locale, now });
     } catch (error) {
       if (String(error.message).includes('UNIQUE')) {
         throw new HttpError(409, '这个邮箱已经注册过了', 'email_taken');
@@ -481,7 +518,7 @@ export function createApp(config, options = {}) {
     if (!password) throw new HttpError(400, '请输入密码', 'validation_error');
 
     // New accounts use email; legacy accounts may still log in with a username.
-    const user = db.findUserByEmail(identifier) || db.findUserByUsername(identifier);
+    let user = db.findUserByEmail(identifier) || db.findUserByUsername(identifier);
     if (!user || !verifyPassword(password, user.password_hash)) {
       noteLoginFailure(ip);
       throw new HttpError(401, '邮箱或密码不正确', 'invalid_credentials');
@@ -490,6 +527,13 @@ export function createApp(config, options = {}) {
       throw new HttpError(403, '邮箱尚未验证，请查收验证邮件并点击激活链接', 'email_not_verified');
     }
     loginAttempts.delete(ip);
+    // Keep the stored email language in sync with the app language so later
+    // emails (password reset, etc.) arrive in the language the user picked.
+    const locale = normalizeLocale(body.locale);
+    if (locale && locale !== normalizeLocale(user.locale)) {
+      db.setLocale(user.id, locale);
+      user = { ...user, locale };
+    }
     const now = new Date().toISOString();
     db.touchLogin(user.id, now);
     const session = issueSession(user.id);
@@ -527,7 +571,7 @@ export function createApp(config, options = {}) {
     const user = db.findUserByEmail(email);
     if (user && !user.email_verified) {
       try {
-        await sendVerificationEmail(user);
+        await sendVerificationEmail(user, { body, req });
       } catch (error) {
         console.error('[red-panda] 验证邮件发送失败:', error);
       }
@@ -548,8 +592,8 @@ export function createApp(config, options = {}) {
     const user = db.findUserByEmail(email);
     if (user) {
       try {
-        if (user.email_verified) await sendResetEmail(user);
-        else await sendVerificationEmail(user);
+        if (user.email_verified) await sendResetEmail(user, { body, req });
+        else await sendVerificationEmail(user, { body, req });
       } catch (error) {
         console.error('[red-panda] 邮件发送失败:', error);
       }
@@ -613,6 +657,20 @@ export function createApp(config, options = {}) {
       // Keep this session, sign out every other device.
       db.deleteOtherSessions(auth.user.id, auth.tokenHash);
       return { status: 204 };
+    },
+    { auth: true },
+  );
+
+  route(
+    'PUT',
+    /^\/api\/me\/locale$/,
+    ({ auth, body }) => {
+      const locale = normalizeLocale(body.locale);
+      if (!locale) {
+        throw new HttpError(400, '语言仅支持 zh / en / de', 'validation_error');
+      }
+      db.setLocale(auth.user.id, locale);
+      return { status: 200, body: { locale } };
     },
     { auth: true },
   );

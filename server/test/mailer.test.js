@@ -47,6 +47,61 @@ test('buildRawMessage 使用 CRLF、UTF-8 主题与 base64 正文', () => {
   assert.equal(Buffer.from(body, 'base64').toString('utf8'), '你好，世界');
 });
 
+test('带 HTML 正文时输出 multipart/alternative（纯文本 + HTML）', () => {
+  const config = configFor();
+  const raw = buildRawMessage(
+    config,
+    {
+      to: 'you@example.com',
+      subject: 'Activate your account',
+      text: 'Please open the link below:\nhttps://example.com/verify?token=abc',
+      html: '<html><body><a href="https://example.com/verify?token=abc">Verify</a></body></html>',
+    },
+    { encoding: 'base64' },
+  );
+
+  const boundary = /boundary="([^"]+)"/.exec(raw)?.[1];
+  assert.ok(boundary, '缺少 multipart boundary');
+  assert.match(raw, /Content-Type: multipart\/alternative/);
+  assert.match(raw, /Content-Type: text\/plain; charset=utf-8/);
+  assert.match(raw, /Content-Type: text\/html; charset=utf-8/);
+  assert.ok(!/[^\r]\n/.test(raw), 'multipart 消息也应使用 CRLF');
+
+  const decode = (section) => {
+    const body = section.split('\r\n\r\n').slice(1).join('\r\n\r\n').trim();
+    return Buffer.from(body.replace(/\r\n/g, ''), 'base64').toString('utf8');
+  };
+  const sections = raw.split(`--${boundary}`);
+  const textPart = sections.find((section) => section.includes('text/plain'));
+  const htmlPart = sections.find((section) => section.includes('text/html'));
+  assert.match(decode(textPart), /https:\/\/example\.com\/verify\?token=abc/);
+  assert.match(decode(htmlPart), /href="https:\/\/example\.com\/verify\?token=abc"/);
+  assert.match(raw, new RegExp(`--${boundary}--`), '缺少结束 boundary');
+});
+
+test('邮件模板支持 zh / en / de', async () => {
+  const { verificationEmail, resetEmail } = await import('../src/emails.js');
+  const link = 'https://red-panda.local/api/auth/verify?token=abc';
+
+  const zh = verificationEmail({ link, email: 'you@example.com', hours: 24 });
+  assert.equal(zh.subject, '激活你的小熊猫账户');
+  assert.match(zh.html, /lang="zh-CN"/);
+  assert.match(zh.text, /https:\/\/red-panda\.local\/api\/auth\/verify\?token=abc/);
+
+  const en = verificationEmail({ link, email: 'you@example.com', hours: 24, locale: 'en' });
+  assert.equal(en.subject, 'Activate your Red Panda account');
+  assert.match(en.html, /lang="en"/);
+
+  const de = resetEmail({ link, email: 'you@example.com', minutes: 30, locale: 'de' });
+  assert.equal(de.subject, 'Setze dein Red Panda Passwort zurück');
+  assert.match(de.html, /lang="de"/);
+  assert.match(de.html, /href="https:\/\/red-panda\.local\/api\/auth\/verify\?token=abc"/);
+
+  // Unknown locales fall back to Chinese instead of failing.
+  const fallback = verificationEmail({ link, email: 'you@example.com', hours: 24, locale: 'fr' });
+  assert.equal(fallback.subject, '激活你的小熊猫账户');
+});
+
 test('loadConfig 从 SMTP 用户名推导发件人并读取 SMTP 选项', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'red-panda-mail-'));
   try {

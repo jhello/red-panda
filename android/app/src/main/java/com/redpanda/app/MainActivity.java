@@ -8,9 +8,11 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
+import android.widget.FrameLayout;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -27,6 +29,7 @@ public class MainActivity extends Activity {
     private static final int PAPER_COLOR = Color.rgb(247, 242, 232);
 
     private WebView webView;
+    private FrameLayout root;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,6 +38,10 @@ public class MainActivity extends Activity {
         // Allows chrome://inspect debugging while developing over adb.
         WebView.setWebContentsDebuggingEnabled(true);
 
+        // Wrap the WebView in a container that owns the system-bar and
+        // display-cutout insets (see configureSystemBars).
+        root = new FrameLayout(this);
+        root.setBackgroundColor(PAPER_COLOR);
         webView = new WebView(this);
         webView.setBackgroundColor(PAPER_COLOR);
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -70,7 +77,9 @@ public class MainActivity extends Activity {
             }
         });
 
-        setContentView(webView);
+        root.addView(webView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        setContentView(root);
         configureSystemBars();
         webView.loadUrl(START_URL);
     }
@@ -93,12 +102,17 @@ public class MainActivity extends Activity {
                         | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
                 controller.setSystemBarsAppearance(appearance, appearance);
             }
-            webView.setOnApplyWindowInsetsListener((view, insets) -> {
+            // Pad the container (not the WebView itself — the WebView resets its
+            // own padding) so page content never renders under the status bar,
+            // the punch-hole cutout, or the keyboard.
+            root.setOnApplyWindowInsetsListener((view, insets) -> {
                 Insets bars = insets.getInsets(
                         WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
                 Insets ime = insets.getInsets(WindowInsets.Type.ime());
                 view.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
-                return insets;
+                // Consume the insets so the WebView does not apply them a second
+                // time (which would double-pad or scroll content).
+                return WindowInsets.CONSUMED;
             });
         } else {
             int flags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;

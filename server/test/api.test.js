@@ -367,6 +367,58 @@ test('忘记密码与重置密码', async () => {
   token = login.data.token;
 });
 
+test('用户语言设置与本地化邮件', async () => {
+  const bad = await request('/api/me/locale', {
+    method: 'PUT',
+    token,
+    body: { locale: 'fr' },
+  });
+  assert.equal(bad.status, 400);
+
+  const set = await request('/api/me/locale', {
+    method: 'PUT',
+    token,
+    body: { locale: 'de' },
+  });
+  assert.equal(set.status, 200);
+  assert.equal(set.data.locale, 'de');
+
+  const me = await request('/api/me', { token });
+  assert.equal(me.status, 200);
+  assert.equal(me.data.user.locale, 'de');
+
+  // The reset email now arrives in German.
+  const forgot = await request('/api/auth/forgot-password', {
+    method: 'POST',
+    body: { email },
+  });
+  assert.equal(forgot.status, 200);
+  const german = [...outbox]
+    .reverse()
+    .find((message) => message.to === email && /Passwort/i.test(message.subject));
+  assert.ok(german, '应该有德语重置邮件');
+  assert.ok(german.html.includes('Neues Passwort festlegen'));
+  assert.ok(german.text.includes('Hallo,'));
+  assert.match(german.text, /https?:\/\/\S+/);
+
+  // Logging in with an app language keeps the stored preference in sync.
+  const login = await request('/api/auth/login', {
+    method: 'POST',
+    body: { email, password: 'resetpassword1', locale: 'en' },
+  });
+  assert.equal(login.status, 200);
+  assert.equal(login.data.user.locale, 'en');
+
+  // Restore Chinese so later tests see the default language.
+  const restore = await request('/api/me/locale', {
+    method: 'PUT',
+    token: login.data.token,
+    body: { locale: 'zh' },
+  });
+  assert.equal(restore.status, 200);
+  token = login.data.token;
+});
+
 test('AI 描述接口（mock 模式）', async () => {
   const result = await request('/api/ai/journey-description', {
     method: 'POST',

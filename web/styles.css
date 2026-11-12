@@ -94,10 +94,55 @@ code {
 }
 
 .screen {
+  position: relative;
   min-height: inherit;
   display: flex;
   flex-direction: column;
   animation: screen-in 0.35s ease both;
+}
+
+/* ---- language switch ---------------------------------------------------- */
+
+.lang-switch {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 30;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.82);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.lang-opt {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.lang-opt:hover {
+  color: var(--ink-soft);
+}
+
+.lang-opt.active {
+  background: var(--card);
+  color: var(--seal-dark);
+  box-shadow: 0 2px 8px rgba(72, 55, 32, 0.14);
+}
+
+.lang-panel .lang-switch {
+  position: static;
+  width: fit-content;
 }
 
 .center-screen {

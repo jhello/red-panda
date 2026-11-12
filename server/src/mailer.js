@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -23,25 +24,50 @@ function envelopeAddress(value) {
   return parts[parts.length - 1] || text;
 }
 
+function encodeBody(text, encoding) {
+  if (encoding === 'base64') {
+    return Buffer.from(String(text ?? ''), 'utf8').toString('base64').replace(/(.{76})/g, '$1\r\n');
+  }
+  // Normalize line endings so the raw message is always valid.
+  return String(text ?? '').replace(/\r?\n/g, '\r\n');
+}
+
 export function buildRawMessage(config, message, options = {}) {
   const from = message.from || config.mail.from;
   const encoding = options.encoding === 'base64' ? 'base64' : '8bit';
-  const text = String(message.text ?? '');
-  let body = text;
-  if (encoding === 'base64') {
-    const encoded = Buffer.from(text, 'utf8').toString('base64');
-    body = encoded.match(/.{1,76}/g)?.join('\r\n') ?? '';
-  }
   const headers = [
     `From: ${from}`,
     `To: ${message.to}`,
     `Subject: ${encodeHeader(message.subject)}`,
     `Date: ${new Date().toUTCString()}`,
     'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset=utf-8',
-    `Content-Transfer-Encoding: ${encoding}`,
   ];
-  return `${headers.join('\r\n')}\r\n\r\n${body}\r\n`;
+
+  // When an HTML body is available, send multipart/alternative so clients that
+  // render HTML get a styled message (with a real clickable link) while strict
+  // text-only clients (e.g. 126) still show the plain-text part.
+  if (message.html) {
+    const boundary = `red-panda-${crypto.randomBytes(12).toString('hex')}`;
+    headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+    const parts = [
+      `--${boundary}`,
+      'Content-Type: text/plain; charset=utf-8',
+      `Content-Transfer-Encoding: ${encoding}`,
+      '',
+      encodeBody(message.text ?? '', encoding),
+      `--${boundary}`,
+      'Content-Type: text/html; charset=utf-8',
+      `Content-Transfer-Encoding: ${encoding}`,
+      '',
+      encodeBody(message.html, encoding),
+      `--${boundary}--`,
+    ];
+    return `${headers.join('\r\n')}\r\n\r\n${parts.join('\r\n')}\r\n`;
+  }
+
+  headers.push('Content-Type: text/plain; charset=utf-8');
+  headers.push(`Content-Transfer-Encoding: ${encoding}`);
+  return `${headers.join('\r\n')}\r\n\r\n${encodeBody(message.text ?? '', encoding)}\r\n`;
 }
 
 function sendLog(config, message) {
