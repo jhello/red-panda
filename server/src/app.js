@@ -115,12 +115,59 @@ function optionalString(value, label, max = 5000) {
   return text;
 }
 
+/** Field aliases a model may use for each field of a journey plan. */
+const PLAN_FIELD_ALIASES = {
+  destination: ['destination', 'dest', 'place', 'city', 'spot', 'name', '目的地', '地点', '城市'],
+  departTime: [
+    'departTime', 'departureTime', 'departure_time', 'departureDate', 'departure_date',
+    'depart', 'departure', 'start', 'startTime', 'start_time', '出发时间', '出发日期', '出发',
+  ],
+  returnTime: [
+    'returnTime', 'return_time', 'returnDate', 'return_date', 'return',
+    'end', 'endTime', 'end_time', 'finish', 'finishTime', '返回时间', '返回日期', '返回',
+  ],
+};
+
+function pickPlanField(raw, kind) {
+  for (const key of PLAN_FIELD_ALIASES[kind]) {
+    const value = raw[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return '';
+}
+
+/** Normalize a date/time string to YYYY-MM-DDTHH:mm (empty when unusable). */
+function normalizePlanTime(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const dateTime = /^(\d{4})-(\d{1,2})-(\d{1,2})[T\s]+(\d{1,2}):(\d{2})/.exec(text);
+  if (dateTime) {
+    const [, y, m, d, hh, mm] = dateTime;
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${mm}`;
+  }
+  const dateOnly = /^(\d{4})[-/年.](\d{1,2})[-/月.](\d{1,2})日?$/.exec(text);
+  if (dateOnly) {
+    const [, y, m, d] = dateOnly;
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T09:00`;
+  }
+  return '';
+}
+
+/** Today's date, so the model can resolve relative dates like "下个月15号". */
+function todayContext() {
+  const now = new Date();
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}（星期${weekdays[now.getDay()]}）`;
+}
+
 /**
  * Turn an LLM answer into a normalized journey plan:
  * { items: [{ destination, departTime, returnTime }] }.
- * The model is asked to answer with JSON only, so strip code fences if present.
+ * Models answer in slightly different shapes, so accept a single object,
+ * an array, or { items: [...] }, and read common field aliases.
  */
-function parseJourneyPlan(content) {
+export function parseJourneyPlan(content) {
   let text = String(content ?? '').trim();
   const fence = /```(?:json)?/i.exec(text);
   if (fence) {
@@ -128,26 +175,58 @@ function parseJourneyPlan(content) {
     const end = text.indexOf('```', start + fence[0].length);
     if (start !== -1 && end > start) text = text.slice(start + fence[0].length, end);
   }
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start === -1 || end === -1 || end < start) {
-    throw new AIError('AI 返回内容格式不正确', 502, 'ai_invalid_json');
-  }
-  let parsed;
+
+  let parsed = null;
   try {
-    parsed = JSON.parse(text.slice(start, end + 1));
+    parsed = JSON.parse(text);
   } catch {
+    parsed = null;
+  }
+  if (parsed === null) {
+    const arrayStart = text.indexOf('[');
+    const arrayEnd = text.lastIndexOf(']');
+    if (arrayStart !== -1 && arrayEnd > arrayStart) {
+      try {
+        parsed = JSON.parse(text.slice(arrayStart, arrayEnd + 1));
+      } catch {
+        parsed = null;
+      }
+    }
+  }
+  if (parsed === null) {
+    const objectStart = text.indexOf('{');
+    const objectEnd = text.lastIndexOf('}');
+    if (objectStart !== -1 && objectEnd > objectStart) {
+      try {
+        parsed = JSON.parse(text.slice(objectStart, objectEnd + 1));
+      } catch {
+        parsed = null;
+      }
+    }
+  }
+  if (parsed === null) {
     throw new AIError('AI 返回内容格式不正确', 502, 'ai_invalid_json');
   }
-  const rawItems = Array.isArray(parsed?.items) ? parsed.items : Array.isArray(parsed) ? parsed : [];
+
+  let rawItems;
+  if (Array.isArray(parsed)) rawItems = parsed;
+  else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.items)) rawItems = parsed.items;
+  else if (parsed && typeof parsed === 'object') rawItems = [parsed];
+  else rawItems = [];
+
   const items = [];
   for (const raw of rawItems) {
     if (!raw || typeof raw !== 'object') continue;
-    const destination = String(raw.destination ?? '').trim();
-    const departTime = String(raw.departTime ?? '').trim();
-    const returnTime = String(raw.returnTime ?? '').trim();
-    if (!destination) continue;
-    items.push({ destination: destination.slice(0, 80), departTime: departTime.slice(0, 16), returnTime: returnTime.slice(0, 16) });
+    const departTime = normalizePlanTime(pickPlanField(raw, 'departTime'));
+    const returnTime = normalizePlanTime(pickPlanField(raw, 'returnTime'));
+    const destination = pickPlanField(raw, 'destination');
+    // Some models put several stops into one array field.
+    const destinations = Array.isArray(destination) ? destination : [destination];
+    for (const one of destinations) {
+      const name = String(one ?? '').trim();
+      if (!name) continue;
+      items.push({ destination: name.slice(0, 80), departTime, returnTime });
+    }
   }
   if (items.length === 0) throw new AIError('AI 没有返回可用的旅程计划', 502, 'ai_empty');
   return { items };
@@ -829,17 +908,20 @@ export function createApp(config, options = {}) {
             role: 'system',
             content:
               '你是「小熊猫」旅程应用的向导，擅长把旅行想法整理成可出发的旅程计划。' +
-              '从用户描述里分析提取目的地（地点）和时间。' +
-              '只输出一个 JSON 对象，不要 Markdown 代码块，不要解释。',
+              '从用户描述里分析提取目的地（地点）和出发/返回时间。' +
+              '只输出一个 JSON 对象，不要 Markdown 代码块，不要解释，不要多余文字。' +
+              '格式必须严格为：{"items":[{"destination":"目的地名称","departTime":"出发时间","returnTime":"返回时间"}]}；' +
+              '每个目的地占一项；时间为 24 小时制 YYYY-MM-DDTHH:mm，无法确定的写空字符串。',
           },
           {
             role: 'user',
             content:
-              `用户想去的地方：${prompt}\n` +
-              '请提取这段旅程的「目的地」和「出发时间 / 返回时间」，并输出旅程计划 JSON。',
+              `今天是 ${todayContext()}。\n用户想去的地方：${prompt}\n` +
+              '请把「下个月15号」「玩三天」这类相对说法换算成具体日期（以今天为基准），' +
+              '并按上述格式输出旅程计划 JSON。',
           },
         ],
-        { maxTokens: 800, temperature: 0.6 },
+        { maxTokens: 900, temperature: 0.3 },
       );
       state.metrics.aiCalls += 1;
       const plan = parseJourneyPlan(result.content);

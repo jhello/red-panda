@@ -77,7 +77,13 @@ export async function chat(config, messages, options = {}) {
     );
   }
 
-  const content = data?.choices?.[0]?.message?.content;
+  const message = data?.choices?.[0]?.message;
+  let content = message?.content;
+  // Thinking models (GLM / DeepSeek reasoner) may answer inside reasoning_content
+  // and leave content empty when the token budget is small.
+  if ((typeof content !== 'string' || content.trim() === '') && typeof message?.reasoning_content === 'string') {
+    content = message.reasoning_content;
+  }
   if (typeof content !== 'string' || content.trim() === '') {
     throw new AIError('AI 返回了空内容。', 502, 'ai_empty');
   }

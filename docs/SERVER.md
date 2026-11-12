@@ -102,6 +102,36 @@ OPENAI_MODEL=gpt-4o-mini
 ./scripts/stop-server.sh && ./scripts/start-server.sh
 ```
 
+### 选择模型服务商
+
+服务端走 OpenAI 兼容协议，任何兼容服务只要改 `OPENAI_BASE_URL` 与 `OPENAI_MODEL` 即可：
+
+| 服务商 | `OPENAI_BASE_URL` | 模型 | 成本 |
+| --- | --- | --- | --- |
+| 智谱 BigModel | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-flash-250414` | **输入/输出免费**（另有 `glm-4.7-flash` 等免费模型，高峰可能排队） |
+| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` | 极低，按量付费 |
+| 硅基流动 | `https://api.siliconflow.cn/v1` | `tencent/Hunyuan-MT-7B` | 该模型免费；其它按量付费 |
+| 阿里云百炼 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen3.8-flash` | 新人每模型 100 万 Token / 90 天 |
+| 火山方舟 | `https://ark.cn-beijing.volces.com/api/v3` | `doubao-seed-2.0-mini` | 约 ¥0.2/百万输入 Token |
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` | 需境外网络与账户余额 |
+
+「创建旅程」页面会调用 `POST /api/ai/journey-plan`，让模型从自然语言里提取
+目的地与出发/返回时间；模型返回的字段名或结构有出入时，服务端会自动归一化
+（兼容 `items` 数组、单对象、数组形式的目的地，以及 `departure_date` 等常见别名）。
+
+### 需要代理时
+
+部分网络环境无法直连 `api.openai.com`。Node 24+ 的原生 `fetch` 支持环境代理：
+
+```bash
+NODE_USE_ENV_PROXY=1
+HTTP_PROXY=http://127.0.0.1:8889
+HTTPS_PROXY=http://127.0.0.1:8889
+NO_PROXY=127.0.0.1,localhost,::1,open.bigmodel.cn,api.deepseek.com
+```
+
+`NO_PROXY` 里的域名走直连，即使代理没启动也能用。
+
 ## 邮件与账户验证
 
 注册只接受邮箱。账户创建后处于「待验证」状态，用户需要点击验证邮件里的链接

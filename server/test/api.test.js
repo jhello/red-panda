@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 
-import { createApp } from '../src/app.js';
+import { createApp, parseJourneyPlan } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'red-panda-test-'));
@@ -458,6 +458,42 @@ test('AI 旅程规划接口校验输入', async () => {
     body: { prompt: '想去卢浮宫' },
   });
   assert.equal(anonymous.status, 401);
+});
+
+test('行程计划解析：标准 items 结构', () => {
+  const plan = parseJourneyPlan(
+    '{"items":[{"destination":"卢浮宫","departTime":"2026-12-15T09:30","returnTime":"2026-12-18T19:00"}]}',
+  );
+  assert.equal(plan.items.length, 1);
+  assert.equal(plan.items[0].destination, '卢浮宫');
+  assert.equal(plan.items[0].departTime, '2026-12-15T09:30');
+  assert.equal(plan.items[0].returnTime, '2026-12-18T19:00');
+});
+
+test('行程计划解析：Markdown 代码块与别名字段', () => {
+  const plan = parseJourneyPlan(
+    '好的：\n```json\n{"destination":"雅典卫城","departure_date":"2026-12-15","return_date":"2026-12-18"}\n```',
+  );
+  assert.equal(plan.items.length, 1);
+  assert.equal(plan.items[0].destination, '雅典卫城');
+  assert.equal(plan.items[0].departTime, '2026-12-15T09:00');
+  assert.equal(plan.items[0].returnTime, '2026-12-18T09:00');
+});
+
+test('行程计划解析：单个目的地写成数组时拆成多行', () => {
+  const plan = parseJourneyPlan(
+    '{"destination":["卢浮宫","雅典卫城"],"departure_date":"2026-12-15","return_date":"2026-12-18"}',
+  );
+  assert.equal(plan.items.length, 2);
+  assert.deepEqual(
+    plan.items.map((item) => item.destination),
+    ['卢浮宫', '雅典卫城'],
+  );
+});
+
+test('行程计划解析：无法解析时报错', () => {
+  assert.throws(() => parseJourneyPlan('完全不是 JSON'), /格式不正确/);
+  assert.throws(() => parseJourneyPlan('{"items":[]}'), /可用的旅程计划/);
 });
 
 test('管理员状态包含用户与旅程统计', async () => {
