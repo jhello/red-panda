@@ -192,16 +192,10 @@
 
       new: {
         title: '新的旅程',
-        sub: '给它一个名字，再写下你想去的地方。',
-        namePlaceholder: '例如：昆仑之丘',
-        descPlaceholder: '山是什么颜色，风从哪里来……',
-        save: '保存旅程',
         errName: '先给旅程起个名字吧',
       },
 
       ai: {
-        write: '✦ AI 帮我写描述',
-        hint: '根据名称生成一段简介',
         rewrite: '✦ AI 重写描述',
         rewriteHint: '会覆盖当前描述',
         busy: '正在落笔…',
@@ -469,16 +463,10 @@
 
       new: {
         title: 'A new journey',
-        sub: 'Give it a name, then write down where you want to go.',
-        namePlaceholder: 'e.g. Kunlun Mountains',
-        descPlaceholder: 'What colour are the mountains, where does the wind come from…',
-        save: 'Save journey',
         errName: 'Give your journey a name first',
       },
 
       ai: {
-        write: '✦ Let AI draft it',
-        hint: 'Generates a short intro from the name',
         rewrite: '✦ Rewrite with AI',
         rewriteHint: 'Replaces the current description',
         busy: 'Writing…',
@@ -752,16 +740,10 @@
 
       new: {
         title: 'Eine neue Reise',
-        sub: 'Gib ihr einen Namen und schreib auf, wohin es gehen soll.',
-        namePlaceholder: 'z. B. Kunlun-Gebirge',
-        descPlaceholder: 'Welche Farbe haben die Berge, woher kommt der Wind …',
-        save: 'Reise speichern',
         errName: 'Gib der Reise zuerst einen Namen',
       },
 
       ai: {
-        write: '✦ KI schreibt für dich',
-        hint: 'Erstellt aus dem Namen eine kurze Einleitung',
         rewrite: '✦ Mit KI neu schreiben',
         rewriteHint: 'Ersetzt die aktuelle Beschreibung',
         busy: 'Schreibt…',
