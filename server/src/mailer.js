@@ -108,13 +108,27 @@ async function sendHttp(config, message) {
   }
 }
 
+function decodeLine(bytes) {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    try {
+      // Some Chinese SMTP servers (126/163) answer with GBK.
+      return new TextDecoder('gbk').decode(bytes);
+    } catch {
+      return bytes.toString('utf8');
+    }
+  }
+}
+
 /**
  * Minimal SMTP client. Supports implicit TLS (port 465) and STARTTLS
  * (usually port 587), plus AUTH PLAIN / AUTH LOGIN.
  */
 class SmtpSession {
   constructor(socket) {
-    this.buffer = '';
+    this.buffer = Buffer.alloc(0);
+    this.lines = [];
     this.waiters = [];
     this.error = null;
     this.attach(socket);
@@ -122,12 +136,12 @@ class SmtpSession {
 
   attach(socket) {
     this.socket = socket;
-    this.buffer = '';
+    this.buffer = Buffer.alloc(0);
+    this.lines = [];
     this.error = null;
-    socket.setEncoding('utf8');
     socket.setTimeout(30_000);
     socket.on('data', (chunk) => {
-      this.buffer += chunk;
+      this.buffer = this.buffer.length ? Buffer.concat([this.buffer, chunk]) : chunk;
       this.flush();
     });
     socket.on('timeout', () => {
@@ -151,16 +165,24 @@ class SmtpSession {
       return;
     }
     while (this.waiters.length) {
-      const match = /^(?:\d{3}-[^\r\n]*\r?\n)*(\d{3} [^\r\n]*)\r?\n/.exec(this.buffer);
-      if (!match) break;
-      this.buffer = this.buffer.slice(match[0].length);
-      const lines = match[0].replace(/\r?\n$/, '').split(/\r?\n/);
-      const last = lines[lines.length - 1];
+      const newline = this.buffer.indexOf(0x0a);
+      if (newline < 0) break;
+      let lineBytes = this.buffer.subarray(0, newline);
+      this.buffer = this.buffer.subarray(newline + 1);
+      if (lineBytes.length && lineBytes[lineBytes.length - 1] === 0x0d) {
+        lineBytes = lineBytes.subarray(0, lineBytes.length - 1);
+      }
+      const line = decodeLine(lineBytes);
+      this.lines.push(line);
+      // A line like "250-text" continues the response; "250 text" ends it.
+      if (!/^\d{3} /.test(line)) continue;
       const waiter = this.waiters.shift();
+      const lines = this.lines;
+      this.lines = [];
       waiter.resolve({
-        code: Number(last.slice(0, 3)),
-        text: lines.map((line) => line.slice(4)).join('\n'),
-        raw: match[0],
+        code: Number(line.slice(0, 3)),
+        text: lines.map((entry) => entry.slice(4)).join('\n'),
+        raw: `${lines.join('\r\n')}\r\n`,
       });
     }
   }
