@@ -461,9 +461,28 @@
             </label>
             <label class="field">
               <span>密码</span>
-              <input name="password" type="password" maxlength="128"
-                autocomplete="${active === 'login' ? 'current-password' : 'new-password'}"
-                placeholder="${active === 'login' ? '输入密码' : '至少 8 个字符'}" required />
+              <div class="password-field">
+                <input name="password" type="password" maxlength="128"
+                  autocomplete="${active === 'login' ? 'current-password' : 'new-password'}"
+                  placeholder="${active === 'login' ? '输入密码' : '至少 8 个字符'}" required />
+                ${
+                  active === 'login'
+                    ? `<button type="button" class="password-toggle" data-toggle-password
+                         aria-label="显示密码" title="显示密码">
+                        <svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                          stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+                          <circle cx="12" cy="12" r="2.6" />
+                        </svg>
+                        <svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                          stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M2.5 12s3.5-6 9.5-6c2 0 3.8.6 5.3 1.5M21.5 12s-3.5 6-9.5 6c-2 0-3.8-.6-5.3-1.5" />
+                          <path d="M4 4l16 16" />
+                        </svg>
+                      </button>`
+                    : ''
+                }
+              </div>
             </label>
             ${
               active === 'register'
@@ -492,7 +511,6 @@
           </p>
         </div>
 
-        <button class="link subtle" data-action="settings">服务器设置 · ${esc(state.server)}</button>
       </div>`;
 
     app.querySelectorAll('[data-tab]').forEach((button) => {
@@ -507,6 +525,18 @@
     });
 
     const form = document.getElementById('auth-form');
+    const passwordInput = form.querySelector('input[name="password"]');
+    const passwordToggle = form.querySelector('[data-toggle-password]');
+    if (passwordToggle) {
+      passwordToggle.addEventListener('click', () => {
+        const show = passwordInput.type === 'password';
+        passwordInput.type = show ? 'text' : 'password';
+        passwordToggle.classList.toggle('is-visible', show);
+        passwordToggle.setAttribute('aria-label', show ? '隐藏密码' : '显示密码');
+        passwordToggle.setAttribute('title', show ? '隐藏密码' : '显示密码');
+        passwordInput.focus({ preventScroll: true });
+      });
+    }
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       hideError('auth-error');

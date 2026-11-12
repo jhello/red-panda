@@ -69,8 +69,14 @@ npm run dev        # node --watch，改代码自动重启
 | `RED_PANDA_VERIFY_HOURS` | `24` | 注册验证链接有效小时数 |
 | `RED_PANDA_RESET_MINUTES` | `60` | 重置密码链接有效分钟数 |
 | `RED_PANDA_PUBLIC_URL` | 空 | 邮件链接使用的公开地址；留空自动使用局域网地址 |
-| `RED_PANDA_MAIL_MODE` | `log` | 邮件发送方式：`log` / `command` / `http` |
-| `RED_PANDA_MAIL_FROM` | `Red Panda <no-reply@red-panda.local>` | 发件人 |
+| `RED_PANDA_MAIL_MODE` | `log` | 邮件发送方式：`log` / `smtp` / `command` / `http` |
+| `RED_PANDA_MAIL_FROM` | `Red Panda <no-reply@red-panda.local>` | 发件人；留空时自动使用 SMTP 用户名 |
+| `RED_PANDA_SMTP_HOST` | 空 | `smtp` 模式的服务器，如 `smtp.126.com` |
+| `RED_PANDA_SMTP_PORT` | `465` | SMTP 端口：465（SSL）/ 587（STARTTLS） |
+| `RED_PANDA_SMTP_SECURE` | `1` | `1` 直接 TLS（465），`0` 使用 STARTTLS（587） |
+| `RED_PANDA_SMTP_USER` | 空 | SMTP 登录名，通常是完整邮箱 |
+| `RED_PANDA_SMTP_PASS` | 空 | SMTP 密码：网易「授权码」或 Gmail「应用专用密码」 |
+| `RED_PANDA_SMTP_REJECT_UNAUTHORIZED` | `1` | 校验证书；仅自签名服务器才设为 `0` |
 | `RED_PANDA_MAIL_COMMAND` | 空 | `command` 模式下执行的命令，如 `msmtp -t` |
 | `RED_PANDA_MAIL_API_URL` | 空 | `http` 模式下接收邮件的 API 地址 |
 | `RED_PANDA_MAIL_API_KEY` | 空 | `http` 模式下的 Bearer 密钥 |
@@ -106,11 +112,69 @@ OPENAI_MODEL=gpt-4o-mini
 | `RED_PANDA_MAIL_MODE` | 行为 |
 | --- | --- |
 | `log`（默认） | 把完整邮件写入 `data/outbox/*.eml`，并在 `data/server.log` 打印验证/重置链接。无需任何配置。 |
+| `smtp` | 直接连接 SMTP 服务器发信，推荐用于真正收信。 |
 | `command` | 把原始邮件通过管道交给 `RED_PANDA_MAIL_COMMAND`，例如 `msmtp -t`。 |
 | `http` | 向 `RED_PANDA_MAIL_API_URL` 发送 JSON：`{from,to,subject,text,html}`；可带 `RED_PANDA_MAIL_API_KEY`。 |
 
-默认的 `log` 模式适合本地开发和自用。想真正收信，可以安装 `msmtp` 并用
-`command` 模式，或把邮件交给任意支持 HTTP 的邮件服务。
+默认的 `log` 模式**不会真的发邮件**，只把邮件写到 `data/outbox/`。
+要真正收信，用 `smtp` 模式最简单。
+
+### 用网易 126 / 163 发信
+
+1. 登录网易邮箱网页版 →「设置」→「POP3/SMTP/IMAP」→ 开启 SMTP 服务。
+2. 按提示生成一个**授权码**（不是邮箱登录密码）。
+3. 写入 `.env`：
+
+```bash
+RED_PANDA_MAIL_MODE=smtp
+RED_PANDA_SMTP_HOST=smtp.126.com      # 163 邮箱用 smtp.163.com
+RED_PANDA_SMTP_PORT=465
+RED_PANDA_SMTP_SECURE=1
+RED_PANDA_SMTP_USER=you@126.com
+RED_PANDA_SMTP_PASS=你的授权码
+# 发件人留空时自动使用 SMTP_USER
+RED_PANDA_MAIL_FROM="Red Panda <you@126.com>"
+```
+
+### 用 Gmail 发信
+
+Gmail 要求**应用专用密码**（App Password），需要先开启两步验证：
+
+```bash
+RED_PANDA_MAIL_MODE=smtp
+RED_PANDA_SMTP_HOST=smtp.gmail.com
+RED_PANDA_SMTP_PORT=465
+RED_PANDA_SMTP_SECURE=1
+RED_PANDA_SMTP_USER=you@gmail.com
+RED_PANDA_SMTP_PASS=16位应用专用密码
+RED_PANDA_MAIL_FROM="Red Panda <you@gmail.com>"
+```
+
+> 如果邮件进了垃圾箱，请把发件人加入白名单，或配置 SPF/DKIM 后使用自己的域名发信。
+> 网易/QQ 邮箱有时会拦截来自家用 IP 的邮件；必要时改用 587 端口 + STARTTLS
+> （`RED_PANDA_SMTP_PORT=587`、`RED_PANDA_SMTP_SECURE=0`）。
+
+### 验证 SMTP 配置
+
+先直接发一封测试邮件（不会启动或重启服务）：
+
+```bash
+./scripts/test-mail.sh you@example.com
+```
+
+成功时会打印「已提交发送」；失败时会打印具体的 SMTP 错误。
+
+再重启服务让注册/重置邮件生效：
+
+```bash
+./scripts/stop-server.sh
+./scripts/start-server.sh
+tail -n 20 data/server.log
+```
+
+启动横幅会显示 `邮件  smtp · smtp.126.com:465 · you@126.com`。
+注册一个测试邮箱，或在看板里重发验证邮件，然后查看日志：
+成功时不会再出现 `[mail:log]`，失败时会打印 `SMTP ... 失败` 的具体原因。
 
 ### 查看验证链接（log 模式）
 

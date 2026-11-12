@@ -16,6 +16,7 @@ const base = lan?.url ?? urls[0].url;
 
 const mailHint = {
   log: `log · 邮件写入 ${config.mail.outboxDir}`,
+  smtp: `smtp · ${config.mail.smtp.host || '未配置 RED_PANDA_SMTP_HOST'}:${config.mail.smtp.port}${config.mail.smtp.user ? ` · ${config.mail.smtp.user}` : ''}`,
   command: `command · ${config.mail.command || '未配置 RED_PANDA_MAIL_COMMAND'}`,
   http: `http · ${config.mail.apiUrl || '未配置 RED_PANDA_MAIL_API_URL'}`,
 }[mailer.mode] ?? `${mailer.mode}（未知模式）`;

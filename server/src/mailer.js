@@ -1,5 +1,8 @@
 import fs from 'node:fs';
+import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
+import tls from 'node:tls';
 import { spawn } from 'node:child_process';
 
 function sanitize(value) {
@@ -12,8 +15,23 @@ function encodeHeader(value) {
   return `=?UTF-8?B?${Buffer.from(text, 'utf8').toString('base64')}?=`;
 }
 
-export function buildRawMessage(config, message) {
+function envelopeAddress(value) {
+  const text = String(value ?? '').trim();
+  const match = /<([^<>]+)>/.exec(text);
+  if (match) return match[1].trim();
+  const parts = text.split(/\s+/);
+  return parts[parts.length - 1] || text;
+}
+
+export function buildRawMessage(config, message, options = {}) {
   const from = message.from || config.mail.from;
+  const encoding = options.encoding === 'base64' ? 'base64' : '8bit';
+  const text = String(message.text ?? '');
+  let body = text;
+  if (encoding === 'base64') {
+    const encoded = Buffer.from(text, 'utf8').toString('base64');
+    body = encoded.match(/.{1,76}/g)?.join('\r\n') ?? '';
+  }
   const headers = [
     `From: ${from}`,
     `To: ${message.to}`,
@@ -21,9 +39,9 @@ export function buildRawMessage(config, message) {
     `Date: ${new Date().toUTCString()}`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=utf-8',
-    'Content-Transfer-Encoding: 8bit',
+    `Content-Transfer-Encoding: ${encoding}`,
   ];
-  return `${headers.join('\r\n')}\r\n\r\n${message.text}\r\n`;
+  return `${headers.join('\r\n')}\r\n\r\n${body}\r\n`;
 }
 
 function sendLog(config, message) {
@@ -91,8 +109,186 @@ async function sendHttp(config, message) {
 }
 
 /**
+ * Minimal SMTP client. Supports implicit TLS (port 465) and STARTTLS
+ * (usually port 587), plus AUTH PLAIN / AUTH LOGIN.
+ */
+class SmtpSession {
+  constructor(socket) {
+    this.buffer = '';
+    this.waiters = [];
+    this.error = null;
+    this.attach(socket);
+  }
+
+  attach(socket) {
+    this.socket = socket;
+    this.buffer = '';
+    this.error = null;
+    socket.setEncoding('utf8');
+    socket.setTimeout(30_000);
+    socket.on('data', (chunk) => {
+      this.buffer += chunk;
+      this.flush();
+    });
+    socket.on('timeout', () => {
+      socket.destroy(new Error('SMTP 连接超时'));
+    });
+    socket.on('error', (error) => this.fail(error));
+    socket.on('close', () => {
+      if (!this.error) this.fail(new Error('SMTP 连接已关闭'));
+    });
+  }
+
+  fail(error) {
+    if (!this.error) this.error = error;
+    const waiters = this.waiters.splice(0);
+    for (const waiter of waiters) waiter.reject(this.error);
+  }
+
+  flush() {
+    if (this.error) {
+      this.fail(this.error);
+      return;
+    }
+    while (this.waiters.length) {
+      const match = /^(?:\d{3}-[^\r\n]*\r?\n)*(\d{3} [^\r\n]*)\r?\n/.exec(this.buffer);
+      if (!match) break;
+      this.buffer = this.buffer.slice(match[0].length);
+      const lines = match[0].replace(/\r?\n$/, '').split(/\r?\n/);
+      const last = lines[lines.length - 1];
+      const waiter = this.waiters.shift();
+      waiter.resolve({
+        code: Number(last.slice(0, 3)),
+        text: lines.map((line) => line.slice(4)).join('\n'),
+        raw: match[0],
+      });
+    }
+  }
+
+  read() {
+    if (this.error) return Promise.reject(this.error);
+    return new Promise((resolve, reject) => {
+      this.waiters.push({ resolve, reject });
+      this.flush();
+    });
+  }
+
+  write(line) {
+    this.socket.write(`${line}\r\n`);
+  }
+
+  async command(line, expected) {
+    this.write(line);
+    const response = await this.read();
+    if (expected && !expected.includes(response.code)) {
+      throw new Error(`SMTP ${line.split(' ')[0]} 失败 (${response.code}): ${response.text}`);
+    }
+    return response;
+  }
+
+  async upgradeToTls(options) {
+    const plain = this.socket;
+    plain.removeAllListeners('data');
+    plain.removeAllListeners('error');
+    plain.removeAllListeners('close');
+    plain.removeAllListeners('timeout');
+    const secure = tls.connect({ socket: plain, ...options });
+    await new Promise((resolve, reject) => {
+      secure.once('secureConnect', resolve);
+      secure.once('error', reject);
+    });
+    this.attach(secure);
+  }
+
+  close() {
+    this.socket.end();
+  }
+}
+
+async function sendSmtp(config, message) {
+  const smtp = config.mail.smtp || {};
+  if (!smtp.host) {
+    throw new Error('RED_PANDA_MAIL_MODE=smtp 需要设置 RED_PANDA_SMTP_HOST');
+  }
+
+  const options = {
+    host: smtp.host,
+    port: smtp.port,
+    servername: smtp.host,
+    rejectUnauthorized: smtp.rejectUnauthorized !== false,
+  };
+
+  const socket = smtp.secure ? tls.connect(options) : net.connect({ host: smtp.host, port: smtp.port });
+  const session = new SmtpSession(socket);
+
+  try {
+    if (smtp.secure) {
+      await new Promise((resolve, reject) => {
+        socket.once('secureConnect', resolve);
+        socket.once('error', reject);
+      });
+    }
+
+    const greeting = await session.read();
+    if (greeting.code !== 220) {
+      throw new Error(`SMTP 服务器拒绝连接 (${greeting.code}): ${greeting.text}`);
+    }
+
+    const heloName = os.hostname() || 'localhost';
+    let ehlo = await session.command(`EHLO ${heloName}`, [250]);
+
+    if (!smtp.secure) {
+      if (!/\bSTARTTLS\b/i.test(ehlo.text)) {
+        throw new Error('SMTP 服务器不支持 STARTTLS；请改用 465 端口并设置 RED_PANDA_SMTP_SECURE=1');
+      }
+      await session.command('STARTTLS', [220]);
+      await session.upgradeToTls(options);
+      ehlo = await session.command(`EHLO ${heloName}`, [250]);
+    }
+
+    if (smtp.user || smtp.pass) {
+      const authLine = /\bAUTH[ =]([^\r\n]*)/i.exec(ehlo.text)?.[1] || '';
+      if (/\bPLAIN\b/i.test(authLine)) {
+        const token = Buffer.from(`\0${smtp.user}\0${smtp.pass}`, 'utf8').toString('base64');
+        await session.command(`AUTH PLAIN ${token}`, [235]);
+      } else if (/\bLOGIN\b/i.test(authLine)) {
+        await session.command('AUTH LOGIN', [334]);
+        await session.command(Buffer.from(smtp.user, 'utf8').toString('base64'), [334]);
+        await session.command(Buffer.from(smtp.pass, 'utf8').toString('base64'), [235]);
+      } else {
+        throw new Error('SMTP 服务器没有提供 AUTH LOGIN / AUTH PLAIN 登录方式');
+      }
+    }
+
+    const from = envelopeAddress(message.from || config.mail.from);
+    const to = envelopeAddress(message.to);
+    await session.command(`MAIL FROM:<${from}>`, [250]);
+    await session.command(`RCPT TO:<${to}>`, [250, 251]);
+    await session.command('DATA', [354]);
+
+    const raw = buildRawMessage(config, message, { encoding: 'base64' }).replace(/\r?\n/g, '\r\n');
+    session.socket.write(`${raw}.\r\n`);
+    const accepted = await session.read();
+    if (accepted.code !== 250) {
+      throw new Error(`SMTP 拒收邮件 (${accepted.code}): ${accepted.text}`);
+    }
+
+    try {
+      await session.command('QUIT', [221]);
+    } catch {
+      // The server may close immediately after accepting the message.
+    }
+    session.close();
+  } catch (error) {
+    session.socket?.destroy();
+    throw error;
+  }
+}
+
+/**
  * Create a mail transport. Modes:
  *   log     — write .eml files to data/outbox and log the link (default, no setup)
+ *   smtp    — send through an SMTP server (126/163/Gmail, etc.)
  *   command — pipe the raw message to a command such as `msmtp -t`
  *   http    — POST { from, to, subject, text, html } to an HTTP API
  *
@@ -105,12 +301,14 @@ export function createMailer(config, options = {}) {
     switch (mode) {
       case 'log':
         return sendLog(config, message);
+      case 'smtp':
+        return sendSmtp(config, message);
       case 'command':
         return sendCommand(config, message);
       case 'http':
         return sendHttp(config, message);
       default:
-        throw new Error(`未知的邮件模式: ${mode}（可选 log / command / http）`);
+        throw new Error(`未知的邮件模式: ${mode}（可选 log / smtp / command / http）`);
     }
   };
   return { mode, send };

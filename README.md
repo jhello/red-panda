@@ -53,9 +53,21 @@ HTML5 应用  http://192.168.10.65:8787/app/
 - HTML5 版：`http://<本机IP>:8787/app/`
 - 停止：`./scripts/stop-server.sh`
 
-默认邮件模式为 `log`：注册/重置邮件会写入 `data/outbox/`，验证链接也会
-打印在 `data/server.log`。要真正收信，请配置 `RED_PANDA_MAIL_MODE` 与
-`RED_PANDA_PUBLIC_URL`，详见 [docs/SERVER.md](docs/SERVER.md)。
+默认邮件模式为 `log`：注册/重置邮件只会写入 `data/outbox/`，**不会真的发送**。
+要真正收信，在 `.env` 里配置 SMTP（网易 126/163 授权码或 Gmail 应用专用密码）：
+
+```bash
+RED_PANDA_MAIL_MODE=smtp
+RED_PANDA_SMTP_HOST=smtp.126.com
+RED_PANDA_SMTP_PORT=465
+RED_PANDA_SMTP_SECURE=1
+RED_PANDA_SMTP_USER=you@126.com
+RED_PANDA_SMTP_PASS=你的授权码
+RED_PANDA_MAIL_FROM="Red Panda <you@126.com>"
+```
+
+部署到公网或希望手机直接打开验证链接时，还要设置
+`RED_PANDA_PUBLIC_URL=https://你的域名`。详见 [docs/SERVER.md](docs/SERVER.md)。
 
 ### 2. 构建并安装 Android 客户端
 

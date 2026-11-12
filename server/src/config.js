@@ -49,6 +49,14 @@ export function loadConfig(env = process.env) {
   const resetMinutes = Number(value(env, 'RED_PANDA_RESET_MINUTES', '60'));
   const publicUrl = value(env, 'RED_PANDA_PUBLIC_URL', '').replace(/\/+$/, '');
 
+  const smtpUser = value(env, 'RED_PANDA_SMTP_USER', '');
+  const smtpPort = Number(value(env, 'RED_PANDA_SMTP_PORT', '465'));
+  const mailFrom = value(
+    env,
+    'RED_PANDA_MAIL_FROM',
+    smtpUser ? `Red Panda <${smtpUser}>` : 'Red Panda <no-reply@red-panda.local>',
+  );
+
   return {
     version: pkg.version,
     host: value(env, 'HOST', '0.0.0.0'),
@@ -65,11 +73,19 @@ export function loadConfig(env = process.env) {
     dashboardDir: path.join(SERVER_DIR, 'public', 'dashboard'),
     mail: {
       mode: value(env, 'RED_PANDA_MAIL_MODE', 'log').toLowerCase(),
-      from: value(env, 'RED_PANDA_MAIL_FROM', 'Red Panda <no-reply@red-panda.local>'),
+      from: mailFrom,
       outboxDir: path.join(dataDir, 'outbox'),
       command: value(env, 'RED_PANDA_MAIL_COMMAND', ''),
       apiUrl: value(env, 'RED_PANDA_MAIL_API_URL', ''),
       apiKey: value(env, 'RED_PANDA_MAIL_API_KEY', ''),
+      smtp: {
+        host: value(env, 'RED_PANDA_SMTP_HOST', ''),
+        port: Number.isInteger(smtpPort) && smtpPort > 0 ? smtpPort : 465,
+        secure: value(env, 'RED_PANDA_SMTP_SECURE', '1') !== '0',
+        user: smtpUser,
+        pass: value(env, 'RED_PANDA_SMTP_PASS', ''),
+        rejectUnauthorized: value(env, 'RED_PANDA_SMTP_REJECT_UNAUTHORIZED', '1') !== '0',
+      },
     },
     ai: {
       apiKey: value(env, 'OPENAI_API_KEY', ''),
