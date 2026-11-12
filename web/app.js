@@ -56,7 +56,10 @@
       },
       nav: {
         current: '行程',
-        me: '我的',
+        memories: '回忆',
+        discover: '发现',
+        discoverSoon: '更多目的地正在路上，敬请期待',
+        me: '我',
       },
 
       api: {
@@ -194,7 +197,9 @@
 
       plan: {
         placeholders: ['我想去雅典卫城', '下周去卢浮宫和橘园美术馆', '去看新天鹅堡的雪景'],
-        confirm: '确定',
+        artAlt: ['黄昏中的雅典卫城', '暮色里的卢浮宫', '雪中的新天鹅堡'],
+        artNote: 'AI 生成 · 印象派演绎',
+        confirm: '先这样',
         thinking: '我想想',
         edit: '编辑',
         resend: '重发',
@@ -314,6 +319,9 @@
       },
       nav: {
         current: 'Journeys',
+        memories: 'Memories',
+        discover: 'Discover',
+        discoverSoon: 'More destinations are on the way — stay tuned',
         me: 'Me',
       },
 
@@ -456,7 +464,9 @@
           'Louvre and the Musée de l’Orangerie next week',
           'To see the snow at Neuschwanstein Castle',
         ],
-        confirm: 'Confirm',
+        artAlt: ['The Acropolis at dusk', 'The Louvre at twilight', 'Neuschwanstein in the snow'],
+        artNote: 'AI generated · impressionist take',
+        confirm: "Let's go with that",
         thinking: 'Thinking…',
         edit: 'Edit',
         resend: 'Resend',
@@ -576,7 +586,10 @@
       },
       nav: {
         current: 'Reisen',
-        me: 'Meine',
+        memories: 'Erinnerungen',
+        discover: 'Entdecken',
+        discoverSoon: 'Weitere Ziele sind unterwegs — bald verfügbar',
+        me: 'Ich',
       },
 
       api: {
@@ -720,7 +733,9 @@
           'Louvre und Orangemuseum nächste Woche',
           'Um den Schnee am Neuschwanstein zu sehen',
         ],
-        confirm: 'Bestätigen',
+        artAlt: ['Die Akropolis in der Dämmerung', 'Der Louvre im Abendlicht', 'Neuschwanstein im Schnee'],
+        artNote: 'KI-generiert · impressionistisch interpretiert',
+        confirm: 'So machen wir’s',
         thinking: 'Ich überlege…',
         edit: 'Bearbeiten',
         resend: 'Erneut senden',
@@ -1665,7 +1680,9 @@
         <main class="page home-page">
           <nav class="main-nav">
             <button class="nav-btn nav-journeys" data-action="current-journey">${t('nav.current')}</button>
+            <button class="nav-btn nav-memories" data-action="journeys">${t('nav.memories')}</button>
             <button class="nav-btn nav-create" data-action="new" aria-label="${t('new.title')}">＋</button>
+            <button class="nav-btn nav-discover" data-action="discover">${t('nav.discover')}</button>
             <button class="nav-btn nav-me" data-action="settings">${t('nav.me')}</button>
           </nav>
         </main>
@@ -1711,9 +1728,12 @@
     busy: false,
     error: '',
     items: [],
+    suggestion: '',
+    artIndex: -1,
   };
 
-  let currentRouteName = '';
+  /** Impressionist painting for each suggestion, in the same order. */
+  const PLAN_ART = ['paintings/athens.jpg', 'paintings/louvre.jpg', 'paintings/neuschwanstein.jpg'];
 
   function resetPlanState() {
     planState.text = '';
@@ -1723,7 +1743,11 @@
     planState.busy = false;
     planState.error = '';
     planState.items = [];
+    planState.suggestion = '';
+    planState.artIndex = -1;
   }
+
+  let currentRouteName = '';
 
   function periodIndexForHour(periods, hour) {
     const hours = periods.map((p) => p.hour);
@@ -1737,11 +1761,20 @@
 
   /** The hint inside the input box changes on every visit. */
   function randomPlanPlaceholder() {
+    const pool = planPlaceholders();
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  function planPlaceholders() {
     const dict = I18N[getLocale()] || I18N.zh;
     const list = Array.isArray(dict.plan?.placeholders) ? dict.plan.placeholders : [];
-    const fallback = I18N.zh.plan.placeholders;
-    const pool = list.length ? list : fallback;
-    return pool[Math.floor(Math.random() * pool.length)];
+    return list.length ? list : I18N.zh.plan.placeholders;
+  }
+
+  function planArtAlts() {
+    const dict = I18N[getLocale()] || I18N.zh;
+    const list = Array.isArray(dict.plan?.artAlt) ? dict.plan.artAlt : [];
+    return list.length ? list : I18N.zh.plan.artAlt;
   }
 
   function renderNewJourney() {
@@ -1751,7 +1784,21 @@
       plan.editingItem = null;
     }
 
-    const placeholder = esc(randomPlanPlaceholder());
+    const placeholder = esc(plan.suggestion || (plan.suggestion = randomPlanPlaceholder()));
+    plan.artIndex = planPlaceholders().indexOf(plan.suggestion);
+    const artFile = plan.artIndex >= 0 ? PLAN_ART[plan.artIndex] : null;
+    const artAlt = plan.artIndex >= 0 ? (planArtAlts()[plan.artIndex] || '') : '';
+
+    /** The painting above the card; `fading` plays the fade-out after confirming. */
+    const art = (fading) =>
+      artFile
+        ? `
+        <figure class="plan-art${fading ? ' is-out' : ''}">
+          <img src="${artFile}" alt="${esc(artAlt)}" />
+          <figcaption class="plan-art-note">${t('plan.artNote')}</figcaption>
+        </figure>`
+        : '';
+
     const tools = (withResend) => `
       <div class="plan-tools">
         <button class="icon-btn" data-action="plan-edit" aria-label="${t('plan.edit')}">✎</button>
@@ -1765,6 +1812,7 @@
     let body;
     if (plan.editing) {
       body = `
+        ${art(false)}
         <form id="plan-form" novalidate>
           <div class="plan-card">
             <div class="plan-card-top">
@@ -1811,9 +1859,10 @@
         </section>`;
     } else if (plan.busy) {
       body = `
+        ${art(true)}
         <div class="plan-card">
           <div class="plan-card-top">
-            <p class="plan-card-text">${esc(plan.text)}</p>
+            <p class="plan-card-text is-rising">${esc(plan.text)}</p>
             ${tools(true)}
           </div>
           <div class="plan-card-bottom">
@@ -1828,11 +1877,11 @@
       body = `
         <div class="plan-card">
           <div class="plan-card-top">
-            <p class="plan-card-text">${esc(plan.text)}</p>
+            <p class="plan-card-text is-rising">${esc(plan.text)}</p>
             ${tools(true)}
           </div>
         </div>
-        <section class="card panel">
+        <section class="card panel is-rising">
           <h2 class="panel-title">${t('plan.title')}</h2>
           <p class="panel-sub">${t('plan.sub')}</p>
           <table class="plan-table">
@@ -1877,6 +1926,7 @@
         ${plan.error ? `<p class="form-error">${esc(plan.error)}</p>` : ''}`;
     } else {
       body = `
+        ${art(false)}
         <div class="plan-card">
           <div class="plan-card-top">
             <input id="plan-input" maxlength="300" placeholder="${placeholder}" value="${esc(plan.text)}" />
@@ -1959,7 +2009,8 @@
   }
 
   function confirmPlanInput() {
-    const text = planState.text.trim();
+    // An empty input falls back to the suggestion shown in the placeholder.
+    const text = (planState.text || planState.suggestion || '').trim();
     if (!text) return;
     planState.text = text;
     planState.locked = true;
@@ -2405,6 +2456,9 @@
         break;
       case 'journeys':
         navigate('#/journeys');
+        break;
+      case 'discover':
+        toast(t('nav.discoverSoon'));
         break;
       case 'current-journey':
         if (state.currentJourney) navigate(`#/journey/${state.currentJourney.id}`);
