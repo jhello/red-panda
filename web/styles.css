@@ -1099,30 +1099,69 @@ img.seal {
   font-size: 12px;
 }
 
-/* 跳转后显示在页面顶部的导航栏 */
-.nav-row {
-  position: sticky;
-  top: 0;
-  z-index: 15;
+/* 底部悬浮导航栏：fixed + 高 z-index，页面内容从它下面穿过 */
+.nav-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  max-width: 620px;
+  margin: 0 auto;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 8px 14px;
-  background: rgba(247, 242, 232, 0.9);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(216, 203, 180, 0.5);
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px calc(8px + env(safe-area-inset-bottom));
+  background: rgba(247, 242, 232, 0.92);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid rgba(216, 203, 180, 0.6);
+  box-shadow: 0 -8px 24px rgba(72, 55, 32, 0.06);
 }
 
-.nav-row .nav-btn {
-  padding: 8px 4px;
-  font-size: 13px;
+/* 有悬浮导航栏的页面底部留出空间 */
+.page.has-nav {
+  padding-bottom: calc(104px + env(safe-area-inset-bottom));
 }
 
-.nav-row .nav-create {
-  width: 44px;
-  height: 44px;
-  font-size: 24px;
+/* 发现页 */
+.discover-grid {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.discover-card {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+  text-align: left;
+  transition: transform 0.14s ease, box-shadow 0.18s ease;
+}
+
+.discover-card:active {
+  transform: scale(0.99);
+}
+
+.discover-card img {
+  display: block;
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+}
+
+.discover-card span {
+  padding: 12px 16px 14px;
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 /* ---- journey plan (create journey) -------------------------------------- */

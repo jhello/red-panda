@@ -63,6 +63,10 @@
         me: '我',
       },
 
+      discover: {
+        sub: '挑一个想去的地方，小熊猫帮你把行程安排好。',
+      },
+
       draft: {
         title: '草稿：{time}，{destination}，{created}',
         untimed: '未定时间',
@@ -332,6 +336,10 @@
         discover: 'Discover',
         discoverSoon: 'More destinations are on the way — stay tuned',
         me: 'Me',
+      },
+
+      discover: {
+        sub: 'Pick a place and let me plan the trip for you.',
       },
 
       draft: {
@@ -607,6 +615,10 @@
         discover: 'Entdecken',
         discoverSoon: 'Weitere Ziele sind unterwegs — bald verfügbar',
         me: 'Ich',
+      },
+
+      discover: {
+        sub: 'Wähle ein Ziel – ich plane die Reise für dich.',
       },
 
       draft: {
@@ -1304,6 +1316,9 @@
       case 'settings':
         renderSettings();
         break;
+      case 'discover':
+        renderDiscover();
+        break;
       case 'login':
         history.replaceState(null, '', '#/');
         renderHome();
@@ -1778,7 +1793,7 @@
     const drafts = loadDrafts();
     app.innerHTML = `
       <div class="screen">
-        <main class="page home-page">
+        <main class="page home-page has-nav">
           <section class="home-current" id="home-current">
             ${currentJourneyMarkup(state.currentJourney || state.journeys?.[0] || null)}
           </section>
@@ -1793,13 +1808,7 @@
             </div>
           </div>
 
-          <nav class="main-nav">
-            <button class="nav-btn nav-journeys" data-action="current-journey">${t('nav.current')}</button>
-            <button class="nav-btn nav-memories" data-action="journeys">${t('nav.memories')}</button>
-            <button class="nav-btn nav-create" data-action="new" aria-label="${t('new.title')}">＋</button>
-            <button class="nav-btn nav-discover" data-action="discover">${t('nav.discover')}</button>
-            <button class="nav-btn nav-me" data-action="settings">${t('nav.me')}</button>
-          </nav>
+          ${navBar()}
         </main>
       </div>`;
 
@@ -1811,7 +1820,7 @@
       home.addEventListener('click', (event) => {
         if (!draftOverlayOpen) return;
         if (event.target.closest('.draft-list')) return;
-        if (event.target.closest('.main-nav')) return;
+        if (event.target.closest('.nav-bar')) return;
         // 点空白处：展开的草稿先收回列表，否则收起草稿列表
         if (expandedDraftId) {
           collapseExpanded();
@@ -1931,7 +1940,7 @@
   /** 草稿列表紧贴加号上方（留一点间隙），内容向上生长。 */
   function positionDraftLayer() {
     const layer = document.getElementById('draft-layer');
-    const nav = document.querySelector('.main-nav');
+    const nav = document.querySelector('.nav-bar');
     const page = document.querySelector('.home-page');
     if (!layer || !nav || !page) return;
     const pageRect = page.getBoundingClientRect();
@@ -2443,10 +2452,13 @@
     }
   }
 
-  /** 跳转后仍可见的导航栏（显示在页面顶部）。 */
-  function navRow() {
+  /**
+   * 底部悬浮导航栏：fixed 定位 + 高 z-index，
+   * 页面内容滚动时从它下面穿过，不会被遮盖。
+   */
+  function navBar() {
     return `
-      <nav class="nav-row">
+      <nav class="nav-bar">
         <button class="nav-btn nav-journeys" data-action="current-journey">${t('nav.current')}</button>
         <button class="nav-btn nav-memories" data-action="journeys">${t('nav.memories')}</button>
         <button class="nav-btn nav-create" data-action="new" aria-label="${t('new.title')}">＋</button>
@@ -2455,12 +2467,40 @@
       </nav>`;
   }
 
+  /** 发现页：挑一个想去的地方。 */
+  const DISCOVER_PLACES = [
+    { name: '雅典卫城', file: 'paintings/athens.jpg', prompt: '我想去雅典卫城' },
+    { name: '卢浮宫', file: 'paintings/louvre.jpg', prompt: '下周去卢浮宫和橘园美术馆' },
+    { name: '新天鹅堡', file: 'paintings/neuschwanstein.jpg', prompt: '去看新天鹅堡的雪景' },
+  ];
+
+  function renderDiscover() {
+    app.innerHTML = `
+      <div class="screen">
+        ${topbar({ title: t('nav.discover'), back: true })}
+        ${navBar()}
+        <main class="page has-nav">
+          <h1 class="page-title">${t('nav.discover')}</h1>
+          <p class="page-sub">${t('discover.sub')}</p>
+          <div class="discover-grid">
+            ${DISCOVER_PLACES.map(
+              (place, index) => `
+              <button class="discover-card" type="button" data-action="plan-discover" data-prompt-index="${index}">
+                <img src="${place.file}" alt="${esc(place.name)}" />
+                <span>${esc(place.name)}</span>
+              </button>`,
+            ).join('')}
+          </div>
+        </main>
+      </div>`;
+  }
+
   function renderJourneys() {
     app.innerHTML = `
       <div class="screen">
         ${topbar({ title: t('journeys.title'), back: true })}
-        ${navRow()}
-        <main class="page">
+        ${navBar()}
+        <main class="page has-nav">
           <h1 class="page-title">${t('journeys.title')}</h1>
           <p class="page-sub" id="journey-summary">${t('journeys.loading')}</p>
 
@@ -2568,8 +2608,8 @@
           back: true,
           right: `<button class="icon-btn" data-action="edit" aria-label="${t('detail.editAria')}">✎</button>`,
         })}
-        ${navRow()}
-        <main class="page detail">
+        ${navBar()}
+        <main class="page has-nav detail">
           <p class="eyebrow">${esc(fmtDay(journey.updated_at))}</p>
           <h1 class="detail-title">${esc(journey.name)}</h1>
           ${
@@ -2681,8 +2721,8 @@
     app.innerHTML = `
       <div class="screen">
         ${topbar({ title: t('settings.title'), back: !publicView })}
-        ${navRow()}
-        <main class="page">
+        ${navBar()}
+        <main class="page has-nav">
           <h1 class="page-title">${t('settings.title')}</h1>
 
           <section class="card panel">
@@ -2871,7 +2911,8 @@
         else navigate('#/journeys');
         break;
       case 'discover':
-        toast(t('nav.discoverSoon'));
+        if (draftOverlayOpen) leaveOverlayTo('#/discover');
+        else navigate('#/discover');
         break;
       case 'current-journey': {
         const target = state.currentJourney
@@ -2916,6 +2957,14 @@
       case 'plan-confirm':
         confirmPlanInput();
         break;
+      case 'plan-discover': {
+        const place = DISCOVER_PLACES[Number(target.dataset.promptIndex || 0)];
+        if (!place) break;
+        resetPlanState();
+        planState.text = place.prompt;
+        navigate('#/new');
+        break;
+      }
       case 'plan-save':
         savePlanAsJourney();
         break;
