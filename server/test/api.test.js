@@ -421,6 +421,30 @@ test('用户语言设置与本地化邮件', async () => {
   token = login.data.token;
 });
 
+test('常用出发地支持多个地点并兼容旧版单对象', async () => {
+  const origins = [
+    { name: '家', country: '中国', province: '上海市', city: '上海市', district: '浦东新区' },
+    { name: '办公室', country: '日本', province: '东京都', city: '新宿区' },
+  ];
+  const saved = await request('/api/me/usual-origin', { method: 'PUT', token, body: { origins } });
+  assert.equal(saved.status, 200);
+  assert.deepEqual(saved.data.usualOrigin, origins.map((origin) => ({ name: '', country: '', province: '', city: '', district: '', township: '', street: '', streetNumber: '', ...origin })));
+  const current = await request('/api/me', { token });
+  assert.deepEqual(current.data.user.usualOrigin, saved.data.usualOrigin);
+
+  const legacy = await request('/api/me/usual-origin', {
+    method: 'PUT', token, body: { name: '旧版地点', country: '中国' },
+  });
+  assert.equal(legacy.status, 200);
+  assert.deepEqual(legacy.data.usualOrigin, [{ name: '旧版地点', country: '中国', province: '', city: '', district: '', township: '', street: '', streetNumber: '' }]);
+
+  const parsed = await request('/api/me/usual-origin/parse', {
+    method: 'POST', token, body: { text: '上海浦东张江路 88 号' },
+  });
+  assert.equal(parsed.status, 200);
+  assert.equal(parsed.data.origin.name, '上海浦东张江路 88 号');
+});
+
 test('AI 描述接口（mock 模式）', async () => {
   const result = await request('/api/ai/journey-description', {
     method: 'POST',

@@ -348,6 +348,8 @@
         originStreetNumber: '门牌号码',
         originSave: '保存出发地',
         originSaved: '常用出发地已保存',
+        originInput: '输入地点，如“上海市浦东新区张江路 88 号”',
+        originMap: '地图选点', originMapHint: '点击地图或拖动图钉选择位置', originMapUse: '使用此地点', originEmpty: '还没有常用地点',
         resetPassword: '重置密码',
         resetPasswordSub: '忘记密码时，输入邮箱后我们会发送重置邮件。',
         aboutTitle: '关于',
@@ -676,6 +678,8 @@
         originStreetNumber: 'Street number',
         originSave: 'Save departure place',
         originSaved: 'Departure place saved',
+        originInput: 'Enter a place, e.g. “88 Zhangjiang Road, Pudong, Shanghai”',
+        originMap: 'Pick on map', originMapHint: 'Click the map or drag the pin to choose a place', originMapUse: 'Use this place', originEmpty: 'No saved places yet',
         resetPassword: 'Reset password',
         resetPasswordSub: 'Forgot your password? We will send you a reset link.',
         aboutTitle: 'About',
@@ -1006,6 +1010,8 @@
         originStreetNumber: 'Hausnummer',
         originSave: 'Abfahrtsort speichern',
         originSaved: 'Abfahrtsort gespeichert',
+        originInput: 'Ort eingeben, z. B. „Zhangjiang-Straße 88, Shanghai“',
+        originMap: 'Auf Karte wählen', originMapHint: 'Karte anklicken oder Markierung ziehen', originMapUse: 'Diesen Ort verwenden', originEmpty: 'Noch keine gespeicherten Orte',
         resetPassword: 'Passwort zurücksetzen',
         resetPasswordSub: 'Passwort vergessen? Wir senden dir einen Reset-Link.',
         aboutTitle: 'Über',
@@ -3398,12 +3404,14 @@
 
           ${!publicView ? `<section class="card panel">
             <h2 class="panel-title">${t('settings.originTitle')}</h2>
-            <form id="origin-form" class="form compact" novalidate>
-              ${[['name', 'originName'], ['country', 'originCountry'], ['province', 'originProvince'], ['city', 'originCity'], ['district', 'originDistrict'], ['township', 'originTownship'], ['street', 'originStreet'], ['streetNumber', 'originStreetNumber']].map(([field, label]) => `
-                <label class="field"><span>${t(`settings.${label}`)}</span><input name="${field}" maxlength="160" value="${esc(state.user.usualOrigin?.[field] || '')}" /></label>`).join('')}
-              <p class="form-error" id="origin-error" hidden></p>
-              <button class="btn primary block" type="submit">${t('settings.originSave')}</button>
+            <div id="origin-list" class="origin-list"></div>
+            <form id="origin-form" class="origin-entry" novalidate>
+              <input name="text" maxlength="1000" placeholder="${esc(t('settings.originInput'))}" aria-label="${esc(t('settings.originInput'))}" />
+              <button class="btn origin-map" type="button" id="origin-map" title="${esc(t('settings.originMap'))}" aria-label="${esc(t('settings.originMap'))}">⌖</button>
+              <button class="btn primary" type="submit">＋</button>
             </form>
+            <p class="form-error" id="origin-error" hidden></p>
+            <div id="origin-map-modal" class="origin-map-modal" hidden><div class="origin-map-head"><strong>${esc(t('settings.originMap'))}</strong><button type="button" class="btn" id="origin-map-close">×</button></div><div id="origin-map-canvas"></div><p>${esc(t('settings.originMapHint'))}</p><button class="btn primary block" id="origin-map-use" type="button" disabled>${esc(t('settings.originMapUse'))}</button></div>
           </section>` : ''}
 
           ${
@@ -3463,22 +3471,61 @@
 
     const passwordForm = document.getElementById('password-form');
     const originForm = document.getElementById('origin-form');
+    const renderOrigins = () => {
+      const list = document.getElementById('origin-list');
+      if (!list) return;
+      const origins = Array.isArray(state.user.usualOrigin) ? state.user.usualOrigin : (state.user.usualOrigin && Object.values(state.user.usualOrigin).some(Boolean) ? [state.user.usualOrigin] : []);
+      list.innerHTML = origins.map((origin, index) => `<div class="origin-chip"><span class="origin-pin">⌖</span><span><strong>${esc(origin.name || origin.city || origin.country || '—')}</strong><small>${esc([origin.district, origin.city, origin.province, origin.country].filter(Boolean).join(' · '))}</small></span><button type="button" class="origin-remove" data-origin-remove="${index}" aria-label="×">×</button></div>`).join('') || `<p class="origin-empty">${esc(t('settings.originEmpty'))}</p>`;
+    };
+    renderOrigins();
+    document.getElementById('origin-list')?.addEventListener('click', async (event) => {
+      const index = Number(event.target.closest('[data-origin-remove]')?.dataset.originRemove);
+      if (!Number.isInteger(index)) return;
+      const origins = [...(Array.isArray(state.user.usualOrigin) ? state.user.usualOrigin : (state.user.usualOrigin && Object.values(state.user.usualOrigin).some(Boolean) ? [state.user.usualOrigin] : []))];
+      origins.splice(index, 1);
+      try { const result = await api('/api/me/usual-origin', { method: 'PUT', body: { origins } }); state.user.usualOrigin = result.usualOrigin; localStorage.setItem(STORAGE.user, JSON.stringify(state.user)); renderOrigins(); }
+      catch (error) { showError('origin-error', error.message); }
+    });
     if (originForm) originForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       hideError('origin-error');
       const button = originForm.querySelector('button[type="submit"]');
       setBusy(button, true, t('busy.saving'));
-      const usualOrigin = Object.fromEntries(['name', 'country', 'province', 'city', 'district', 'township', 'street', 'streetNumber'].map((field) => [field, originForm.elements[field].value.trim()]));
       try {
-        const result = await api('/api/me/usual-origin', { method: 'PUT', body: usualOrigin });
+        const parsed = await api('/api/me/usual-origin/parse', { method: 'POST', body: { text: originForm.elements.text.value.trim() } });
+        const currentOrigins = Array.isArray(state.user.usualOrigin) ? state.user.usualOrigin : (state.user.usualOrigin && Object.values(state.user.usualOrigin).some(Boolean) ? [state.user.usualOrigin] : []);
+        const origins = [...currentOrigins, parsed.origin];
+        const result = await api('/api/me/usual-origin', { method: 'PUT', body: { origins } });
         state.user.usualOrigin = result.usualOrigin;
         localStorage.setItem(STORAGE.user, JSON.stringify(state.user));
+        originForm.reset(); renderOrigins();
         toast(t('settings.originSaved'));
       } catch (error) {
         showError('origin-error', error.message);
       } finally {
         setBusy(button, false);
       }
+    });
+    const mapModal = document.getElementById('origin-map-modal');
+    let selectedAddress = null;
+    document.getElementById('origin-map')?.addEventListener('click', async () => {
+      mapModal.hidden = false;
+      if (!window.L) { await new Promise((resolve, reject) => { const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; document.head.append(link); const script = document.createElement('script'); script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'; script.onload = resolve; script.onerror = reject; document.head.append(script); }); }
+      if (!window.originMapInstance) {
+        const map = window.L.map('origin-map-canvas').setView([35.68, 139.69], 4); window.originMapInstance = map;
+        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19 }).addTo(map);
+        const marker = window.L.marker([35.68, 139.69], { draggable: true }).addTo(map);
+        const pick = async (latlng) => { marker.setLatLng(latlng); selectedAddress = null; const use = document.getElementById('origin-map-use'); use.disabled = true; try { const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latlng.lat}&lon=${latlng.lng}`); selectedAddress = await response.json(); use.disabled = false; } catch { showError('origin-error', '地图地址解析失败'); } };
+        map.on('click', (e) => pick(e.latlng)); marker.on('dragend', (e) => pick(e.target.getLatLng()));
+        if (navigator.geolocation) navigator.geolocation.getCurrentPosition(({coords}) => { map.setView([coords.latitude, coords.longitude], 15); pick({lat: coords.latitude, lng: coords.longitude}); });
+      }
+      window.originMapInstance.invalidateSize();
+    });
+    document.getElementById('origin-map-close')?.addEventListener('click', () => { mapModal.hidden = true; });
+    document.getElementById('origin-map-use')?.addEventListener('click', async () => {
+      const a = selectedAddress?.address || {}; const country = a.country || ''; const province = a.state || a.province || ''; const city = a.city || a.town || a.village || a.county || '';
+      const origin = { name: [a.road, a.house_number, city].filter(Boolean).join(' ') || selectedAddress?.name || city || country, country, province, city, district: a.city_district || a.suburb || a.county || '', township: a.town || a.village || '', street: a.road || '', streetNumber: a.house_number || '' };
+      try { const currentOrigins = Array.isArray(state.user.usualOrigin) ? state.user.usualOrigin : (state.user.usualOrigin && Object.values(state.user.usualOrigin).some(Boolean) ? [state.user.usualOrigin] : []); const origins = [...currentOrigins, origin]; const result = await api('/api/me/usual-origin', { method: 'PUT', body: { origins } }); state.user.usualOrigin = result.usualOrigin; localStorage.setItem(STORAGE.user, JSON.stringify(state.user)); renderOrigins(); mapModal.hidden = true; toast(t('settings.originSaved')); } catch (error) { showError('origin-error', error.message); }
     });
 
     if (passwordForm) {

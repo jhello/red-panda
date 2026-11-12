@@ -401,7 +401,7 @@ function publicUser(row) {
     emailVerified: Boolean(row.email_verified),
     locale: row.locale || 'zh',
     createdAt: row.created_at,
-    usualOrigin,
+    usualOrigin: Array.isArray(usualOrigin) ? usualOrigin : (usualOrigin && Object.values(usualOrigin).some(Boolean) ? [usualOrigin] : []),
   };
 }
 
@@ -562,6 +562,7 @@ export function createApp(config, options = {}) {
         email_verified: row.email_verified,
         locale: row.locale,
         created_at: row.user_created_at,
+        usual_origin: row.usual_origin,
       },
     };
   }
@@ -959,17 +960,32 @@ export function createApp(config, options = {}) {
     /^\/api\/me\/usual-origin$/,
     ({ auth, body }) => {
       const fields = ['name', 'country', 'province', 'city', 'district', 'township', 'street', 'streetNumber'];
-      const origin = {};
-      for (const field of fields) {
-        const value = typeof body[field] === 'string' ? body[field].trim() : '';
+      const origins = Array.isArray(body.origins) ? body.origins : [body];
+      if (origins.length > 20) throw new HttpError(400, '最多保存 20 个常用出发地', 'validation_error');
+      const clean = origins.map((item) => Object.fromEntries(fields.map((field) => {
+        const value = typeof item?.[field] === 'string' ? item[field].trim() : '';
         if (value.length > 160) throw new HttpError(400, '出发地字段不能超过 160 个字符', 'validation_error');
-        origin[field] = value;
-      }
-      db.setUsualOrigin(auth.user.id, origin);
-      return { status: 200, body: { usualOrigin: origin } };
+        return [field, value];
+      }))).filter((item) => Object.values(item).some(Boolean));
+      db.setUsualOrigin(auth.user.id, clean);
+      return { status: 200, body: { usualOrigin: clean } };
     },
     { auth: true },
   );
+
+  route('POST', /^\/api\/me\/usual-origin\/parse$/, async ({ body }) => {
+    const text = typeof body.text === 'string' ? body.text.trim().slice(0, 1000) : '';
+    if (!text) throw new HttpError(400, '请输入地点描述', 'validation_error');
+    const result = await chat(config, [
+      { role: 'system', content: '将用户给出的常用出发地描述解析为 JSON 对象。只返回JSON，键名必须为name,country,province,city,district,township,street,streetNumber；无法确定的值为空字符串。name 用适合显示的简短地点名。' },
+      { role: 'user', content: text },
+    ], { maxTokens: 500, temperature: 0 });
+    let origin;
+    try { origin = result.mock ? { name: text } : JSON.parse(result.content.replace(/^```(?:json)?\s*|\s*```$/g, '')); }
+    catch { throw new AIError('AI 返回的地点格式无法识别，请补充描述后重试。', 502, 'ai_invalid_json'); }
+    const fields = ['name', 'country', 'province', 'city', 'district', 'township', 'street', 'streetNumber'];
+    return { status: 200, body: { origin: Object.fromEntries(fields.map((key) => [key, String(origin[key] || '').slice(0, 160)])) } };
+  }, { auth: true });
 
   route(
     'PUT',
