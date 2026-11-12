@@ -828,44 +828,106 @@ input#plan-input::placeholder {
   color: #a39c8b;
 }
 
-input#plan-input {
-  background: #fffdf9;
-}
-
-.plan-tip {
-  margin: -6px 0 16px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-.plan-frozen {
-  margin: 0 0 18px;
-  padding: 18px;
+/* 输入与「确定」合成同一个圆角矩形的上下两部分 */
+.plan-card {
+  display: grid;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--card);
+  border-radius: 20px;
+  background: #fffdf9;
   box-shadow: var(--shadow-soft);
+  overflow: hidden;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.plan-card:focus-within {
+  border-color: rgba(168, 58, 44, 0.5);
+  box-shadow: 0 0 0 4px rgba(168, 58, 44, 0.09);
+}
+
+.plan-card + .plan-card,
+.plan-card + .card,
+.card + .plan-card {
+  margin-top: 16px;
+}
+
+.plan-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 16px;
+  min-height: 58px;
+}
+
+.plan-card-top input {
+  flex: 1;
+  min-width: 0;
+  padding: 16px 0;
+  border: 0;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1.5;
+  outline: none;
+}
+
+.plan-card-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 16px 0;
   color: var(--ink-soft);
-  font-size: 15px;
-  line-height: 1.9;
+  font-size: 16px;
+  line-height: 1.7;
   overflow-wrap: anywhere;
 }
 
-.plan-loading {
-  display: grid;
-  justify-items: center;
-  gap: 14px;
-  padding: 46px 0 34px;
-  text-align: center;
+.plan-tools {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
 }
 
-.plan-spinner {
-  width: 38px;
-  height: 38px;
+.plan-tools .icon-btn {
+  width: 40px;
+  height: 40px;
+}
+
+.plan-card-bottom {
+  border-top: 1px solid var(--line);
+}
+
+.plan-card-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(140deg, #b34434, var(--seal-dark));
+  color: #fff8ec;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  transition: opacity 0.18s ease, transform 0.14s ease;
+}
+
+.plan-card-btn:active {
+  transform: scale(0.99);
+}
+
+.plan-card-btn:disabled {
+  cursor: wait;
+  opacity: 0.85;
+}
+
+.plan-spin {
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
-  border: 3px solid var(--line);
-  border-top-color: var(--seal);
+  border: 2px solid rgba(255, 248, 236, 0.45);
+  border-top-color: #fff8ec;
   animation: plan-spin 0.9s linear infinite;
 }
 
@@ -873,6 +935,13 @@ input#plan-input {
   to {
     transform: rotate(360deg);
   }
+}
+
+.plan-tip {
+  margin: 12px 2px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 .plan-table {

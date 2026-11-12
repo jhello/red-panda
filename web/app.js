@@ -193,13 +193,12 @@
       },
 
       plan: {
-        promptLabel: '你想去哪里？',
-        placeholder: '想去卢浮宫，雅典卫城还是新天鹅堡？',
+        placeholders: ['我想去雅典卫城', '下周去卢浮宫和橘园美术馆', '去看新天鹅堡的雪景'],
         confirm: '确定',
+        thinking: '我想想',
         edit: '编辑',
         resend: '重发',
         editTip: '改完点「确定」再出发。',
-        waiting: '正在为你寻找旅程…',
         title: '旅程计划',
         sub: '大模型会从你的想法里挑出可以出发的目的地。',
         fieldDestination: '目的地',
@@ -452,13 +451,16 @@
       },
 
       plan: {
-        promptLabel: 'Where to next?',
-        placeholder: 'Which museum, citadel or castle do you dream of?',
+        placeholders: [
+          'I want to visit the Acropolis',
+          'Louvre and the Musée de l’Orangerie next week',
+          'To see the snow at Neuschwanstein Castle',
+        ],
         confirm: 'Confirm',
+        thinking: 'Thinking…',
         edit: 'Edit',
         resend: 'Resend',
         editTip: 'Edit it and confirm again when you are ready.',
-        waiting: 'Planning your journey…',
         title: 'Trip plan',
         sub: 'The model picks out places worth traveling to from your idea.',
         fieldDestination: 'Destination',
@@ -713,13 +715,16 @@
       },
 
       plan: {
-        promptLabel: 'Wohin soll es gehen?',
-        placeholder: 'Welches Museum, welche Burg oder welcher Tempel schwebt dir vor?',
+        placeholders: [
+          'Ich will die Akropolis besuchen',
+          'Louvre und Orangemuseum nächste Woche',
+          'Um den Schnee am Neuschwanstein zu sehen',
+        ],
         confirm: 'Bestätigen',
+        thinking: 'Ich überlege…',
         edit: 'Bearbeiten',
         resend: 'Erneut senden',
         editTip: 'Ändere es und bestätige dann erneut.',
-        waiting: 'Reise wird geplant…',
         title: 'Reiseplan',
         sub: 'Das Modell schlägt Orte vor, die sich lohnen.',
         fieldDestination: 'Ziel',
@@ -1730,6 +1735,15 @@
     return index;
   }
 
+  /** The hint inside the input box changes on every visit. */
+  function randomPlanPlaceholder() {
+    const dict = I18N[getLocale()] || I18N.zh;
+    const list = Array.isArray(dict.plan?.placeholders) ? dict.plan.placeholders : [];
+    const fallback = I18N.zh.plan.placeholders;
+    const pool = list.length ? list : fallback;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
   function renderNewJourney() {
     const plan = planState;
 
@@ -1737,16 +1751,30 @@
       plan.editingItem = null;
     }
 
+    const placeholder = esc(randomPlanPlaceholder());
+    const tools = (withResend) => `
+      <div class="plan-tools">
+        <button class="icon-btn" data-action="plan-edit" aria-label="${t('plan.edit')}">✎</button>
+        ${
+          withResend
+            ? `<button class="icon-btn" data-action="plan-resend" aria-label="${t('plan.resend')}">↻</button>`
+            : ''
+        }
+      </div>`;
+
     let body;
     if (plan.editing) {
       body = `
-        <form id="plan-form" class="form" novalidate>
-          <label class="field">
-            <span>${t('plan.promptLabel')}</span>
-            <input id="plan-input" maxlength="300" placeholder="${t('plan.placeholder')}" value="${esc(plan.text)}" />
-          </label>
+        <form id="plan-form" novalidate>
+          <div class="plan-card">
+            <div class="plan-card-top">
+              <input id="plan-input" maxlength="300" placeholder="${placeholder}" value="${esc(plan.text)}" />
+            </div>
+            <div class="plan-card-bottom">
+              <button class="plan-card-btn" type="submit">${t('plan.confirm')}</button>
+            </div>
+          </div>
           <p class="plan-tip">${t('plan.editTip')}</p>
-          <button class="btn primary block" type="submit">${t('plan.confirm')}</button>
         </form>`;
     } else if (plan.editingItem !== null) {
       const item = plan.items[plan.editingItem];
@@ -1783,22 +1811,26 @@
         </section>`;
     } else if (plan.busy) {
       body = `
-        <div class="plan-loading">
-          <span class="plan-spinner" aria-hidden="true"></span>
-          <p class="muted">${t('plan.waiting')}</p>
-        </div>
-        <p class="plan-frozen">${esc(plan.text)}</p>
-        <div class="ai-row">
-          <button class="icon-btn" data-action="plan-edit" aria-label="${t('plan.edit')}">✎</button>
-          <button class="icon-btn" data-action="plan-resend" aria-label="${t('plan.resend')}">↻</button>
+        <div class="plan-card">
+          <div class="plan-card-top">
+            <p class="plan-card-text">${esc(plan.text)}</p>
+            ${tools(true)}
+          </div>
+          <div class="plan-card-bottom">
+            <button class="plan-card-btn" type="button" disabled>
+              <span>${t('plan.thinking')}</span>
+              <span class="plan-spin" aria-hidden="true"></span>
+            </button>
+          </div>
         </div>
         ${plan.error ? `<p class="form-error">${esc(plan.error)}</p>` : ''}`;
     } else if (plan.items.length > 0) {
       body = `
-        <p class="plan-frozen">${esc(plan.text)}</p>
-        <div class="ai-row">
-          <button class="icon-btn" data-action="plan-edit" aria-label="${t('plan.edit')}">✎</button>
-          <button class="icon-btn" data-action="plan-resend" aria-label="${t('plan.resend')}">↻</button>
+        <div class="plan-card">
+          <div class="plan-card-top">
+            <p class="plan-card-text">${esc(plan.text)}</p>
+            ${tools(true)}
+          </div>
         </div>
         <section class="card panel">
           <h2 class="panel-title">${t('plan.title')}</h2>
@@ -1824,29 +1856,40 @@
                 .join('')}
             </tbody>
           </table>
-          <button class="btn primary block" type="button" data-action="plan-create">${t('plan.create')}</button>
         </section>
+        <div class="plan-card plan-card-action">
+          <div class="plan-card-bottom">
+            <button class="plan-card-btn" type="button" data-action="plan-create">${t('plan.create')}</button>
+          </div>
+        </div>
         ${plan.error ? `<p class="form-error">${esc(plan.error)}</p>` : ''}`;
     } else if (plan.locked) {
       body = `
-        <p class="plan-frozen">${esc(plan.text)}</p>
-        <div class="ai-row">
-          <button class="icon-btn" data-action="plan-edit" aria-label="${t('plan.edit')}">✎</button>
-          <button class="icon-btn" data-action="plan-resend" aria-label="${t('plan.resend')}">↻</button>
+        <div class="plan-card">
+          <div class="plan-card-top">
+            <p class="plan-card-text">${esc(plan.text)}</p>
+            ${tools(false)}
+          </div>
+          <div class="plan-card-bottom">
+            <button class="plan-card-btn" type="button" data-action="plan-resend">${t('plan.resend')}</button>
+          </div>
         </div>
         ${plan.error ? `<p class="form-error">${esc(plan.error)}</p>` : ''}`;
     } else {
       body = `
-        <label class="field">
-          <span>${t('plan.promptLabel')}</span>
-          <input id="plan-input" maxlength="300" placeholder="${t('plan.placeholder')}" value="${esc(plan.text)}" />
-        </label>
-        <button class="btn primary block" type="button" data-action="plan-confirm">${t('plan.confirm')}</button>`;
+        <div class="plan-card">
+          <div class="plan-card-top">
+            <input id="plan-input" maxlength="300" placeholder="${placeholder}" value="${esc(plan.text)}" />
+          </div>
+          <div class="plan-card-bottom">
+            <button class="plan-card-btn" type="button" data-action="plan-confirm">${t('plan.confirm')}</button>
+          </div>
+        </div>`;
     }
 
     app.innerHTML = `
       <div class="screen">
-        ${topbar({ title: t('home.createTitle'), back: true })}
+        ${topbar({ title: '', back: true })}
         <main class="page">
           ${body}
         </main>
