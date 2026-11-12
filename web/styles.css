@@ -145,6 +145,60 @@ code {
   width: fit-content;
 }
 
+/* ---- main navigation (home) ------------------------------------------- */
+
+.main-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 4px 0;
+}
+
+.nav-btn {
+  min-width: 64px;
+  padding: 10px 8px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.nav-btn:hover {
+  background: rgba(120, 96, 60, 0.08);
+}
+
+.nav-btn:active {
+  transform: scale(0.96);
+}
+
+.nav-btn.nav-journeys {
+  text-align: left;
+}
+
+.nav-btn.nav-create {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: linear-gradient(140deg, #b34434, var(--seal-dark));
+  color: #fff8ec;
+  font-size: 26px;
+  line-height: 1;
+  box-shadow: 0 12px 26px rgba(140, 47, 35, 0.22);
+}
+
+.nav-btn.nav-create:active {
+  transform: scale(0.94);
+}
+
 .center-screen {
   align-items: center;
   justify-content: center;

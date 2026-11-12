@@ -54,6 +54,10 @@
       lang: {
         label: '切换语言',
       },
+      nav: {
+        current: '行程',
+        me: '我的',
+      },
 
       api: {
         noServer: '请先设置服务器地址',
@@ -254,6 +258,8 @@
         updatedOk: '密码已更新，其他设备已退出登录。',
         updatedToast: '密码已更新',
         languageTitle: '语言',
+        resetPassword: '重置密码',
+        resetPasswordSub: '忘记密码时，输入邮箱后我们会发送重置邮件。',
         aboutTitle: '关于',
         aboutBody: '小熊猫 · Red Panda {version}',
         aboutData: '数据保存在你自己的服务器上。',
@@ -285,6 +291,10 @@
       loading: 'Opening Red Panda…',
       lang: {
         label: 'Language',
+      },
+      nav: {
+        current: 'Journeys',
+        me: 'Me',
       },
 
       api: {
@@ -486,6 +496,8 @@
         updatedOk: 'Password updated; other devices were signed out.',
         updatedToast: 'Password updated',
         languageTitle: 'Language',
+        resetPassword: 'Reset password',
+        resetPasswordSub: 'Forgot your password? We will send you a reset link.',
         aboutTitle: 'About',
         aboutBody: 'Red Panda · 小熊猫 {version}',
         aboutData: 'Your data lives on your own server.',
@@ -517,6 +529,10 @@
       loading: 'Red Panda wird geöffnet…',
       lang: {
         label: 'Sprache',
+      },
+      nav: {
+        current: 'Reisen',
+        me: 'Meine',
       },
 
       api: {
@@ -720,6 +736,8 @@
         updatedOk: 'Passwort aktualisiert; andere Geräte wurden abgemeldet.',
         updatedToast: 'Passwort aktualisiert',
         languageTitle: 'Sprache',
+        resetPassword: 'Passwort zurücksetzen',
+        resetPasswordSub: 'Passwort vergessen? Wir senden dir einen Reset-Link.',
         aboutTitle: 'Über',
         aboutBody: 'Red Panda · 小熊猫 {version}',
         aboutData: 'Deine Daten liegen auf deinem eigenen Server.',
@@ -1573,36 +1591,22 @@
     app.innerHTML = `
       <div class="screen">
         <header class="topbar">
-          ${brand}
           <div class="topbar-right">
             <button class="icon-btn" data-action="settings" aria-label="${t('settings.title')}">⚙</button>
           </div>
         </header>
 
         <main class="page home-page">
+          <nav class="main-nav">
+            <button class="nav-btn nav-journeys" data-action="current-journey">${t('nav.current')}</button>
+            <button class="nav-btn nav-create" data-action="new" aria-label="${t('new.title')}">＋</button>
+            <button class="nav-btn nav-me" data-action="settings">${t('nav.me')}</button>
+          </nav>
+
           <section class="hero">
             <p class="eyebrow">${t('home.greeting', { name: esc(state.user.displayName || state.user.username) })}</p>
             <h1 class="hero-title">${t('home.title')}</h1>
             <p class="hero-sub">${t('home.sub')}</p>
-          </section>
-
-          <section class="actions">
-            <button class="action-card action-primary" data-action="new">
-              <span class="action-mark">＋</span>
-              <span class="action-copy">
-                <strong>${t('home.createTitle')}</strong>
-                <span>${t('home.createSub')}</span>
-              </span>
-              <span class="action-arrow">→</span>
-            </button>
-            <button class="action-card" data-action="journeys">
-              <span class="action-mark mark-ink">卷</span>
-              <span class="action-copy">
-                <strong>${t('home.listTitle')}</strong>
-                <span>${t('home.listSub')}</span>
-              </span>
-              <span class="action-arrow">→</span>
-            </button>
           </section>
 
           <footer class="home-foot">
@@ -1904,21 +1908,6 @@
             <div class="lang-panel">${languageSwitcher()}</div>
           </section>
 
-          <section class="card panel">
-            <h2 class="panel-title">${t('settings.serverTitle')}</h2>
-            <p class="panel-sub">${t('settings.serverSub')}</p>
-            <form id="server-form" class="form compact" novalidate>
-              <label class="field">
-                <span>${t('settings.serverLabel')}</span>
-                <input id="server-url" value="${esc(state.server)}" placeholder="http://192.168.1.10:8787"
-                  inputmode="url" autocapitalize="off" spellcheck="false" />
-              </label>
-              <p class="form-error" id="server-error" hidden></p>
-              <p class="form-ok" id="server-ok" hidden></p>
-              <button class="btn ghost block" type="submit">${t('settings.testSubmit')}</button>
-            </form>
-          </section>
-
           ${
             publicView
               ? `<section class="card panel">
@@ -1958,6 +1947,12 @@
                     <p class="form-ok" id="password-ok" hidden></p>
                     <button class="btn primary block" type="submit">${t('settings.updatePassword')}</button>
                   </form>
+                </section>
+
+                <section class="card panel">
+                  <h2 class="panel-title">${t('settings.resetPassword')}</h2>
+                  <p class="panel-sub">${t('settings.resetPasswordSub')}</p>
+                  <button class="btn ghost block" id="reset-password-btn" type="button">${t('forgot.submit')}</button>
                 </section>`
           }
 
@@ -1968,46 +1963,6 @@
           </section>
         </main>
       </div>`;
-
-    const form = document.getElementById('server-form');
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      hideError('server-error');
-      const ok = document.getElementById('server-ok');
-      ok.hidden = true;
-
-      const button = form.querySelector('button[type="submit"]');
-      const next = normalizeServer(document.getElementById('server-url').value);
-      if (!next) {
-        showError('server-error', t('setup.urlError'));
-        return;
-      }
-
-      setBusy(button, true, t('setup.connecting'));
-      try {
-        const health = await pingServer(next);
-        const previous = state.server;
-        localStorage.setItem(STORAGE.server, next);
-        state.server = next;
-        ok.textContent = t('settings.connectedOk', { name: health.name || t('brand.name'), version: health.version || '' });
-        ok.hidden = false;
-
-        if (previous && previous !== next) {
-          clearToken();
-          state.authTab = 'login';
-          toast(t('settings.serverChangedToast'));
-          setTimeout(() => navigate('#/login'), 700);
-        } else if (!state.token) {
-          setTimeout(() => navigate('#/login'), 700);
-        } else {
-          setTimeout(() => navigate('#/'), 700);
-        }
-      } catch (error) {
-        showError('server-error', t('setup.connectFailed', { message: error.message }));
-      } finally {
-        setBusy(button, false);
-      }
-    });
 
     const passwordForm = document.getElementById('password-form');
     if (passwordForm) {
@@ -2040,6 +1995,27 @@
           showError('password-error', error.message);
         } finally {
           setBusy(button, false);
+        }
+      });
+    }
+
+    const resetPasswordButton = document.getElementById('reset-password-btn');
+    if (resetPasswordButton) {
+      resetPasswordButton.addEventListener('click', async () => {
+        const email = state.user?.email;
+        if (!email) return;
+        setBusy(resetPasswordButton, true, t('forgot.submit'));
+        try {
+          const data = await api('/api/auth/forgot-password', {
+            method: 'POST',
+            auth: false,
+            body: { email, locale: getLocale() },
+          });
+          toast(data.message || t('forgot.sentFallback'));
+        } catch (error) {
+          toast(error.message, 'error');
+        } finally {
+          setBusy(resetPasswordButton, false);
         }
       });
     }
@@ -2096,6 +2072,11 @@
         break;
       case 'journeys':
         navigate('#/journeys');
+        break;
+      case 'current-journey':
+        if (state.currentJourney) navigate(`#/journey/${state.currentJourney.id}`);
+        else if (state.journeys.length > 0) navigate(`#/journey/${state.journeys[0].id}`);
+        else navigate('#/journeys');
         break;
       case 'home':
         navigate('#/');
