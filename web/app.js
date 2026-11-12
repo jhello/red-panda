@@ -43,6 +43,7 @@
       brand: {
         name: '小熊猫',
         alt: '小熊猫',
+        big: '小熊猫',
       },
       common: {
         back: '返回',
@@ -158,7 +159,7 @@
       home: {
         greeting: '你好，{name}',
         title: '山河远阔，<br />从这里启程。',
-        sub: '把走过的路，写进属于你的旅程。',
+        sub: '勇敢地探索你的世界。',
         createTitle: '创建旅程',
         createSub: '记录一段新的山海',
         listTitle: '查看旅程',
@@ -274,6 +275,7 @@
       brand: {
         name: 'Red Panda',
         alt: 'Red Panda',
+        big: 'Red Panda',
       },
       common: {
         back: 'Back',
@@ -389,7 +391,7 @@
       home: {
         greeting: 'Hello, {name}',
         title: 'Vast mountains, far rivers —<br />your journey starts here.',
-        sub: "Turn the roads you've walked into journeys of your own.",
+        sub: 'Go boldly explore your world.',
         createTitle: 'New journey',
         createSub: 'Record a new adventure',
         listTitle: 'My journeys',
@@ -505,6 +507,7 @@
       brand: {
         name: 'Red Panda',
         alt: 'Red Panda',
+        big: 'Roter Panda',
       },
       common: {
         back: 'Zurück',
@@ -622,7 +625,7 @@
       home: {
         greeting: 'Hallo, {name}',
         title: 'Weite Berge, ferne Flüsse –<br />hier beginnt deine Reise.',
-        sub: 'Halte deine Wege als deine eigenen Reisen fest.',
+        sub: 'Wage mutig deine Welt.',
         createTitle: 'Neue Reise',
         createSub: 'Ein neues Abenteuer festhalten',
         listTitle: 'Meine Reisen',
@@ -756,7 +759,8 @@
       const match = normalizeLocaleTag(tag);
       if (match) return match;
     }
-    return 'zh';
+    // Unknown system languages fall back to English.
+    return 'en';
   }
 
   function getLocale() {
@@ -1066,8 +1070,7 @@
     <div class="brand">
       <img class="seal" src="logo.png" alt="${t('brand.alt')}" />
       <div class="brand-text">
-        <span class="brand-cn">小熊猫</span>
-        <span class="brand-en">Red Panda</span>
+        <span class="brand-cn">${t('brand.big')}</span>
       </div>
     </div>`;
 
@@ -1174,8 +1177,7 @@
         ${languageSwitcher()}
         <div class="auth-hero">
           <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
-          <h1 class="auth-title">小熊猫</h1>
-          <p class="auth-en">RED PANDA</p>
+          <h1 class="auth-title">${t('brand.big')}</h1>
         </div>
         <div class="card auth-card">
           <h2 class="setup-title">${t('setup.title')}</h2>
@@ -1240,8 +1242,7 @@
         ${languageSwitcher()}
         <div class="auth-hero">
           <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
-          <h1 class="auth-title">小熊猫</h1>
-          <p class="auth-en">RED PANDA</p>
+          <h1 class="auth-title">${t('brand.big')}</h1>
           <p class="auth-tag">${t('home.sub')}</p>
         </div>
 
@@ -1391,8 +1392,7 @@
         ${languageSwitcher()}
         <div class="auth-hero">
           <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
-          <h1 class="auth-title">小熊猫</h1>
-          <p class="auth-en">RED PANDA</p>
+          <h1 class="auth-title">${t('brand.big')}</h1>
         </div>
 
         <div class="card auth-card">
@@ -1447,8 +1447,7 @@
         ${languageSwitcher()}
         <div class="auth-hero">
           <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
-          <h1 class="auth-title">小熊猫</h1>
-          <p class="auth-en">RED PANDA</p>
+          <h1 class="auth-title">${t('brand.big')}</h1>
         </div>
 
         <div class="card auth-card">
@@ -1504,8 +1503,8 @@
           ${languageSwitcher()}
           <div class="auth-hero">
             <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
-            <h1 class="auth-title">小熊猫</h1>
-            <p class="auth-en">RED PANDA</p>
+            <h1 class="auth-title">${t('brand.big')}</h1>
+            <p class="auth-tag">${t('home.sub')}</p>
           </div>
           <div class="card auth-card">
             <h2 class="setup-title">${t('reset.invalidTitle')}</h2>
@@ -1522,8 +1521,7 @@
         ${languageSwitcher()}
         <div class="auth-hero">
           <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
-          <h1 class="auth-title">小熊猫</h1>
-          <p class="auth-en">RED PANDA</p>
+          <h1 class="auth-title">${t('brand.big')}</h1>
         </div>
 
         <div class="card auth-card">
