@@ -1786,8 +1786,8 @@
           <div class="draft-layer" id="draft-layer"${draftOverlayOpen ? '' : ' hidden'}>
             <div class="draft-list" id="draft-list">
               ${
-                drafts.length
-                  ? drafts.map((draft) => draftRowMarkup(draft, expandedDraftId === draft.id)).join('')
+                sortedDrafts().length
+                  ? sortedDrafts().map((draft) => draftRowMarkup(draft, expandedDraftId === draft.id)).join('')
                   : `<p class="draft-none">${t('draft.none')}</p>`
               }
             </div>
@@ -1804,6 +1804,7 @@
       </div>`;
 
     if (draftOverlayOpen) startCreateCooldown();
+    positionDraftLayer();
 
     const home = document.querySelector('.home-page');
     if (home) {
@@ -1927,10 +1928,22 @@
     }
   }
 
+  /** 草稿列表紧贴加号上方（留一点间隙），内容向上生长。 */
+  function positionDraftLayer() {
+    const layer = document.getElementById('draft-layer');
+    const nav = document.querySelector('.main-nav');
+    const page = document.querySelector('.home-page');
+    if (!layer || !nav || !page) return;
+    const pageRect = page.getBoundingClientRect();
+    const navRect = nav.getBoundingClientRect();
+    layer.style.top = 'auto';
+    layer.style.bottom = `${Math.round(pageRect.bottom - navRect.top + 10)}px`;
+  }
+
   function refreshDraftList() {
     const list = document.getElementById('draft-list');
     if (!list) return;
-    const drafts = loadDrafts();
+    const drafts = sortedDrafts();
     list.innerHTML = drafts.length
       ? drafts.map((draft) => draftRowMarkup(draft, expandedDraftId === draft.id)).join('')
       : `<p class="draft-none">${t('draft.none')}</p>`;
@@ -2080,6 +2093,13 @@
   function removeDraft(id) {
     if (!id) return;
     saveDrafts(loadDrafts().filter((entry) => entry.id !== id));
+  }
+
+  /** 草稿按创建时间排序，最新的紧挨着加号、依次向上排列。 */
+  function sortedDrafts() {
+    return loadDrafts()
+      .slice()
+      .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
   }
 
   function renderNewJourney() {
@@ -2423,10 +2443,23 @@
     }
   }
 
+  /** 跳转后仍可见的导航栏（显示在页面顶部）。 */
+  function navRow() {
+    return `
+      <nav class="nav-row">
+        <button class="nav-btn nav-journeys" data-action="current-journey">${t('nav.current')}</button>
+        <button class="nav-btn nav-memories" data-action="journeys">${t('nav.memories')}</button>
+        <button class="nav-btn nav-create" data-action="new" aria-label="${t('new.title')}">＋</button>
+        <button class="nav-btn nav-discover" data-action="discover">${t('nav.discover')}</button>
+        <button class="nav-btn nav-me" data-action="settings">${t('nav.me')}</button>
+      </nav>`;
+  }
+
   function renderJourneys() {
     app.innerHTML = `
       <div class="screen">
         ${topbar({ title: t('journeys.title'), back: true })}
+        ${navRow()}
         <main class="page">
           <h1 class="page-title">${t('journeys.title')}</h1>
           <p class="page-sub" id="journey-summary">${t('journeys.loading')}</p>
@@ -2535,6 +2568,7 @@
           back: true,
           right: `<button class="icon-btn" data-action="edit" aria-label="${t('detail.editAria')}">✎</button>`,
         })}
+        ${navRow()}
         <main class="page detail">
           <p class="eyebrow">${esc(fmtDay(journey.updated_at))}</p>
           <h1 class="detail-title">${esc(journey.name)}</h1>
@@ -2647,6 +2681,7 @@
     app.innerHTML = `
       <div class="screen">
         ${topbar({ title: t('settings.title'), back: !publicView })}
+        ${navRow()}
         <main class="page">
           <h1 class="page-title">${t('settings.title')}</h1>
 
