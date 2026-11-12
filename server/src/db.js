@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash  TEXT NOT NULL,
   email_verified INTEGER NOT NULL DEFAULT 0,
   locale         TEXT NOT NULL DEFAULT '',
+  usual_origin   TEXT NOT NULL DEFAULT '{}',
   created_at     TEXT NOT NULL,
   last_login_at  TEXT,
   last_seen_at   TEXT
@@ -99,6 +100,7 @@ function migrate(db) {
     ['display_name', 'display_name TEXT'],
     ['email_verified', 'email_verified INTEGER NOT NULL DEFAULT 0'],
     ['locale', "locale TEXT NOT NULL DEFAULT ''"],
+    ['usual_origin', "usual_origin TEXT NOT NULL DEFAULT '{}'"],
   ];
   for (const [name, ddl] of additions) {
     if (!columns.has(name)) db.exec(`ALTER TABLE users ADD COLUMN ${ddl}`);
@@ -143,13 +145,14 @@ export function openDatabase(dbPath) {
     verifyEmail: db.prepare('UPDATE users SET email_verified = 1 WHERE id = ?'),
     updatePassword: db.prepare('UPDATE users SET password_hash = ? WHERE id = ?'),
     updateLocale: db.prepare('UPDATE users SET locale = ? WHERE id = ?'),
+    updateUsualOrigin: db.prepare('UPDATE users SET usual_origin = ? WHERE id = ?'),
     insertSession: db.prepare(
       'INSERT INTO sessions (token_hash, user_id, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?)',
     ),
     sessionByHash: db.prepare(
       `SELECT s.token_hash, s.user_id, s.expires_at, s.last_seen_at,
               u.username, u.email, u.display_name, u.email_verified, u.locale,
-              u.created_at AS user_created_at
+              u.created_at AS user_created_at, u.usual_origin
        FROM sessions s JOIN users u ON u.id = s.user_id
        WHERE s.token_hash = ?`,
     ),
@@ -294,6 +297,9 @@ export function openDatabase(dbPath) {
 
     setLocale(userId, locale) {
       statements.updateLocale.run(locale, userId);
+    },
+    setUsualOrigin(userId, origin) {
+      statements.updateUsualOrigin.run(JSON.stringify(origin), userId);
     },
 
     createSession({ tokenHash, userId, now, expiresAt }) {

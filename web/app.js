@@ -337,6 +337,17 @@
         updatedOk: '密码已更新，其他设备已退出登录。',
         updatedToast: '密码已更新',
         languageTitle: '语言',
+        originTitle: '常用出发地',
+        originName: '名称',
+        originCountry: '国家 / 地区',
+        originProvince: '省 / 州',
+        originCity: '市',
+        originDistrict: '区 / 县',
+        originTownship: '乡 / 镇 / 街道办',
+        originStreet: '街道',
+        originStreetNumber: '门牌号码',
+        originSave: '保存出发地',
+        originSaved: '常用出发地已保存',
         resetPassword: '重置密码',
         resetPasswordSub: '忘记密码时，输入邮箱后我们会发送重置邮件。',
         aboutTitle: '关于',
@@ -654,6 +665,17 @@
         updatedOk: 'Password updated; other devices were signed out.',
         updatedToast: 'Password updated',
         languageTitle: 'Language',
+        originTitle: 'Usual departure place',
+        originName: 'Name',
+        originCountry: 'Country / region',
+        originProvince: 'State / province',
+        originCity: 'City',
+        originDistrict: 'District / county',
+        originTownship: 'Township / subdistrict',
+        originStreet: 'Street',
+        originStreetNumber: 'Street number',
+        originSave: 'Save departure place',
+        originSaved: 'Departure place saved',
         resetPassword: 'Reset password',
         resetPasswordSub: 'Forgot your password? We will send you a reset link.',
         aboutTitle: 'About',
@@ -973,6 +995,17 @@
         updatedOk: 'Passwort aktualisiert; andere Geräte wurden abgemeldet.',
         updatedToast: 'Passwort aktualisiert',
         languageTitle: 'Sprache',
+        originTitle: 'Üblicher Abfahrtsort',
+        originName: 'Name',
+        originCountry: 'Land / Region',
+        originProvince: 'Bundesland / Provinz',
+        originCity: 'Stadt',
+        originDistrict: 'Bezirk / Landkreis',
+        originTownship: 'Gemeinde / Ortsteil',
+        originStreet: 'Straße',
+        originStreetNumber: 'Hausnummer',
+        originSave: 'Abfahrtsort speichern',
+        originSaved: 'Abfahrtsort gespeichert',
         resetPassword: 'Passwort zurücksetzen',
         resetPasswordSub: 'Passwort vergessen? Wir senden dir einen Reset-Link.',
         aboutTitle: 'Über',
@@ -3358,12 +3391,20 @@
     app.innerHTML = `
       <div class="screen">
         <main class="page has-nav">
-          <h1 class="page-title">${t('nav.me')}</h1>
-
           <section class="card panel">
             <h2 class="panel-title">${t('settings.languageTitle')}</h2>
             <div class="lang-panel">${languageSwitcher()}</div>
           </section>
+
+          ${!publicView ? `<section class="card panel">
+            <h2 class="panel-title">${t('settings.originTitle')}</h2>
+            <form id="origin-form" class="form compact" novalidate>
+              ${[['name', 'originName'], ['country', 'originCountry'], ['province', 'originProvince'], ['city', 'originCity'], ['district', 'originDistrict'], ['township', 'originTownship'], ['street', 'originStreet'], ['streetNumber', 'originStreetNumber']].map(([field, label]) => `
+                <label class="field"><span>${t(`settings.${label}`)}</span><input name="${field}" maxlength="160" value="${esc(state.user.usualOrigin?.[field] || '')}" /></label>`).join('')}
+              <p class="form-error" id="origin-error" hidden></p>
+              <button class="btn primary block" type="submit">${t('settings.originSave')}</button>
+            </form>
+          </section>` : ''}
 
           ${
             publicView
@@ -3421,6 +3462,25 @@
       </div>`;
 
     const passwordForm = document.getElementById('password-form');
+    const originForm = document.getElementById('origin-form');
+    if (originForm) originForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      hideError('origin-error');
+      const button = originForm.querySelector('button[type="submit"]');
+      setBusy(button, true, t('busy.saving'));
+      const usualOrigin = Object.fromEntries(['name', 'country', 'province', 'city', 'district', 'township', 'street', 'streetNumber'].map((field) => [field, originForm.elements[field].value.trim()]));
+      try {
+        const result = await api('/api/me/usual-origin', { method: 'PUT', body: usualOrigin });
+        state.user.usualOrigin = result.usualOrigin;
+        localStorage.setItem(STORAGE.user, JSON.stringify(state.user));
+        toast(t('settings.originSaved'));
+      } catch (error) {
+        showError('origin-error', error.message);
+      } finally {
+        setBusy(button, false);
+      }
+    });
+
     if (passwordForm) {
       passwordForm.addEventListener('submit', async (event) => {
         event.preventDefault();

@@ -391,6 +391,8 @@ function validatePassword(value) {
 }
 
 function publicUser(row) {
+  let usualOrigin = {};
+  try { usualOrigin = JSON.parse(row.usual_origin || '{}'); } catch { /* legacy or malformed data */ }
   return {
     id: row.id,
     email: row.email || null,
@@ -399,6 +401,7 @@ function publicUser(row) {
     emailVerified: Boolean(row.email_verified),
     locale: row.locale || 'zh',
     createdAt: row.created_at,
+    usualOrigin,
   };
 }
 
@@ -947,6 +950,23 @@ export function createApp(config, options = {}) {
       // Keep this session, sign out every other device.
       db.deleteOtherSessions(auth.user.id, auth.tokenHash);
       return { status: 204 };
+    },
+    { auth: true },
+  );
+
+  route(
+    'PUT',
+    /^\/api\/me\/usual-origin$/,
+    ({ auth, body }) => {
+      const fields = ['name', 'country', 'province', 'city', 'district', 'township', 'street', 'streetNumber'];
+      const origin = {};
+      for (const field of fields) {
+        const value = typeof body[field] === 'string' ? body[field].trim() : '';
+        if (value.length > 160) throw new HttpError(400, '出发地字段不能超过 160 个字符', 'validation_error');
+        origin[field] = value;
+      }
+      db.setUsualOrigin(auth.user.id, origin);
+      return { status: 200, body: { usualOrigin: origin } };
     },
     { auth: true },
   );
