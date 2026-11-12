@@ -276,6 +276,37 @@ application/json; charset=utf-8`），`204` 响应无正文。
 }
 ```
 
+### `POST /api/ai/journey-plan`
+
+把一段旅行想法交给大模型，由它分析提取「目的地」「出发时间」「返回时间」，
+供「创建旅程」页面渲染成可编辑的表格。
+
+```json
+{ "prompt": "想去卢浮宫，雅典卫城还是新天鹅堡？" }
+```
+
+- `prompt`：1–500 字符，必填。
+
+响应 `200`：
+
+```json
+{
+  "items": [
+    {
+      "destination": "卢浮宫",
+      "departTime": "2026-12-01T09:30",
+      "returnTime": "2026-12-03T19:00"
+    }
+  ],
+  "model": "gpt-4o-mini",
+  "mock": false
+}
+```
+
+- `items`：按行程顺序排列，每项包含 `destination`、`departTime`、`returnTime`；
+  时间形如 `YYYY-MM-DDTHH:mm`，模型无法确定时为空字符串；
+- `mock`：`true` 表示服务端处于 `RED_PANDA_AI_MOCK=1` 离线模式。
+
 ### `POST /api/ai/chat`
 
 通用对话代理。
@@ -423,6 +454,12 @@ curl -s -X POST "$BASE/api/ai/journey-description" \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"name":"东海之行"}'
+
+# 让大模型分析旅行想法，提取目的地与时间
+curl -s -X POST "$BASE/api/ai/journey-plan" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"想去卢浮宫，雅典卫城还是新天鹅堡？"}'
 
 # 看板状态
 curl -s "$BASE/api/admin/status" -H "X-Admin-Token: $(cat data/admin-token)"

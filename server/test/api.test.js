@@ -430,6 +430,36 @@ test('AI 描述接口（mock 模式）', async () => {
   assert.ok(result.data.description.includes('归墟'));
 });
 
+test('AI 旅程规划接口（mock 模式）', async () => {
+  const result = await request('/api/ai/journey-plan', {
+    method: 'POST',
+    token,
+    body: { prompt: '想去卢浮宫，雅典卫城还是新天鹅堡？' },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.data.mock, true);
+  assert.ok(Array.isArray(result.data.items));
+  assert.ok(result.data.items.length > 0);
+  assert.ok(result.data.items[0].destination);
+  assert.ok('departTime' in result.data.items[0]);
+  assert.ok('returnTime' in result.data.items[0]);
+});
+
+test('AI 旅程规划接口校验输入', async () => {
+  const empty = await request('/api/ai/journey-plan', {
+    method: 'POST',
+    token,
+    body: { prompt: '   ' },
+  });
+  assert.equal(empty.status, 400);
+
+  const anonymous = await request('/api/ai/journey-plan', {
+    method: 'POST',
+    body: { prompt: '想去卢浮宫' },
+  });
+  assert.equal(anonymous.status, 401);
+});
+
 test('管理员状态包含用户与旅程统计', async () => {
   const status = await request('/api/admin/status', { admin: 'test-admin-token' });
   assert.equal(status.status, 200);

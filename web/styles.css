@@ -822,6 +822,105 @@ img.seal {
   font-size: 12px;
 }
 
+/* ---- journey plan (create journey) -------------------------------------- */
+
+input#plan-input::placeholder {
+  color: #a39c8b;
+}
+
+input#plan-input {
+  background: #fffdf9;
+}
+
+.plan-tip {
+  margin: -6px 0 16px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.plan-frozen {
+  margin: 0 0 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-soft);
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
+
+.plan-loading {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: 46px 0 34px;
+  text-align: center;
+}
+
+.plan-spinner {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  border-top-color: var(--seal);
+  animation: plan-spin 0.9s linear infinite;
+}
+
+@keyframes plan-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.plan-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 18px;
+}
+
+.plan-table th,
+.plan-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.plan-table th {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.plan-table td:first-child {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.plan-row {
+  cursor: pointer;
+}
+
+.plan-row:hover td {
+  background: rgba(120, 96, 60, 0.05);
+}
+
+.plan-period {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fffdf9;
+  font-size: 14px;
+  outline: none;
+}
+
 /* ---- buttons ------------------------------------------------------------ */
 
 .btn {

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { URL } from 'node:url';
 
-import { AIError, aiStatus, chat } from './ai.js';
+import { AIError, aiStatus, chat, mockPlan } from './ai.js';
 import { hashPassword, hashToken, newSessionToken, safeEqual, verifyPassword } from './auth.js';
 import { fileSize, openDatabase } from './db.js';
 import { getLanUrls } from './config.js';
@@ -113,6 +113,44 @@ function optionalString(value, label, max = 5000) {
   const text = value.trim();
   if (text.length > max) throw new HttpError(400, `${label}不能超过 ${max} 个字符`, 'validation_error');
   return text;
+}
+
+/**
+ * Turn an LLM answer into a normalized journey plan:
+ * { items: [{ destination, departTime, returnTime }] }.
+ * The model is asked to answer with JSON only, so strip code fences if present.
+ */
+function parseJourneyPlan(content) {
+  let text = String(content ?? '').trim();
+  const fence = /```(?:json)?/i.exec(text);
+  if (fence) {
+    const start = text.indexOf(fence[0]);
+    const end = text.indexOf('```', start + fence[0].length);
+    if (start !== -1 && end > start) text = text.slice(start + fence[0].length, end);
+  }
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) {
+    throw new AIError('AI 返回内容格式不正确', 502, 'ai_invalid_json');
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(text.slice(start, end + 1));
+  } catch {
+    throw new AIError('AI 返回内容格式不正确', 502, 'ai_invalid_json');
+  }
+  const rawItems = Array.isArray(parsed?.items) ? parsed.items : Array.isArray(parsed) ? parsed : [];
+  const items = [];
+  for (const raw of rawItems) {
+    if (!raw || typeof raw !== 'object') continue;
+    const destination = String(raw.destination ?? '').trim();
+    const departTime = String(raw.departTime ?? '').trim();
+    const returnTime = String(raw.returnTime ?? '').trim();
+    if (!destination) continue;
+    items.push({ destination: destination.slice(0, 80), departTime: departTime.slice(0, 16), returnTime: returnTime.slice(0, 16) });
+  }
+  if (items.length === 0) throw new AIError('AI 没有返回可用的旅程计划', 502, 'ai_empty');
+  return { items };
 }
 
 function normalizeEmail(value) {
@@ -769,6 +807,45 @@ export function createApp(config, options = {}) {
       return {
         status: 200,
         body: { description: result.content, model: result.model, mock: result.mock },
+      };
+    },
+    { auth: true },
+  );
+
+  route(
+    'POST',
+    /^\/api\/ai\/journey-plan$/,
+    async ({ body }) => {
+      const prompt = requiredString(body.prompt, '旅行想法', { min: 1, max: 500 });
+      if (config.ai.mock) {
+        state.metrics.aiCalls += 1;
+        const plan = mockPlan(prompt);
+        return { status: 200, body: { items: plan.items, model: 'mock', mock: true } };
+      }
+      const result = await chat(
+        config,
+        [
+          {
+            role: 'system',
+            content:
+              '你是「小熊猫」旅程应用的向导，擅长把旅行想法整理成可出发的旅程计划。' +
+              '从用户描述里分析提取目的地（地点）和时间。' +
+              '只输出一个 JSON 对象，不要 Markdown 代码块，不要解释。',
+          },
+          {
+            role: 'user',
+            content:
+              `用户想去的地方：${prompt}\n` +
+              '请提取这段旅程的「目的地」和「出发时间 / 返回时间」，并输出旅程计划 JSON。',
+          },
+        ],
+        { maxTokens: 800, temperature: 0.6 },
+      );
+      state.metrics.aiCalls += 1;
+      const plan = parseJourneyPlan(result.content);
+      return {
+        status: 200,
+        body: { items: plan.items, model: result.model, mock: result.mock },
       };
     },
     { auth: true },

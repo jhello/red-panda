@@ -83,6 +83,7 @@
         bad_json: 'JSON 格式不正确',
         not_found: '内容不存在',
         internal_error: '服务器内部错误',
+        ai_invalid_json: 'AI 返回的内容格式不正确',
       },
 
       setup: {
@@ -189,6 +190,26 @@
         busy: '正在落笔…',
         done: 'AI 已写好，你可以继续修改',
         mock: '已生成示例描述（服务端为 mock 模式）',
+      },
+
+      plan: {
+        promptLabel: '你想去哪里？',
+        placeholder: '想去卢浮宫，雅典卫城还是新天鹅堡？',
+        confirm: '确定',
+        edit: '编辑',
+        resend: '重发',
+        editTip: '改完点「确定」再出发。',
+        waiting: '正在为你寻找旅程…',
+        title: '旅程计划',
+        sub: '大模型会从你的想法里挑出可以出发的目的地。',
+        fieldDestination: '目的地',
+        fieldDepart: '出发时间',
+        fieldReturn: '返回时间',
+        planEmpty: '这次没有为你挑出合适的旅程。',
+        editItem: '修改旅程',
+        editItemSub: '改完直接点「确定」即可。',
+        saveItem: '保存修改',
+        create: '创建旅程',
       },
 
       journeys: {
@@ -321,6 +342,7 @@
         bad_json: 'Malformed JSON',
         not_found: 'Not found',
         internal_error: 'Internal server error',
+        ai_invalid_json: 'The AI returned an unexpected response',
       },
 
       setup: {
@@ -427,6 +449,26 @@
         busy: 'Writing…',
         done: 'AI wrote a draft — feel free to edit it',
         mock: 'Sample description generated (server is in mock mode)',
+      },
+
+      plan: {
+        promptLabel: 'Where to next?',
+        placeholder: 'Which museum, citadel or castle do you dream of?',
+        confirm: 'Confirm',
+        edit: 'Edit',
+        resend: 'Resend',
+        editTip: 'Edit it and confirm again when you are ready.',
+        waiting: 'Planning your journey…',
+        title: 'Trip plan',
+        sub: 'The model picks out places worth traveling to from your idea.',
+        fieldDestination: 'Destination',
+        fieldDepart: 'Departure',
+        fieldReturn: 'Return',
+        planEmpty: "It didn't find a place worth traveling to this time.",
+        editItem: 'Edit stop',
+        editItemSub: 'Make your changes, then confirm.',
+        saveItem: 'Save changes',
+        create: 'Create journey',
       },
 
       journeys: {
@@ -560,6 +602,7 @@
         bad_json: 'Fehlerhaftes JSON',
         not_found: 'Nicht gefunden',
         internal_error: 'Interner Serverfehler',
+        ai_invalid_json: 'Die KI hat eine unerwartete Antwort zurückgegeben',
       },
 
       setup: {
@@ -667,6 +710,26 @@
         busy: 'Schreibt…',
         done: 'Die KI ist fertig – du kannst es anpassen',
         mock: 'Beispieltext erzeugt (Server im Mock-Modus)',
+      },
+
+      plan: {
+        promptLabel: 'Wohin soll es gehen?',
+        placeholder: 'Welches Museum, welche Burg oder welcher Tempel schwebt dir vor?',
+        confirm: 'Bestätigen',
+        edit: 'Bearbeiten',
+        resend: 'Erneut senden',
+        editTip: 'Ändere es und bestätige dann erneut.',
+        waiting: 'Reise wird geplant…',
+        title: 'Reiseplan',
+        sub: 'Das Modell schlägt Orte vor, die sich lohnen.',
+        fieldDestination: 'Ziel',
+        fieldDepart: 'Abreise',
+        fieldReturn: 'Rückkehr',
+        planEmpty: 'Diesmal hat es keinen passenden Ziel gefunden.',
+        editItem: 'Stopp bearbeiten',
+        editItemSub: 'Änderungen übernehmen, dann bestätigen.',
+        saveItem: 'Änderungen speichern',
+        create: 'Reise erstellen',
       },
 
       journeys: {
@@ -1120,6 +1183,10 @@
     }
 
     const route = parseRoute();
+
+    // Entering "create journey" from another page always starts a fresh plan.
+    if (route.name === 'new' && currentRouteName !== 'new') resetPlanState();
+    currentRouteName = route.name;
 
     if (!state.server) {
       renderSetup();
@@ -1611,64 +1678,304 @@
       });
   }
 
+  // ---- journey plan: prompt → AI plan → editable table ---------------------
+
+  const PLAN_PERIODS = {
+    zh: [
+      { label: '上午', hour: 9 },
+      { label: '下午', hour: 14 },
+      { label: '傍晚', hour: 19 },
+    ],
+    en: [
+      { label: 'Morning', hour: 9 },
+      { label: 'Afternoon', hour: 14 },
+      { label: 'Evening', hour: 19 },
+    ],
+    de: [
+      { label: 'Morgen', hour: 9 },
+      { label: 'Vormittag', hour: 14 },
+      { label: 'Abend', hour: 19 },
+    ],
+  };
+
+  const planState = {
+    text: '',
+    locked: false,
+    editing: false,
+    editingItem: null,
+    busy: false,
+    error: '',
+    items: [],
+  };
+
+  let currentRouteName = '';
+
+  function resetPlanState() {
+    planState.text = '';
+    planState.locked = false;
+    planState.editing = false;
+    planState.editingItem = null;
+    planState.busy = false;
+    planState.error = '';
+    planState.items = [];
+  }
+
+  function periodIndexForHour(periods, hour) {
+    const hours = periods.map((p) => p.hour);
+    let index = 0;
+    for (let i = 1; i < hours.length; i += 1) {
+      if (hour >= hours[i]) index = i;
+    }
+    if (hour < hours[0]) index = 0;
+    return index;
+  }
+
   function renderNewJourney() {
+    const plan = planState;
+
+    if (plan.editingItem !== null && plan.items[plan.editingItem] == null) {
+      plan.editingItem = null;
+    }
+
+    let body;
+    if (plan.editing) {
+      body = `
+        <form id="plan-form" class="form" novalidate>
+          <label class="field">
+            <span>${t('plan.promptLabel')}</span>
+            <input id="plan-input" maxlength="300" placeholder="${t('plan.placeholder')}" value="${esc(plan.text)}" />
+          </label>
+          <p class="plan-tip">${t('plan.editTip')}</p>
+          <button class="btn primary block" type="submit">${t('plan.confirm')}</button>
+        </form>`;
+    } else if (plan.editingItem !== null) {
+      const item = plan.items[plan.editingItem];
+      const periods = PLAN_PERIODS[getLocale()] || PLAN_PERIODS.zh;
+      const departIndex = periodIndexForHour(periods, Number(localPlanTime(item?.departTime).slice(11, 13) || 9));
+      const returnIndex = periodIndexForHour(periods, Number(localPlanTime(item?.returnTime).slice(11, 13) || 9));
+      const periodOptions = periods
+        .map((p, i) => `<option value="${i}" ${i === departIndex ? 'selected' : ''}>${esc(p.label)}</option>`)
+        .join('');
+      const periodOptionsReturn = periods
+        .map((p, i) => `<option value="${i}" ${i === returnIndex ? 'selected' : ''}>${esc(p.label)}</option>`)
+        .join('');
+      body = `
+        <section class="card panel">
+          <h2 class="panel-title">${t('plan.editItem')}</h2>
+          <p class="panel-sub">${t('plan.editItemSub')}</p>
+          <div class="form">
+            <label class="field">
+              <span>${t('plan.fieldDestination')}</span>
+              <input id="plan-item-destination" maxlength="80" value="${esc(item?.destination ?? '')}" />
+            </label>
+            <label class="field">
+              <span>${t('plan.fieldDepart')}</span>
+              <input type="datetime-local" id="plan-item-depart" value="${esc(localPlanTime(item?.departTime))}" />
+              <select class="plan-period" id="plan-item-depart-period">${periodOptions}</select>
+            </label>
+            <label class="field">
+              <span>${t('plan.fieldReturn')}</span>
+              <input type="datetime-local" id="plan-item-return" value="${esc(localPlanTime(item?.returnTime))}" />
+              <select class="plan-period" id="plan-item-return-period">${periodOptionsReturn}</select>
+            </label>
+          </div>
+          <button class="btn primary block" type="button" id="plan-item-save">${t('plan.saveItem')}</button>
+        </section>`;
+    } else if (plan.busy) {
+      body = `
+        <div class="plan-loading">
+          <span class="plan-spinner" aria-hidden="true"></span>
+          <p class="muted">${t('plan.waiting')}</p>
+        </div>
+        <p class="plan-frozen">${esc(plan.text)}</p>
+        <div class="ai-row">
+          <button class="icon-btn" data-action="plan-edit" aria-label="${t('plan.edit')}">✎</button>
+          <button class="icon-btn" data-action="plan-resend" aria-label="${t('plan.resend')}">↻</button>
+        </div>
+        ${plan.error ? `<p class="form-error">${esc(plan.error)}</p>` : ''}`;
+    } else if (plan.items.length > 0) {
+      body = `
+        <p class="plan-frozen">${esc(plan.text)}</p>
+        <div class="ai-row">
+          <button class="icon-btn" data-action="plan-edit" aria-label="${t('plan.edit')}">✎</button>
+          <button class="icon-btn" data-action="plan-resend" aria-label="${t('plan.resend')}">↻</button>
+        </div>
+        <section class="card panel">
+          <h2 class="panel-title">${t('plan.title')}</h2>
+          <p class="panel-sub">${t('plan.sub')}</p>
+          <table class="plan-table">
+            <thead>
+              <tr>
+                <th>${t('plan.fieldDestination')}</th>
+                <th>${t('plan.fieldDepart')}</th>
+                <th>${t('plan.fieldReturn')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${plan.items
+                .map(
+                  (item, index) => `
+                <tr class="plan-row" data-action="plan-item-edit" data-plan-index="${index}">
+                  <td>${esc(item.destination)}</td>
+                  <td>${esc(fmtDate(item.departTime))}</td>
+                  <td>${esc(fmtDate(item.returnTime))}</td>
+                </tr>`,
+                )
+                .join('')}
+            </tbody>
+          </table>
+          <button class="btn primary block" type="button" data-action="plan-create">${t('plan.create')}</button>
+        </section>
+        ${plan.error ? `<p class="form-error">${esc(plan.error)}</p>` : ''}`;
+    } else if (plan.locked) {
+      body = `
+        <p class="plan-frozen">${esc(plan.text)}</p>
+        <div class="ai-row">
+          <button class="icon-btn" data-action="plan-edit" aria-label="${t('plan.edit')}">✎</button>
+          <button class="icon-btn" data-action="plan-resend" aria-label="${t('plan.resend')}">↻</button>
+        </div>
+        ${plan.error ? `<p class="form-error">${esc(plan.error)}</p>` : ''}`;
+    } else {
+      body = `
+        <label class="field">
+          <span>${t('plan.promptLabel')}</span>
+          <input id="plan-input" maxlength="300" placeholder="${t('plan.placeholder')}" value="${esc(plan.text)}" />
+        </label>
+        <button class="btn primary block" type="button" data-action="plan-confirm">${t('plan.confirm')}</button>`;
+    }
+
     app.innerHTML = `
       <div class="screen">
         ${topbar({ title: t('home.createTitle'), back: true })}
         <main class="page">
-          <h1 class="page-title">${t('new.title')}</h1>
-          <p class="page-sub">${t('new.sub')}</p>
-
-          <form id="journey-form" class="form" novalidate>
-            <label class="field">
-              <span>${t('field.name')}</span>
-              <input id="journey-name" maxlength="80" placeholder="${t('new.namePlaceholder')}" required />
-            </label>
-            <label class="field">
-              <span>${t('field.desc')}</span>
-              <textarea id="journey-desc" maxlength="5000" rows="6" placeholder="${t('new.descPlaceholder')}"></textarea>
-            </label>
-
-            <div class="ai-row">
-              <button type="button" class="btn ghost" id="ai-write">${t('ai.write')}</button>
-              <span class="ai-hint">${t('ai.hint')}</span>
-            </div>
-
-            <p class="form-error" id="form-error" hidden></p>
-            <button class="btn primary block" type="submit">${t('new.save')}</button>
-          </form>
+          ${body}
         </main>
       </div>`;
 
-    const form = document.getElementById('journey-form');
-    const nameInput = document.getElementById('journey-name');
-    const descInput = document.getElementById('journey-desc');
-    const aiButton = document.getElementById('ai-write');
+    const form = document.getElementById('plan-form');
+    const input = document.getElementById('plan-input');
+    const itemSaveButton = document.getElementById('plan-item-save');
+    const itemDestination = document.getElementById('plan-item-destination');
+    const itemDepart = document.getElementById('plan-item-depart');
+    const itemDepartPeriod = document.getElementById('plan-item-depart-period');
+    const itemReturn = document.getElementById('plan-item-return');
+    const itemReturnPeriod = document.getElementById('plan-item-return-period');
 
-    aiButton.addEventListener('click', () => {
-      runAI(nameInput.value, descInput, aiButton, 'form-error');
+    if (form) {
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        confirmPlanInput();
+      });
+    }
+    if (input) input.addEventListener('input', () => {
+      planState.text = input.value;
     });
 
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      hideError('form-error');
-      const name = nameInput.value.trim();
-      if (!name) return showError('form-error', t('new.errName'));
+    const bindTimeField = (inputEl, periodEl, key) => {
+      if (!inputEl || !periodEl) return;
+      const saveValue = (value) => {
+        const itemIndex = planState.editingItem;
+        const item = itemIndex !== null ? planState.items[itemIndex] : null;
+        if (item) planState.items[itemIndex] = { ...item, [key]: value };
+      };
+      inputEl.addEventListener('change', () => {
+        const value = inputEl.value;
+        const hour = value ? Number(value.slice(11, 13) || 9) : 9;
+        const periods = PLAN_PERIODS[getLocale()] || PLAN_PERIODS.zh;
+        periodEl.value = String(periodIndexForHour(periods, hour));
+        saveValue(value);
+      });
+      periodEl.addEventListener('change', () => {
+        const value = inputEl.value;
+        if (!value) return;
+        const period = PLAN_PERIODS[getLocale()] || PLAN_PERIODS.zh;
+        const periodDef = period[Number(periodEl.value)];
+        if (!periodDef) return;
+        const next = `${value.slice(0, 10)}T${String(periodDef.hour).padStart(2, '0')}:${value.slice(14, 16) || '00'}`;
+        inputEl.value = next;
+        saveValue(next);
+      });
+    };
 
-      const button = form.querySelector('button[type="submit"]');
-      setBusy(button, true, t('busy.saving'));
-      try {
-        const { journey } = await api('/api/journeys', {
-          method: 'POST',
-          body: { name, description: descInput.value.trim() },
-        });
-        toast(t('journey.createdToast'));
-        navigate(`#/journey/${journey.id}`);
-      } catch (error) {
-        showError('form-error', error.message);
-        setBusy(button, false);
-      }
+    if (itemSaveButton) itemSaveButton.addEventListener('click', () => {
+      planState.editingItem = null;
+      renderNewJourney();
     });
+    if (itemDestination) itemDestination.addEventListener('change', () => {
+      const itemIndex = planState.editingItem;
+      const item = itemIndex !== null ? planState.items[itemIndex] : null;
+      if (item) planState.items[itemIndex] = { ...item, destination: itemDestination.value };
+    });
+    bindTimeField(itemDepart, itemDepartPeriod, 'departTime');
+    bindTimeField(itemReturn, itemReturnPeriod, 'returnTime');
+  }
+
+  function localPlanTime(value) {
+    const text = String(value ?? '');
+    return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text) ? text.slice(0, 16) : '';
+  }
+
+  function confirmPlanInput() {
+    const text = planState.text.trim();
+    if (!text) return;
+    planState.text = text;
+    planState.locked = true;
+    planState.editing = false;
+    planState.editingItem = null;
+    planState.error = '';
+    planState.items = [];
+    runPlan(text);
+  }
+
+  async function runPlan(text) {
+    const prompt = String(text ?? '').trim();
+    if (!prompt) return;
+    planState.busy = true;
+    planState.error = '';
+    renderNewJourney();
+    let items = [];
+    try {
+      const data = await api('/api/ai/journey-plan', {
+        method: 'POST',
+        body: { prompt },
+        timeout: 90000,
+      });
+      items = Array.isArray(data?.items) ? data.items : [];
+    } catch (error) {
+      items = [];
+      planState.error = error.message;
+    }
+    planState.items = items;
+    planState.busy = false;
+    renderNewJourney();
+  }
+
+  async function createJourneyFromPlan() {
+    const items = planState.items;
+    const name = (items[0]?.destination || planState.text || '').trim().slice(0, 80);
+    if (!name) {
+      planState.error = t('new.errName');
+      renderNewJourney();
+      return;
+    }
+    const description = items
+      .map((item) => [item?.destination, item?.departTime, item?.returnTime].filter(Boolean).join(' · '))
+      .filter(Boolean)
+      .join('；');
+    const button = document.querySelector('[data-action="plan-create"]');
+    setBusy(button, true, t('busy.sending'));
+    try {
+      const { journey } = await api('/api/journeys', {
+        method: 'POST',
+        body: { name, description: description || planState.text },
+      });
+      toast(t('journey.createdToast'));
+      navigate(`#/journey/${journey.id}`);
+    } catch (error) {
+      planState.error = error.message;
+      setBusy(button, false);
+      renderNewJourney();
+    }
   }
 
   async function runAI(name, textarea, button, errorId) {
@@ -2050,6 +2357,7 @@
         navigate('#/settings');
         break;
       case 'new':
+        resetPlanState();
         navigate('#/new');
         break;
       case 'journeys':
@@ -2089,6 +2397,26 @@
         break;
       case 'edit':
         if (state.currentJourney) renderJourneyEdit(state.currentJourney);
+        break;
+      case 'plan-confirm':
+        confirmPlanInput();
+        break;
+      case 'plan-create':
+        createJourneyFromPlan();
+        break;
+      case 'plan-edit':
+        planState.editing = true;
+        planState.editingItem = null;
+        planState.error = '';
+        renderNewJourney();
+        break;
+      case 'plan-resend':
+        runPlan(planState.text);
+        break;
+      case 'plan-item-edit':
+        planState.editingItem = Number(target.dataset.planIndex || 0);
+        planState.error = '';
+        renderNewJourney();
         break;
       case 'cancel-edit':
         if (state.currentJourney) renderJourneyView(state.currentJourney);

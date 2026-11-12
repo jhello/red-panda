@@ -90,6 +90,25 @@ export async function chat(config, messages, options = {}) {
   };
 }
 
+/**
+ * Offline stand-in for the journey plan: derive a single stop from the prompt.
+ * Returns { items: [{ destination, departTime, returnTime }] }.
+ */
+export function mockPlan(input) {
+  const text = String(input ?? '').trim();
+  const first = text.split(/[,，。！!?、\s]+/).map((part) => part.trim()).find(Boolean) || '未定之地';
+  const destination = first.replace(/^(?:我)?(?:想要|想去|要去|打算去|计划去|准备去)/, '').trim() || first;
+  return {
+    items: [
+      {
+        destination: destination.slice(0, 80) || '未定之地',
+        departTime: '',
+        returnTime: '',
+      },
+    ],
+  };
+}
+
 export function aiStatus(config) {
   return {
     configured: config.ai.mock || Boolean(config.ai.apiKey),
