@@ -491,6 +491,30 @@ test('行程计划解析：单个目的地写成数组时拆成多行', () => {
   );
 });
 
+test('行程计划解析：单对象 + 目的地数组 + 日期别名', () => {
+  // 智谱 GLM 常见的返回形态：单个对象，destination 是数组，时间用 *_date
+  const plan = parseJourneyPlan(
+    '```json\n{"destination":["卢浮宫","雅典卫城"],"departure_date":"2026-12-15","return_date":"2026-12-18"}\n```',
+  );
+  assert.equal(plan.items.length, 2);
+  assert.deepEqual(
+    plan.items.map((item) => item.destination),
+    ['卢浮宫', '雅典卫城'],
+  );
+  assert.equal(plan.items[0].departTime, '2026-12-15T09:00');
+  assert.equal(plan.items[0].returnTime, '2026-12-18T09:00');
+});
+
+test('行程计划解析：中文字段名也能识别', () => {
+  const plan = parseJourneyPlan(
+    '{"目的地":"新天鹅堡","出发时间":"2026-12-01T09:00","返回时间":"2026-12-03T19:00"}',
+  );
+  assert.equal(plan.items.length, 1);
+  assert.equal(plan.items[0].destination, '新天鹅堡');
+  assert.equal(plan.items[0].departTime, '2026-12-01T09:00');
+  assert.equal(plan.items[0].returnTime, '2026-12-03T19:00');
+});
+
 test('行程计划解析：无法解析时报错', () => {
   assert.throws(() => parseJourneyPlan('完全不是 JSON'), /格式不正确/);
   assert.throws(() => parseJourneyPlan('{"items":[]}'), /可用的旅程计划/);

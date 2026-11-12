@@ -10,6 +10,7 @@
   };
 
   const app = document.getElementById('app');
+  const navHost = document.getElementById('app-nav');
   const toastEl = document.getElementById('toast');
 
   const state = {
@@ -1236,6 +1237,7 @@
   function render() {
     if (!state.ready) {
       app.innerHTML = loadingScreen();
+      renderNavBar();
       return;
     }
 
@@ -1273,6 +1275,7 @@
       clearToken();
     }
     if (!state.token) {
+      renderNavBar();
       switch (route.name) {
         case 'settings':
           renderSettings({ publicView: true });
@@ -1296,6 +1299,7 @@
       // We could not verify the cached session (for example offline on first
       // launch after upgrading). Fall back to the login screen instead of an
       // error page; the token is kept and will be re-checked on next launch.
+      renderNavBar();
       renderAuth('login');
       return;
     }
@@ -1328,6 +1332,7 @@
         renderHome();
         break;
     }
+    renderNavBar();
   }
 
   function renderSetup() {
@@ -1808,8 +1813,7 @@
             </div>
           </div>
 
-          ${navBar()}
-        </main>
+          </main>
       </div>`;
 
     if (draftOverlayOpen) startCreateCooldown();
@@ -2453,9 +2457,17 @@
   }
 
   /**
-   * 底部悬浮导航栏：fixed 定位 + 高 z-index，
-   * 页面内容滚动时从它下面穿过，不会被遮盖。
+   * 常驻底部导航：渲染在 #app-nav 宿主里（不随页面内容重绘），
+   * fixed 定位 + 高 z-index，永远悬浮在底部且不被任何页面遮盖。
    */
+  function renderNavBar() {
+    if (!navHost) return;
+    // 只要已登录就常驻显示：任何页面（含等待服务器时）都不会缺失。
+    const show = Boolean(state.user);
+    navHost.hidden = !show;
+    navHost.innerHTML = show ? navBar() : '';
+  }
+
   function navBar() {
     return `
       <nav class="nav-bar">
@@ -2478,7 +2490,6 @@
     app.innerHTML = `
       <div class="screen">
         ${topbar({ title: t('nav.discover'), back: true })}
-        ${navBar()}
         <main class="page has-nav">
           <h1 class="page-title">${t('nav.discover')}</h1>
           <p class="page-sub">${t('discover.sub')}</p>
@@ -2499,7 +2510,6 @@
     app.innerHTML = `
       <div class="screen">
         ${topbar({ title: t('journeys.title'), back: true })}
-        ${navBar()}
         <main class="page has-nav">
           <h1 class="page-title">${t('journeys.title')}</h1>
           <p class="page-sub" id="journey-summary">${t('journeys.loading')}</p>
@@ -2608,7 +2618,6 @@
           back: true,
           right: `<button class="icon-btn" data-action="edit" aria-label="${t('detail.editAria')}">✎</button>`,
         })}
-        ${navBar()}
         <main class="page has-nav detail">
           <p class="eyebrow">${esc(fmtDay(journey.updated_at))}</p>
           <h1 class="detail-title">${esc(journey.name)}</h1>
@@ -2721,7 +2730,6 @@
     app.innerHTML = `
       <div class="screen">
         ${topbar({ title: t('settings.title'), back: !publicView })}
-        ${navBar()}
         <main class="page has-nav">
           <h1 class="page-title">${t('settings.title')}</h1>
 
@@ -2876,7 +2884,7 @@
     }
   }
 
-  app.addEventListener('click', (event) => {
+  function handleAction(event) {
     const langTarget = event.target.closest('[data-lang]');
     if (langTarget) {
       setLocale(langTarget.dataset.lang);
@@ -2891,7 +2899,8 @@
         break;
       case 'new': {
         const drafts = loadDrafts();
-        if (drafts.length > 0 && !draftOverlayOpen) {
+        const onHome = parseRoute().name === 'home';
+        if (onHome && drafts.length > 0 && !draftOverlayOpen) {
           // 有草稿：先浮出草稿列表并让加号冷却，冷却完再点才是全新旅程。
           openDraftOverlay();
           break;
@@ -3011,7 +3020,10 @@
       default:
         break;
     }
-  });
+  }
+
+  app.addEventListener('click', handleAction);
+  navHost?.addEventListener('click', handleAction);
 
   window.addEventListener('hashchange', render);
 

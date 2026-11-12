@@ -1099,13 +1099,22 @@ img.seal {
   font-size: 12px;
 }
 
-/* 底部悬浮导航栏：fixed + 高 z-index，页面内容从它下面穿过 */
-.nav-bar {
+/* 常驻底部导航：独立于页面内容之外，fixed 相对视口，永远悬浮在最底部 */
+.app-nav {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 40;
+  pointer-events: none;
+}
+
+.app-nav[hidden] {
+  display: none;
+}
+
+.nav-bar {
+  pointer-events: auto;
   max-width: 620px;
   margin: 0 auto;
   display: flex;
@@ -1120,9 +1129,14 @@ img.seal {
   box-shadow: 0 -8px 24px rgba(72, 55, 32, 0.06);
 }
 
-/* 有悬浮导航栏的页面底部留出空间 */
+/* 带悬浮导航栏的页面底部留出空间 */
 .page.has-nav {
   padding-bottom: calc(104px + env(safe-area-inset-bottom));
+}
+
+/* toast 抬到导航栏之上 */
+.toast {
+  bottom: calc(96px + env(safe-area-inset-bottom));
 }
 
 /* 发现页 */
@@ -1730,6 +1744,15 @@ input#plan-input::placeholder {
 
   .screen {
     min-height: inherit;
+  }
+
+  /* 宽屏时导航栏贴住卡片底边，而不是视口最底部 */
+  .app-nav {
+    bottom: 28px;
+  }
+
+  .nav-bar {
+    border-radius: 0 0 31px 31px;
   }
 }
 
