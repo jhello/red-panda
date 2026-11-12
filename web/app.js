@@ -1795,7 +1795,12 @@
   }
 
   function renderHome() {
-    const drafts = loadDrafts();
+    if (pendingOverlayOpen) {
+      pendingOverlayOpen = false;
+      draftOverlayOpen = true;
+      createCooldownUntil = Date.now() + 2000;
+    }
+    const drafts = sortedDrafts();
     app.innerHTML = `
       <div class="screen">
         <main class="page home-page has-nav">
@@ -1806,8 +1811,8 @@
           <div class="draft-layer" id="draft-layer"${draftOverlayOpen ? '' : ' hidden'}>
             <div class="draft-list" id="draft-list">
               ${
-                sortedDrafts().length
-                  ? sortedDrafts().map((draft) => draftRowMarkup(draft, expandedDraftId === draft.id)).join('')
+                drafts.length
+                  ? drafts.map((draft) => draftRowMarkup(draft, expandedDraftId === draft.id)).join('')
                   : `<p class="draft-none">${t('draft.none')}</p>`
               }
             </div>
@@ -1848,22 +1853,37 @@
       });
   }
 
-  /** 有草稿时加号先冷却两秒，避免误触丢下草稿。 */
-  function startCreateCooldown() {
+  /**
+   * 倒计时只由 createCooldownUntil 决定，渲染导航栏后重新贴到新按钮上，
+   * 避免重建 DOM 时把倒计时状态丢掉。
+   */
+  function applyCooldownButton() {
     const button = document.querySelector('.nav-create');
     if (!button) return;
-    let left = Math.max(1, Math.ceil((createCooldownUntil - Date.now()) / 1000));
-    button.disabled = true;
-    button.classList.add('is-cooling');
-    button.textContent = String(left);
+    const left = Math.ceil((createCooldownUntil - Date.now()) / 1000);
+    if (left > 0) {
+      button.disabled = true;
+      button.classList.add('is-cooling');
+      button.textContent = String(left);
+    } else {
+      button.disabled = false;
+      button.classList.remove('is-cooling');
+      button.textContent = '＋';
+    }
+  }
+
+  /** 有草稿时加号先冷却两秒，避免误触丢下草稿。 */
+  function startCreateCooldown() {
+    createCooldownUntil = Date.now() + 2000;
+    applyCooldownButton();
+    if (cooldownTimer) return;
     cooldownTimer = setInterval(() => {
-      left -= 1;
-      if (left > 0) {
-        button.textContent = String(left);
+      if (Date.now() >= createCooldownUntil) {
+        stopCreateCooldown();
         return;
       }
-      stopCreateCooldown();
-    }, 1000);
+      applyCooldownButton();
+    }, 250);
   }
 
   /** 收起浮层时立刻停掉倒计时。 */
@@ -1872,12 +1892,8 @@
       clearInterval(cooldownTimer);
       cooldownTimer = null;
     }
-    const button = document.querySelector('.nav-create');
-    if (button) {
-      button.disabled = false;
-      button.classList.remove('is-cooling');
-      button.textContent = '＋';
-    }
+    createCooldownUntil = 0;
+    applyCooldownButton();
   }
 
   /** 压入一条历史，让系统返回键先收起草稿而不是退出应用。 */
@@ -2016,6 +2032,7 @@
 
   let currentRouteName = '';
   let pendingDraft = null;
+  let pendingOverlayOpen = false;
   let draftOverlayOpen = false;
   let expandedDraftId = null;
   let createCooldownUntil = 0;
@@ -2466,6 +2483,8 @@
     const show = Boolean(state.user);
     navHost.hidden = !show;
     navHost.innerHTML = show ? navBar() : '';
+    // 导航栏是重建的，重新贴一次倒计时状态。
+    applyCooldownButton();
   }
 
   function navBar() {
@@ -2898,16 +2917,21 @@
         else navigate('#/settings');
         break;
       case 'new': {
-        const drafts = loadDrafts();
-        const onHome = parseRoute().name === 'home';
-        if (onHome && drafts.length > 0 && !draftOverlayOpen) {
-          // 有草稿：先浮出草稿列表并让加号冷却，冷却完再点才是全新旅程。
-          openDraftOverlay();
+        const drafts = sortedDrafts();
+        if (drafts.length > 0 && !draftOverlayOpen) {
+          // 有草稿：回到首页浮出草稿列表，加号冷却两秒。
+          if (parseRoute().name === 'home') {
+            openDraftOverlay();
+          } else {
+            pendingOverlayOpen = true;
+            navigate('#/');
+          }
           break;
         }
         if (draftOverlayOpen) {
           if (Date.now() < createCooldownUntil) break;
-          // 改写压入的历史再跳转，避免 history.back() 把页面又带回首页。
+          // 冷却结束：创建全新旅程。
+          resetPlanState();
           leaveOverlayTo('#/new');
           break;
         }
