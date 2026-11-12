@@ -496,6 +496,51 @@ test('行程计划解析：无法解析时报错', () => {
   assert.throws(() => parseJourneyPlan('{"items":[]}'), /可用的旅程计划/);
 });
 
+test('创建旅程时保存结构化行程，并按出发时间排序', async () => {
+  const plan = {
+    items: [
+      { destination: '雅典卫城', departTime: '2026-12-20T09:00', returnTime: '2026-12-22T19:00' },
+      { destination: '卢浮宫', departTime: '2026-11-19T09:30', returnTime: '2026-11-21T19:00' },
+    ],
+  };
+  const created = await request('/api/journeys', {
+    method: 'POST',
+    token,
+    body: { name: '卢浮宫', description: '两站行程', plan },
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.data.journey.plan.items.length, 2);
+  assert.equal(created.data.journey.plan.items[0].destination, '雅典卫城');
+  // 最早出发时间与最晚返回时间被提取出来，便于按时间排序
+  assert.equal(created.data.journey.depart_time, '2026-11-19T09:30');
+  assert.equal(created.data.journey.return_time, '2026-12-22T19:00');
+
+  const later = await request('/api/journeys', {
+    method: 'POST',
+    token,
+    body: {
+      name: '更早的旅程',
+      description: '',
+      plan: { items: [{ destination: '新天鹅堡', departTime: '2026-01-05T08:00', returnTime: '2026-01-07T20:00' }] },
+    },
+  });
+  assert.equal(later.status, 201);
+
+  const list = await request('/api/journeys', { token });
+  assert.equal(list.status, 200);
+  const names = list.data.journeys.map((journey) => journey.name);
+  // 按出发时间升序：更早的行程排在前面
+  assert.equal(names[0], '更早的旅程');
+  assert.equal(names[names.length - 1], '卢浮宫');
+
+  // 清理本次新增的两条，避免影响其它用例
+  for (const journey of list.data.journeys) {
+    if (journey.name === '更早的旅程' || journey.name === '卢浮宫') {
+      await request(`/api/journeys/${journey.id}`, { method: 'DELETE', token });
+    }
+  }
+});
+
 test('管理员状态包含用户与旅程统计', async () => {
   const status = await request('/api/admin/status', { admin: 'test-admin-token' });
   assert.equal(status.status, 200);

@@ -6,6 +6,7 @@
     server: 'red-panda.server',
     user: 'red-panda.user',
     lang: 'red-panda.lang',
+    drafts: 'red-panda.drafts',
   };
 
   const app = document.getElementById('app');
@@ -60,6 +61,12 @@
         discover: '发现',
         discoverSoon: '更多目的地正在路上，敬请期待',
         me: '我',
+      },
+
+      draft: {
+        title: '草稿：{time}，{destination}，{created}',
+        untimed: '未定时间',
+        undestined: '未定目的地',
       },
 
       api: {
@@ -213,6 +220,8 @@
         editItemSub: '改完直接点「确定」即可。',
         saveItem: '保存修改',
         create: '创建旅程',
+        save: '就这样',
+        savedToast: '旅程已保存',
       },
 
       journeys: {
@@ -322,6 +331,12 @@
         discover: 'Discover',
         discoverSoon: 'More destinations are on the way — stay tuned',
         me: 'Me',
+      },
+
+      draft: {
+        title: 'Draft: {time}, {destination}, {created}',
+        untimed: 'no time yet',
+        undestined: 'no destination yet',
       },
 
       api: {
@@ -479,6 +494,8 @@
         editItemSub: 'Make your changes, then confirm.',
         saveItem: 'Save changes',
         create: 'Create journey',
+        save: 'Save it',
+        savedToast: 'Journey saved',
       },
 
       journeys: {
@@ -588,6 +605,12 @@
         discover: 'Entdecken',
         discoverSoon: 'Weitere Ziele sind unterwegs — bald verfügbar',
         me: 'Ich',
+      },
+
+      draft: {
+        title: 'Entwurf: {time}, {destination}, {created}',
+        untimed: 'noch keine Zeit',
+        undestined: 'noch kein Ziel',
       },
 
       api: {
@@ -747,6 +770,8 @@
         editItemSub: 'Änderungen übernehmen, dann bestätigen.',
         saveItem: 'Änderungen speichern',
         create: 'Reise erstellen',
+        save: 'Speichern',
+        savedToast: 'Reise gespeichert',
       },
 
       journeys: {
@@ -1201,8 +1226,22 @@
 
     const route = parseRoute();
 
-    // Entering "create journey" from another page always starts a fresh plan.
-    if (route.name === 'new' && currentRouteName !== 'new') resetPlanState();
+    // Entering "create journey" from another page always starts a fresh plan,
+    // unless the user picked one of the cached drafts.
+    if (route.name === 'new') {
+      if (pendingDraft) {
+        const draft = pendingDraft;
+        pendingDraft = null;
+        resetPlanState();
+        planState.text = draft.text || '';
+        planState.items = Array.isArray(draft.items) ? draft.items : [];
+        planState.locked = true;
+        planState.draftId = draft.id || '';
+        planState.draftCreatedAt = draft.createdAt || '';
+      } else if (currentRouteName !== 'new') {
+        resetPlanState();
+      }
+    }
     currentRouteName = route.name;
 
     if (!state.server) {
@@ -1672,9 +1711,25 @@
   }
 
   function renderHome() {
+    const drafts = loadDrafts();
     app.innerHTML = `
       <div class="screen">
         <main class="page home-page">
+          ${
+            drafts.length > 0
+              ? `
+          <div class="draft-strip">
+            ${drafts
+              .map(
+                (draft) => `
+              <button class="draft-chip" type="button" data-action="plan-draft" data-draft-id="${esc(draft.id)}">
+                ${esc(draftTitle(draft))}
+              </button>`,
+              )
+              .join('')}
+          </div>`
+              : ''
+          }
           <nav class="main-nav">
             <button class="nav-btn nav-journeys" data-action="current-journey">${t('nav.current')}</button>
             <button class="nav-btn nav-memories" data-action="journeys">${t('nav.memories')}</button>
@@ -1684,6 +1739,26 @@
           </nav>
         </main>
       </div>`;
+
+    const createButton = document.querySelector('.nav-create');
+    if (createButton && drafts.length > 0) {
+      // 有草稿时先让加号冷却两秒，避免误触丢下草稿。
+      let left = 2;
+      createButton.disabled = true;
+      createButton.classList.add('is-cooling');
+      createButton.textContent = String(left);
+      const timer = setInterval(() => {
+        left -= 1;
+        if (left > 0) {
+          createButton.textContent = String(left);
+          return;
+        }
+        clearInterval(timer);
+        createButton.disabled = false;
+        createButton.classList.remove('is-cooling');
+        createButton.textContent = '＋';
+      }, 1000);
+    }
 
     api('/api/journeys')
       .then(({ journeys }) => {
@@ -1727,6 +1802,8 @@
     items: [],
     suggestion: '',
     artIndex: -1,
+    draftId: '',
+    draftCreatedAt: '',
   };
 
   /** Impressionist painting for each suggestion, in the same order. */
@@ -1742,9 +1819,12 @@
     planState.items = [];
     planState.suggestion = '';
     planState.artIndex = -1;
+    planState.draftId = '';
+    planState.draftCreatedAt = '';
   }
 
   let currentRouteName = '';
+  let pendingDraft = null;
 
   function periodIndexForHour(periods, hour) {
     const hours = periods.map((p) => p.hour);
@@ -1772,6 +1852,63 @@
     const dict = I18N[getLocale()] || I18N.zh;
     const list = Array.isArray(dict.plan?.artAlt) ? dict.plan.artAlt : [];
     return list.length ? list : I18N.zh.plan.artAlt;
+  }
+
+  /** Local drafts keep a plan alive when the user leaves the page. */
+  function loadDrafts() {
+    try {
+      const raw = localStorage.getItem(STORAGE.drafts);
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveDrafts(list) {
+    try {
+      localStorage.setItem(STORAGE.drafts, JSON.stringify(list.slice(0, 20)));
+    } catch {
+      // Private mode or a full quota should not break the page.
+    }
+  }
+
+  function draftTitle(draft) {
+    const time = draft.departTime ? fmtDate(draft.departTime) : t('draft.untimed');
+    const destination = draft.destination || t('draft.undestined');
+    const created = draft.createdAt ? fmtDate(draft.createdAt) : '';
+    return t('draft.title', { time, destination, created });
+  }
+
+  /** Cache the solidified input and the extracted table on this device. */
+  function storeDraft() {
+    const items = Array.isArray(planState.items) ? planState.items : [];
+    const depart = items
+      .map((item) => item?.departTime)
+      .filter(Boolean)
+      .sort()[0] || '';
+    const destination = items.find((item) => item?.destination)?.destination || '';
+    if (!planState.draftId) {
+      planState.draftId = `d${Date.now()}${Math.floor(Math.random() * 1000)}`;
+      planState.draftCreatedAt = new Date().toISOString();
+    }
+    const draft = {
+      id: planState.draftId,
+      text: planState.text,
+      items,
+      departTime: depart,
+      destination,
+      createdAt: planState.draftCreatedAt || new Date().toISOString(),
+    };
+    const list = loadDrafts().filter((entry) => entry.id !== draft.id);
+    list.unshift(draft);
+    saveDrafts(list);
+    return draft;
+  }
+
+  function removeDraft(id) {
+    if (!id) return;
+    saveDrafts(loadDrafts().filter((entry) => entry.id !== id));
   }
 
   function renderNewJourney() {
@@ -1900,11 +2037,6 @@
             </tbody>
           </table>
         </section>
-        <div class="plan-card plan-card-action">
-          <div class="plan-card-bottom">
-            <button class="plan-card-btn" type="button" data-action="plan-create">${t('plan.create')}</button>
-          </div>
-        </div>
         ${plan.error ? `<p class="form-error">${esc(plan.error)}</p>` : ''}`;
     } else if (plan.locked) {
       body = `
@@ -1933,7 +2065,13 @@
 
     app.innerHTML = `
       <div class="screen">
-        ${topbar({ title: '', back: true })}
+        ${topbar({
+          title: '',
+          back: true,
+          right: plan.items.length > 0
+            ? `<button class="topbar-text-btn" type="button" data-action="plan-save">${t('plan.save')}</button>`
+            : '',
+        })}
         <main class="page">
           ${body}
         </main>
@@ -2030,6 +2168,7 @@
     planState.editingItem = null;
     planState.error = '';
     planState.items = [];
+    storeDraft();
 
     // 等过渡走完再发请求，避免画面跳动
     setTimeout(() => runPlan(text), 360);
@@ -2055,34 +2194,36 @@
     }
     planState.items = items;
     planState.busy = false;
+    if (items.length > 0) storeDraft();
     renderNewJourney();
   }
 
-  async function createJourneyFromPlan() {
-    const items = planState.items;
+  /** Save the extracted plan as a real journey on the server. */
+  async function savePlanAsJourney() {
+    const items = Array.isArray(planState.items) ? planState.items : [];
+    if (!items.length) return;
     const name = (items[0]?.destination || planState.text || '').trim().slice(0, 80);
     if (!name) {
-      planState.error = t('new.errName');
-      renderNewJourney();
+      toast(t('new.errName'), 'error');
       return;
     }
     const description = items
       .map((item) => [item?.destination, item?.departTime, item?.returnTime].filter(Boolean).join(' · '))
       .filter(Boolean)
       .join('；');
-    const button = document.querySelector('[data-action="plan-create"]');
+    const button = document.querySelector('[data-action="plan-save"]');
     setBusy(button, true, t('busy.sending'));
     try {
       const { journey } = await api('/api/journeys', {
         method: 'POST',
-        body: { name, description: description || planState.text },
+        body: { name, description: description || planState.text, plan: { items } },
       });
-      toast(t('journey.createdToast'));
+      removeDraft(planState.draftId);
+      toast(t('plan.savedToast'));
       navigate(`#/journey/${journey.id}`);
     } catch (error) {
-      planState.error = error.message;
+      toast(error.message, 'error');
       setBusy(button, false);
-      renderNewJourney();
     }
   }
 
@@ -2164,13 +2305,23 @@
   }
 
   function journeyCard(journey) {
+    const plan = journey.plan?.items?.length ? journey.plan : null;
     const excerpt = journey.description ? esc(journey.description).replace(/\s+/g, ' ') : t('journeys.noDesc');
+    const destinations = plan
+      ? plan.items.map((item) => item.destination).join(' · ')
+      : '';
+    const when = journey.depart_time ? fmtDate(journey.depart_time) : fmtDay(journey.updated_at);
     return `
       <button class="journey-card" data-journey-id="${journey.id}">
         <span class="journey-top">
           <span class="journey-name">${esc(journey.name)}</span>
-          <span class="journey-date">${esc(fmtDay(journey.updated_at))}</span>
+          <span class="journey-date">${esc(when)}</span>
         </span>
+        ${
+          destinations
+            ? `<span class="journey-plan">${esc(destinations)}</span>`
+            : ''
+        }
         <span class="journey-excerpt">${excerpt}</span>
       </button>`;
   }
@@ -2205,6 +2356,7 @@
   }
 
   function renderJourneyView(journey) {
+    const plan = journey.plan?.items?.length ? journey.plan : null;
     app.innerHTML = `
       <div class="screen">
         ${topbar({
@@ -2215,6 +2367,32 @@
         <main class="page detail">
           <p class="eyebrow">${esc(fmtDay(journey.updated_at))}</p>
           <h1 class="detail-title">${esc(journey.name)}</h1>
+          ${
+            plan
+              ? `
+          <table class="plan-table">
+            <thead>
+              <tr>
+                <th>${t('plan.fieldDestination')}</th>
+                <th>${t('plan.fieldDepart')}</th>
+                <th>${t('plan.fieldReturn')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${plan.items
+                .map(
+                  (item) => `
+                <tr>
+                  <td>${esc(item.destination)}</td>
+                  <td>${esc(fmtDate(item.departTime))}</td>
+                  <td>${esc(fmtDate(item.returnTime))}</td>
+                </tr>`,
+                )
+                .join('')}
+            </tbody>
+          </table>`
+              : ''
+          }
           <div class="detail-body">
             ${
               journey.description
@@ -2512,9 +2690,16 @@
       case 'plan-confirm':
         confirmPlanInput();
         break;
-      case 'plan-create':
-        createJourneyFromPlan();
+      case 'plan-save':
+        savePlanAsJourney();
         break;
+      case 'plan-draft': {
+        const draft = loadDrafts().find((entry) => entry.id === target.dataset.draftId);
+        if (!draft) break;
+        pendingDraft = draft;
+        navigate('#/new');
+        break;
+      }
       case 'plan-edit':
         planState.editing = true;
         planState.editingItem = null;

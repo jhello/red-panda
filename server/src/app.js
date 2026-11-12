@@ -232,6 +232,58 @@ export function parseJourneyPlan(content) {
   return { items };
 }
 
+/**
+ * Normalize the structured trip plan sent by the client:
+ * { items: [{ destination, departTime, returnTime }], departTime, returnTime }.
+ * Returns null when there is nothing usable.
+ */
+function normalizeJourneyPlan(value) {
+  if (!value || typeof value !== 'object') return null;
+  const rawItems = Array.isArray(value.items) ? value.items : Array.isArray(value) ? value : [];
+  const items = [];
+  for (const raw of rawItems) {
+    if (!raw || typeof raw !== 'object') continue;
+    const destination = String(raw.destination ?? '').trim();
+    if (!destination) continue;
+    items.push({
+      destination: destination.slice(0, 80),
+      departTime: String(raw.departTime ?? '').trim().slice(0, 16),
+      returnTime: String(raw.returnTime ?? '').trim().slice(0, 16),
+    });
+  }
+  if (items.length === 0) return null;
+  const departs = items.map((item) => item.departTime).filter(Boolean).sort();
+  const returns = items.map((item) => item.returnTime).filter(Boolean).sort();
+  return {
+    items,
+    departTime: departs[0] ?? '',
+    returnTime: returns.at(-1) ?? '',
+  };
+}
+
+/** Journey rows carry the plan as JSON; expose it as an object. */
+function publicJourney(row) {
+  if (!row) return row;
+  let plan = null;
+  if (row.plan) {
+    try {
+      plan = JSON.parse(row.plan);
+    } catch {
+      plan = null;
+    }
+  }
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    plan,
+    depart_time: row.depart_time || '',
+    return_time: row.return_time || '',
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
 function normalizeEmail(value) {
   const email = String(value ?? '').trim().toLowerCase();
   if (email.length < 5 || email.length > 254 || !EMAIL_RE.test(email)) {
@@ -797,7 +849,7 @@ export function createApp(config, options = {}) {
     /^\/api\/journeys$/,
     ({ auth }) => ({
       status: 200,
-      body: { journeys: db.listJourneys(auth.user.id) },
+      body: { journeys: db.listJourneys(auth.user.id).map(publicJourney) },
     }),
     { auth: true },
   );
@@ -808,13 +860,17 @@ export function createApp(config, options = {}) {
     ({ auth, body }) => {
       const name = requiredString(body.name, '旅程名称', { min: 1, max: 80 });
       const description = optionalString(body.description, '旅程描述', 5000);
+      const plan = normalizeJourneyPlan(body.plan);
       const journey = db.createJourney({
         userId: auth.user.id,
         name,
         description,
+        plan: plan ? JSON.stringify(plan) : '',
+        departTime: plan?.departTime ?? '',
+        returnTime: plan?.returnTime ?? '',
         now: new Date().toISOString(),
       });
-      return { status: 201, body: { journey } };
+      return { status: 201, body: { journey: publicJourney(journey) } };
     },
     { auth: true },
   );
@@ -825,7 +881,7 @@ export function createApp(config, options = {}) {
     ({ auth, params }) => {
       const journey = db.getJourney(auth.user.id, Number(params[0]));
       if (!journey) throw new HttpError(404, '旅程不存在', 'not_found');
-      return { status: 200, body: { journey } };
+      return { status: 200, body: { journey: publicJourney(journey) } };
     },
     { auth: true },
   );
@@ -836,15 +892,19 @@ export function createApp(config, options = {}) {
     ({ auth, params, body }) => {
       const name = requiredString(body.name, '旅程名称', { min: 1, max: 80 });
       const description = optionalString(body.description, '旅程描述', 5000);
+      const plan = normalizeJourneyPlan(body.plan);
       const journey = db.updateJourney({
         userId: auth.user.id,
         id: Number(params[0]),
         name,
         description,
+        plan: plan ? JSON.stringify(plan) : '',
+        departTime: plan?.departTime ?? '',
+        returnTime: plan?.returnTime ?? '',
         now: new Date().toISOString(),
       });
       if (!journey) throw new HttpError(404, '旅程不存在', 'not_found');
-      return { status: 200, body: { journey } };
+      return { status: 200, body: { journey: publicJourney(journey) } };
     },
     { auth: true },
   );

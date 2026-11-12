@@ -223,17 +223,36 @@ application/json; charset=utf-8`），`204` 响应无正文。
 ### `POST /api/journeys`
 
 ```json
-{ "name": "东海之行", "description": "从青丘出发……" }
+{ "name": "东海之行", "description": "从青丘出发……", "plan": { "items": [] } }
 ```
 
 - `name`：1–80 字符，必填；
-- `description`：最多 5000 字符，可省略。
+- `description`：最多 5000 字符，可省略；
+- `plan`：可选，结构化行程（即 `POST /api/ai/journey-plan` 的结果）。
 
 响应 `201`：
 
 ```json
-{ "journey": { "id": 1, "name": "东海之行", "description": "…", "created_at": "…", "updated_at": "…" } }
+{
+  "journey": {
+    "id": 1,
+    "name": "东海之行",
+    "description": "…",
+    "plan": {
+      "items": [{ "destination": "卢浮宫", "departTime": "2026-12-15T09:30", "returnTime": "2026-12-18T19:00" }],
+      "departTime": "2026-12-15T09:30",
+      "returnTime": "2026-12-18T19:00"
+    },
+    "depart_time": "2026-12-15T09:30",
+    "return_time": "2026-12-18T19:00",
+    "created_at": "…",
+    "updated_at": "…"
+  }
+}
 ```
+
+- `plan`：结构化行程；没有结构化数据时为 `null`；
+- `depart_time` / `return_time`：整段行程的最早出发与最晚返回时间；列表按出发时间升序排列。
 
 ### `GET /api/journeys/:id`
 

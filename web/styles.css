@@ -358,6 +358,79 @@ img.seal {
   transform: scale(0.94);
 }
 
+/* 顶栏右侧的文字按钮（如「就这样」） */
+.topbar-text-btn {
+  padding: 8px 14px;
+  border: 1px solid rgba(168, 58, 44, 0.32);
+  border-radius: 999px;
+  background: rgba(168, 58, 44, 0.08);
+  color: var(--seal-dark);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  transition: background 0.18s ease, transform 0.14s ease, opacity 0.18s ease;
+}
+
+.topbar-text-btn:hover {
+  background: rgba(168, 58, 44, 0.14);
+}
+
+.topbar-text-btn:active {
+  transform: scale(0.96);
+}
+
+.topbar-text-btn:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+/* 首页草稿条 */
+.draft-strip {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+  padding: 0 2px 14px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.draft-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.draft-chip {
+  flex: 0 0 auto;
+  max-width: 78vw;
+  padding: 9px 14px;
+  border: 1px dashed rgba(168, 58, 44, 0.4);
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.72);
+  color: var(--seal-dark);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.18s ease, transform 0.14s ease;
+}
+
+.draft-chip:active {
+  transform: scale(0.97);
+}
+
+/* 有草稿时加号进入 2 秒冷却 */
+.nav-btn.nav-create:disabled,
+.nav-btn.nav-create.is-cooling {
+  cursor: wait;
+  background: var(--paper-deep);
+  color: var(--muted);
+  box-shadow: none;
+  font-size: 20px;
+  font-weight: 700;
+}
+
 /* ---- page --------------------------------------------------------------- */
 
 .page {
@@ -1232,6 +1305,14 @@ input#plan-input::placeholder {
   line-height: 1.7;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.journey-plan {
+  color: var(--seal);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
 }
 
 .skeleton-card,

@@ -52,6 +52,9 @@ CREATE TABLE IF NOT EXISTS journeys (
   user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name        TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
+  plan        TEXT NOT NULL DEFAULT '',
+  depart_time TEXT NOT NULL DEFAULT '',
+  return_time TEXT NOT NULL DEFAULT '',
   created_at  TEXT NOT NULL,
   updated_at  TEXT NOT NULL
 );
@@ -80,6 +83,20 @@ function migrate(db) {
   );
   db.exec("UPDATE users SET display_name = username WHERE display_name IS NULL OR display_name = ''");
   db.exec('UPDATE users SET email_verified = 1 WHERE email IS NULL');
+
+  // 结构化行程（目的地 / 出发时间 / 返回时间）是后加的，老库补齐列。
+  const journeyColumns = new Set(
+    db.prepare('PRAGMA table_info(journeys)').all().map((row) => row.name),
+  );
+  const journeyAdditions = [
+    ['plan', "plan TEXT NOT NULL DEFAULT ''"],
+    ['depart_time', "depart_time TEXT NOT NULL DEFAULT ''"],
+    ['return_time', "return_time TEXT NOT NULL DEFAULT ''"],
+  ];
+  for (const [name, ddl] of journeyAdditions) {
+    if (!journeyColumns.has(name)) db.exec(`ALTER TABLE journeys ADD COLUMN ${ddl}`);
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_journeys_time ON journeys(user_id, depart_time ASC)');
 }
 
 export function openDatabase(dbPath) {
@@ -134,16 +151,18 @@ export function openDatabase(dbPath) {
     deleteExpiredResets: db.prepare('DELETE FROM password_resets WHERE expires_at <= ?'),
 
     insertJourney: db.prepare(
-      'INSERT INTO journeys (user_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO journeys (user_id, name, description, plan, depart_time, return_time, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     ),
     listJourneys: db.prepare(
-      'SELECT id, name, description, created_at, updated_at FROM journeys WHERE user_id = ? ORDER BY updated_at DESC, id DESC',
+      `SELECT id, name, description, plan, depart_time, return_time, created_at, updated_at
+         FROM journeys WHERE user_id = ?
+        ORDER BY COALESCE(NULLIF(depart_time, ''), created_at) ASC, id ASC`,
     ),
     getJourney: db.prepare(
-      'SELECT id, user_id, name, description, created_at, updated_at FROM journeys WHERE id = ? AND user_id = ?',
+      'SELECT id, user_id, name, description, plan, depart_time, return_time, created_at, updated_at FROM journeys WHERE id = ? AND user_id = ?',
     ),
     updateJourney: db.prepare(
-      'UPDATE journeys SET name = ?, description = ?, updated_at = ? WHERE id = ? AND user_id = ?',
+      'UPDATE journeys SET name = ?, description = ?, plan = ?, depart_time = ?, return_time = ?, updated_at = ? WHERE id = ? AND user_id = ?',
     ),
     deleteJourney: db.prepare('DELETE FROM journeys WHERE id = ? AND user_id = ?'),
 
@@ -272,8 +291,17 @@ export function openDatabase(dbPath) {
       statements.deleteExpiredResets.run(now);
     },
 
-    createJourney({ userId, name, description, now }) {
-      const result = statements.insertJourney.run(userId, name, description, now, now);
+    createJourney({ userId, name, description, plan = '', departTime = '', returnTime = '', now }) {
+      const result = statements.insertJourney.run(
+        userId,
+        name,
+        description,
+        plan,
+        departTime,
+        returnTime,
+        now,
+        now,
+      );
       return this.getJourney(userId, Number(result.lastInsertRowid));
     },
 
@@ -285,8 +313,17 @@ export function openDatabase(dbPath) {
       return statements.getJourney.get(id, userId);
     },
 
-    updateJourney({ userId, id, name, description, now }) {
-      const result = statements.updateJourney.run(name, description, now, id, userId);
+    updateJourney({ userId, id, name, description, plan = '', departTime = '', returnTime = '', now }) {
+      const result = statements.updateJourney.run(
+        name,
+        description,
+        plan,
+        departTime,
+        returnTime,
+        now,
+        id,
+        userId,
+      );
       if (result.changes === 0) return null;
       return this.getJourney(userId, id);
     },
