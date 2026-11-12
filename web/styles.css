@@ -385,39 +385,233 @@ img.seal {
   opacity: 0.6;
 }
 
-/* 首页草稿条 */
-.draft-strip {
+/* 首页当前行程 */
+.home-current {
+  flex: 1;
   display: flex;
+  flex-direction: column;
+  justify-content: center;
   gap: 8px;
-  margin-top: auto;
-  padding: 0 2px 14px;
-  overflow-x: auto;
-  scrollbar-width: none;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
 }
 
-.draft-strip::-webkit-scrollbar {
+.home-current-title {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: clamp(26px, 7vw, 34px);
+  font-weight: 600;
+  letter-spacing: 1px;
+  overflow-wrap: anywhere;
+}
+
+.home-current-dest {
+  margin: 0;
+  color: var(--seal);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+
+.home-current-times {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.home-current-times > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.home-current-times span {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+}
+
+.home-current-times b {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.home-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 15px;
+  text-align: center;
+}
+
+.home-empty p {
+  margin: 0;
+}
+
+.home-empty .muted {
+  font-size: 13px;
+}
+
+/* 草稿浮层：薄纱盖住首页内容，标题竖向排列 */
+.draft-veil {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 84px;
+  z-index: 12;
+  padding: 16px 18px;
+  overflow-y: auto;
+  background: rgba(247, 242, 232, 0.82);
+  -webkit-backdrop-filter: blur(7px);
+  backdrop-filter: blur(7px);
+  animation: draft-veil-in 0.28s ease both;
+}
+
+.draft-veil[hidden] {
   display: none;
 }
 
-.draft-chip {
-  flex: 0 0 auto;
-  max-width: 78vw;
-  padding: 9px 14px;
+@keyframes draft-veil-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.draft-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.draft-none {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.draft-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 16px;
   border: 1px dashed rgba(168, 58, 44, 0.4);
   border-radius: 999px;
-  background: rgba(255, 253, 248, 0.72);
+  background: rgba(255, 253, 248, 0.86);
+}
+
+.draft-open {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0;
+  border: 0;
+  background: none;
   color: var(--seal-dark);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.draft-x {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(168, 58, 44, 0.08);
+  color: var(--seal-dark);
+  font-size: 17px;
+  line-height: 1;
   transition: background 0.18s ease, transform 0.14s ease;
 }
 
-.draft-chip:active {
-  transform: scale(0.97);
+.draft-x:active {
+  transform: scale(0.92);
+}
+
+/* 展开后的长圆形：上半预览，下半删除 */
+.draft-expanded {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid rgba(168, 58, 44, 0.34);
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: var(--shadow-soft);
+  animation: draft-expand 0.32s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes draft-expand {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.draft-preview {
+  padding: 16px 20px 14px;
+}
+
+.draft-preview-text {
+  margin: 0 0 6px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.draft-preview-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.8;
+}
+
+.draft-preview-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.draft-delete {
+  padding: 13px 20px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 999px 999px;
+  background: rgba(168, 58, 44, 0.07);
+  color: var(--seal-dark);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  transition: background 0.18s ease;
+}
+
+.draft-delete:active {
+  background: rgba(168, 58, 44, 0.16);
 }
 
 /* 有草稿时加号进入 2 秒冷却 */
@@ -468,6 +662,7 @@ img.seal {
 /* ---- home --------------------------------------------------------------- */
 
 .home-page {
+  position: relative;
   display: flex;
   flex-direction: column;
 }

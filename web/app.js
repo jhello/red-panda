@@ -67,6 +67,10 @@
         title: '草稿：{time}，{destination}，{created}',
         untimed: '未定时间',
         undestined: '未定目的地',
+        expand: '展开草稿',
+        delete: '删除这个草稿',
+        none: '没有草稿',
+        previewEmpty: '还没有提取出行程',
       },
 
       api: {
@@ -177,6 +181,9 @@
         sub: '勇敢地探索你的世界。',
         createTitle: '创建旅程',
         createSub: '记录一段新的山海',
+        currentTitle: '当前行程',
+        emptyTitle: '还没有行程',
+        emptySub: '说说想去哪里，小熊猫帮你规划',
         listTitle: '查看旅程',
         listSub: '翻阅走过的路',
         countText: '已记录 <b id="journey-count">—</b> 段旅程',
@@ -337,6 +344,10 @@
         title: 'Draft: {time}, {destination}, {created}',
         untimed: 'no time yet',
         undestined: 'no destination yet',
+        expand: 'Expand draft',
+        delete: 'Delete this draft',
+        none: 'No drafts',
+        previewEmpty: 'No trip extracted yet',
       },
 
       api: {
@@ -447,6 +458,9 @@
         sub: 'Go boldly explore your world.',
         createTitle: 'New journey',
         createSub: 'Record a new adventure',
+        currentTitle: 'Current trip',
+        emptyTitle: 'No trip yet',
+        emptySub: 'Tell me where you want to go',
         listTitle: 'My journeys',
         listSub: "Revisit the roads you've walked",
         countText: '<b id="journey-count">—</b> journeys recorded',
@@ -611,6 +625,10 @@
         title: 'Entwurf: {time}, {destination}, {created}',
         untimed: 'noch keine Zeit',
         undestined: 'noch kein Ziel',
+        expand: 'Entwurf öffnen',
+        delete: 'Diesen Entwurf löschen',
+        none: 'Keine Entwürfe',
+        previewEmpty: 'Noch keine Reise geplant',
       },
 
       api: {
@@ -723,6 +741,9 @@
         sub: 'Wage mutig deine Welt.',
         createTitle: 'Neue Reise',
         createSub: 'Ein neues Abenteuer festhalten',
+        currentTitle: 'Aktuelle Reise',
+        emptyTitle: 'Noch keine Reise',
+        emptySub: 'Sag mir, wohin es gehen soll',
         listTitle: 'Meine Reisen',
         listSub: 'Blätter durch deine Wege',
         countText: '<b id="journey-count">—</b> Reisen festgehalten',
@@ -1710,26 +1731,86 @@
     });
   }
 
+  function currentJourneyMarkup(journey) {
+    if (!journey) {
+      return `
+        <div class="home-empty">
+          <p>${t('home.emptyTitle')}</p>
+          <p class="muted">${t('home.emptySub')}</p>
+        </div>`;
+    }
+    const plan = journey.plan?.items?.length ? journey.plan : null;
+    const destinations = plan ? plan.items.map((item) => item.destination).join(' · ') : '';
+    return `
+      <p class="eyebrow">${t('home.currentTitle')}</p>
+      <h1 class="home-current-title">${esc(journey.name)}</h1>
+      ${destinations ? `<p class="home-current-dest">${esc(destinations)}</p>` : ''}
+      <div class="home-current-times">
+        <div>
+          <span>${t('plan.fieldDepart')}</span>
+          <b>${esc(fmtDate(journey.depart_time || journey.updated_at))}</b>
+        </div>
+        <div>
+          <span>${t('plan.fieldReturn')}</span>
+          <b>${esc(fmtDate(journey.return_time || journey.updated_at))}</b>
+        </div>
+      </div>`;
+  }
+
+  /** One draft row; `expanded` turns it into a long pill with preview + delete. */
+  function draftRowMarkup(draft, expanded) {
+    if (expanded) {
+      const items = Array.isArray(draft.items) ? draft.items : [];
+      return `
+        <div class="draft-expanded" data-draft-id="${esc(draft.id)}">
+          <div class="draft-preview">
+            <p class="draft-preview-text">${esc(draft.text || '')}</p>
+            ${
+              items.length
+                ? `<ul class="draft-preview-list">${items
+                    .map(
+                      (item) => `<li>${esc(item.destination)}${
+                        item.departTime ? ` · ${esc(fmtDate(item.departTime))}` : ''
+                      }</li>`,
+                    )
+                    .join('')}</ul>`
+                : `<p class="draft-preview-empty">${t('draft.previewEmpty')}</p>`
+            }
+          </div>
+          <button class="draft-delete" type="button" data-action="plan-draft-delete" data-draft-id="${esc(draft.id)}">
+            ${t('draft.delete')}
+          </button>
+        </div>`;
+    }
+    return `
+      <div class="draft-row" data-draft-id="${esc(draft.id)}">
+        <button class="draft-open" type="button" data-action="plan-draft" data-draft-id="${esc(draft.id)}">
+          ${esc(draftTitle(draft))}
+        </button>
+        <button class="draft-x" type="button" data-action="plan-draft-expand" data-draft-id="${esc(draft.id)}"
+          aria-label="${t('draft.expand')}">×</button>
+      </div>`;
+  }
+
   function renderHome() {
     const drafts = loadDrafts();
     app.innerHTML = `
       <div class="screen">
         <main class="page home-page">
-          ${
-            drafts.length > 0
-              ? `
-          <div class="draft-strip">
-            ${drafts
-              .map(
-                (draft) => `
-              <button class="draft-chip" type="button" data-action="plan-draft" data-draft-id="${esc(draft.id)}">
-                ${esc(draftTitle(draft))}
-              </button>`,
-              )
-              .join('')}
-          </div>`
-              : ''
-          }
+          <section class="home-current" id="home-current">
+            ${currentJourneyMarkup(state.currentJourney || state.journeys?.[0] || null)}
+          </section>
+
+          <div class="draft-veil" id="draft-veil"${draftOverlayOpen ? '' : ' hidden'}>
+            <div class="draft-list" id="draft-list">
+              ${
+                drafts.length
+                  ? drafts.map((draft) => draftRowMarkup(draft, expandedDraftId === draft.id)).join('')
+                  : `<p class="draft-none">${t('draft.none')}</p>`
+              }
+            </div>
+          </div>
+
           <nav class="main-nav">
             <button class="nav-btn nav-journeys" data-action="current-journey">${t('nav.current')}</button>
             <button class="nav-btn nav-memories" data-action="journeys">${t('nav.memories')}</button>
@@ -1740,36 +1821,64 @@
         </main>
       </div>`;
 
-    const createButton = document.querySelector('.nav-create');
-    if (createButton && drafts.length > 0) {
-      // 有草稿时先让加号冷却两秒，避免误触丢下草稿。
-      let left = 2;
-      createButton.disabled = true;
-      createButton.classList.add('is-cooling');
-      createButton.textContent = String(left);
-      const timer = setInterval(() => {
-        left -= 1;
-        if (left > 0) {
-          createButton.textContent = String(left);
-          return;
-        }
-        clearInterval(timer);
-        createButton.disabled = false;
-        createButton.classList.remove('is-cooling');
-        createButton.textContent = '＋';
-      }, 1000);
-    }
+    if (draftOverlayOpen) startCreateCooldown();
 
     api('/api/journeys')
       .then(({ journeys }) => {
         state.journeys = journeys;
-        const el = document.getElementById('journey-count');
-        if (el) el.textContent = String(journeys.length);
+        const card = document.getElementById('home-current');
+        if (card) {
+          card.innerHTML = currentJourneyMarkup(state.currentJourney || journeys[0] || null);
+        }
       })
       .catch(() => {
-        const el = document.getElementById('journey-count');
-        if (el) el.textContent = '—';
+        const card = document.getElementById('home-current');
+        if (card) card.innerHTML = currentJourneyMarkup(state.currentJourney || state.journeys?.[0] || null);
       });
+  }
+
+  /** 有草稿时加号先冷却两秒，避免误触丢下草稿。 */
+  function startCreateCooldown() {
+    const button = document.querySelector('.nav-create');
+    if (!button) return;
+    let left = Math.max(1, Math.ceil((createCooldownUntil - Date.now()) / 1000));
+    button.disabled = true;
+    button.classList.add('is-cooling');
+    button.textContent = String(left);
+    const timer = setInterval(() => {
+      left -= 1;
+      if (left > 0) {
+        button.textContent = String(left);
+        return;
+      }
+      clearInterval(timer);
+      button.disabled = false;
+      button.classList.remove('is-cooling');
+      button.textContent = '＋';
+    }, 1000);
+  }
+
+  function openDraftOverlay() {
+    draftOverlayOpen = true;
+    createCooldownUntil = Date.now() + 2000;
+    renderHome();
+  }
+
+  function closeDraftOverlay() {
+    draftOverlayOpen = false;
+    expandedDraftId = null;
+    const veil = document.getElementById('draft-veil');
+    if (veil) veil.hidden = true;
+  }
+
+  function refreshDraftList() {
+    const list = document.getElementById('draft-list');
+    if (!list) return;
+    const drafts = loadDrafts();
+    list.innerHTML = drafts.length
+      ? drafts.map((draft) => draftRowMarkup(draft, expandedDraftId === draft.id)).join('')
+      : `<p class="draft-none">${t('draft.none')}</p>`;
+    if (!drafts.length) closeDraftOverlay();
   }
 
   // ---- journey plan: prompt → AI plan → editable table ---------------------
@@ -1825,6 +1934,9 @@
 
   let currentRouteName = '';
   let pendingDraft = null;
+  let draftOverlayOpen = false;
+  let expandedDraftId = null;
+  let createCooldownUntil = 0;
 
   function periodIndexForHour(periods, hour) {
     const hours = periods.map((p) => p.hour);
@@ -2642,10 +2754,21 @@
       case 'settings':
         navigate('#/settings');
         break;
-      case 'new':
+      case 'new': {
+        const drafts = loadDrafts();
+        if (drafts.length > 0 && !draftOverlayOpen) {
+          // 有草稿：先浮出草稿列表并让加号冷却，冷却完再点才是全新旅程。
+          openDraftOverlay();
+          break;
+        }
+        if (draftOverlayOpen) {
+          if (Date.now() < createCooldownUntil) break;
+          closeDraftOverlay();
+        }
         resetPlanState();
         navigate('#/new');
         break;
+      }
       case 'journeys':
         navigate('#/journeys');
         break;
@@ -2697,7 +2820,20 @@
         const draft = loadDrafts().find((entry) => entry.id === target.dataset.draftId);
         if (!draft) break;
         pendingDraft = draft;
+        closeDraftOverlay();
         navigate('#/new');
+        break;
+      }
+      case 'plan-draft-expand': {
+        const id = target.dataset.draftId;
+        expandedDraftId = expandedDraftId === id ? null : id;
+        refreshDraftList();
+        break;
+      }
+      case 'plan-draft-delete': {
+        removeDraft(target.dataset.draftId);
+        expandedDraftId = null;
+        refreshDraftList();
         break;
       }
       case 'plan-edit':
