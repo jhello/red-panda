@@ -527,20 +527,34 @@ img.seal {
   font-size: 13px;
 }
 
-/* 草稿浮在首页内容之上，不再有薄纱遮挡；卡片自身用磨砂半透明 */
+/* 草稿浮在页面之上，不再有薄纱遮挡；卡片自身用磨砂半透明 */
+/* 浮层宿主：草稿列表浮在任意页面之上（在底部导航栏之下） */
+.app-overlay {
+  position: relative;
+  z-index: 35;
+}
+
 .draft-layer {
-  position: absolute;
+  position: fixed;
   left: 0;
   right: 0;
   bottom: 84px;
-  z-index: 12;
+  z-index: 35;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
+  width: 100%;
+  max-width: 620px;
+  margin: 0 auto;
   max-height: 62vh;
   padding: 0 18px;
   overflow-y: auto;
+  pointer-events: none;
   animation: draft-veil-in 0.28s ease both;
+}
+
+.draft-layer .draft-list {
+  pointer-events: auto;
 }
 
 .draft-layer[hidden] {

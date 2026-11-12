@@ -10,6 +10,7 @@
   };
 
   const app = document.getElementById('app');
+  const overlayHost = document.getElementById('app-overlay');
   const navHost = document.getElementById('app-nav');
   const toastEl = document.getElementById('toast');
 
@@ -1411,6 +1412,7 @@
     if (!state.ready) {
       app.innerHTML = loadingScreen();
       renderNavBar();
+      renderDraftOverlay();
       return;
     }
 
@@ -1436,11 +1438,13 @@
 
     if (!state.server) {
       renderSetup();
+      renderDraftOverlay();
       return;
     }
     // Password reset links work whether or not someone is signed in.
     if (route.name === 'reset-password') {
       renderResetPassword(route.query);
+      renderDraftOverlay();
       return;
     }
     // Arriving from a verification or reset email should show the signed-out screen.
@@ -1466,6 +1470,7 @@
           renderAuth('login');
           break;
       }
+      renderDraftOverlay();
       return;
     }
     if (!state.user) {
@@ -1474,6 +1479,7 @@
       // error page; the token is kept and will be re-checked on next launch.
       renderNavBar();
       renderAuth('login');
+      renderDraftOverlay();
       return;
     }
 
@@ -1510,6 +1516,8 @@
         break;
     }
     renderNavBar();
+    // 草稿浮层浮在页面之上，每次重绘都要跟着刷新（语言切换、页面切换等）。
+    renderDraftOverlay();
   }
 
   function renderSetup() {
@@ -2069,13 +2077,6 @@
 
   /** 行程页：默认页面，展示当前（或接下来）的行程与相关资料。 */
   function renderTrip() {
-    if (pendingOverlayOpen) {
-      pendingOverlayOpen = false;
-      draftOverlayOpen = true;
-      createCooldownUntil = Date.now() + 2000;
-      pushOverlayHistory();
-    }
-    const drafts = sortedDrafts();
     const trip = pickTrip(state.journeys);
     app.innerHTML = `
       <div class="screen">
@@ -2105,36 +2106,8 @@
             ${otherJourneysMarkup(state.journeys, trip.journey?.id)}
           </div>
 
-          <div class="draft-layer" id="draft-layer"${draftOverlayOpen ? '' : ' hidden'}>
-            <div class="draft-list" id="draft-list">
-              ${
-                drafts.length
-                  ? drafts.map((draft) => draftRowMarkup(draft, expandedDraftId === draft.id)).join('')
-                  : `<p class="draft-none">${t('draft.none')}</p>`
-              }
-            </div>
-          </div>
-
         </main>
       </div>`;
-
-    if (draftOverlayOpen) startCreateCooldown();
-    positionDraftLayer();
-
-    const page = document.querySelector('.trip-page');
-    if (page) {
-      page.addEventListener('click', (event) => {
-        if (!draftOverlayOpen) return;
-        if (event.target.closest('.draft-list')) return;
-        if (event.target.closest('.nav-bar')) return;
-        // 点空白处：展开的草稿先收回列表，否则收起草稿列表
-        if (expandedDraftId) {
-          collapseExpanded();
-          return;
-        }
-        closeDraftOverlay();
-      });
-    }
 
     const hero = document.getElementById('trip-hero');
     const others = document.getElementById('trip-others');
@@ -2228,6 +2201,34 @@
     history.back();
   }
 
+  /**
+   * 草稿浮层：悬浮在任意页面之上（不随页面重绘消失），
+   * 所以四个标签页点加号都能就地浮出草稿列表。
+   */
+  function renderDraftOverlay() {
+    if (!overlayHost) return;
+    const drafts = sortedDrafts();
+    overlayHost.innerHTML = `
+      <div class="draft-layer" id="draft-layer"${draftOverlayOpen ? '' : ' hidden'}>
+        <div class="draft-list" id="draft-list">
+          ${
+            drafts.length
+              ? drafts.map((draft) => draftRowMarkup(draft, expandedDraftId === draft.id)).join('')
+              : `<p class="draft-none">${t('draft.none')}</p>`
+          }
+        </div>
+      </div>`;
+    positionDraftLayer();
+  }
+
+  function openDraftOverlay() {
+    draftOverlayOpen = true;
+    createCooldownUntil = Date.now() + 2000;
+    renderDraftOverlay();
+    startCreateCooldown();
+    pushOverlayHistory();
+  }
+
   function closeDraftOverlay() {
     draftOverlayOpen = false;
     expandedDraftId = null;
@@ -2253,6 +2254,8 @@
     draftOverlayOpen = false;
     expandedDraftId = null;
     stopCreateCooldown();
+    const veil = document.getElementById('draft-layer');
+    if (veil) veil.hidden = true;
     if (isTabHash(hash)) {
       overlayPushed = false;
       pendingTabHash = hash;
@@ -2279,12 +2282,10 @@
   function positionDraftLayer() {
     const layer = document.getElementById('draft-layer');
     const nav = document.querySelector('.nav-bar');
-    const page = document.querySelector('.trip-page');
-    if (!layer || !nav || !page) return;
-    const pageRect = page.getBoundingClientRect();
+    if (!layer || !nav) return;
     const navRect = nav.getBoundingClientRect();
     layer.style.top = 'auto';
-    layer.style.bottom = `${Math.round(pageRect.bottom - navRect.top + 10)}px`;
+    layer.style.bottom = `${Math.round(window.innerHeight - navRect.top + 10)}px`;
   }
 
   function refreshDraftList() {
@@ -2350,7 +2351,6 @@
 
   let currentRouteName = '';
   let pendingDraft = null;
-  let pendingOverlayOpen = false;
   let draftOverlayOpen = false;
   let expandedDraftId = null;
   let createCooldownUntil = 0;
@@ -3528,9 +3528,8 @@
       case 'new': {
         const drafts = sortedDrafts();
         if (drafts.length > 0 && !draftOverlayOpen) {
-          // 有草稿：回到默认的行程页，浮出草稿列表，加号冷却两秒。
-          pendingOverlayOpen = true;
-          navigateTab('#/');
+          // 有草稿：就地在当前页面浮出草稿列表，加号冷却两秒，不切换页面。
+          openDraftOverlay();
           break;
         }
         if (draftOverlayOpen) {
@@ -3541,8 +3540,7 @@
           break;
         }
         resetPlanState();
-        // 背景统一是默认的行程页：先切回行程页，再进入创建旅程。
-        navigateTab('#/', () => navigate('#/new'));
+        navigate('#/new');
         break;
       }
       case 'journeys':
@@ -3670,7 +3668,23 @@
   app.addEventListener('click', handleAction);
   navHost?.addEventListener('click', handleAction);
 
+  /**
+   * 点空白处收起草稿浮层：展开的草稿先收回列表，否则收起整个浮层。
+   * 浮层浮在任意页面之上，所以这里监听整个文档。
+   */
+  document.addEventListener('click', (event) => {
+    if (!draftOverlayOpen) return;
+    if (event.target.closest('.draft-list')) return;
+    if (event.target.closest('.nav-bar')) return;
+    if (expandedDraftId) {
+      collapseExpanded();
+      return;
+    }
+    closeDraftOverlay();
+  });
+
   window.addEventListener('hashchange', render);
+  window.addEventListener('resize', positionDraftLayer);
 
   /**
    * 系统返回：
