@@ -183,14 +183,15 @@ code {
 .nav-btn.nav-create {
   display: grid;
   place-items: center;
-  width: 54px;
-  height: 54px;
+  width: 56px;
+  height: 56px;
+  min-width: 0;
   padding: 0;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: 50%;
   background: linear-gradient(140deg, #b34434, var(--seal-dark));
   color: #fff8ec;
-  font-size: 26px;
+  font-size: 28px;
   line-height: 1;
   box-shadow: 0 12px 26px rgba(140, 47, 35, 0.22);
 }
