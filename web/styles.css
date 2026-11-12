@@ -152,6 +152,7 @@ code {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  margin-top: auto;
   padding: 6px 4px 0;
 }
 
