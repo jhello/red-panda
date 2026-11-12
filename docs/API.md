@@ -16,6 +16,7 @@ application/json; charset=utf-8`），`204` 响应无正文。
   ```
 
 - **登录限流**：同一 IP 10 分钟内最多失败 20 次，超出返回 `429`。
+- **邮件限流**：同一 IP 10 分钟内最多触发 20 次注册 / 重发 / 找回操作，超出返回 `429`。
 
 ## 状态码
 
@@ -23,13 +24,15 @@ application/json; charset=utf-8`），`204` 响应无正文。
 | --- | --- |
 | `200` | 成功 |
 | `201` | 创建成功 |
-| `204` | 成功但无正文（登出、删除） |
-| `400` | 参数不合法 |
-| `401` | 未登录 / 令牌无效 / 管理员令牌无效 |
+| `204` | 成功但无正文（登出、删除、改密码） |
+| `302` | 验证链接跳转回应用 |
+| `400` | 参数不合法 / 验证或重置令牌无效 |
+| `401` | 未登录 / 令牌无效 / 密码不正确 / 管理员令牌无效 |
+| `403` | 邮箱尚未验证 |
 | `404` | 资源不存在 |
-| `409` | 用户名已存在 |
-| `429` | 登录尝试过多 |
-| `502` / `503` / `504` | AI 上游错误 / 未配置 / 超时 |
+| `409` | 邮箱已注册 |
+| `429` | 尝试或邮件操作过多 |
+| `502` / `503` / `504` | 邮件发送失败 / AI 未配置 / AI 超时 |
 | `500` | 服务器内部错误 |
 
 ---
@@ -54,38 +57,110 @@ application/json; charset=utf-8`），`204` 响应无正文。
 
 ## 账号
 
-### `POST /api/auth/register`
+账户以**邮箱**为唯一标识。注册后需要点击验证邮件里的链接激活，才能登录。
+老版本用用户名注册的账户仍然可以用用户名登录。
 
-注册并直接登录。
+### `POST /api/auth/register`
 
 请求：
 
 ```json
-{ "username": "旅人", "password": "password123" }
+{ "email": "you@example.com", "password": "password123" }
 ```
 
-- 用户名：2–32 位中文、字母、数字、下划线或短横线；
+- 邮箱：合法的邮箱地址，长度 5–254；
 - 密码：8–128 个字符。
 
-响应 `201`：
+响应 `201`（账户已创建，等待验证）：
 
 ```json
 {
-  "token": "…",
-  "expiresAt": "2026-12-11T13:47:23.000Z",
-  "user": { "id": 1, "username": "旅人", "createdAt": "2026-11-11T13:47:23.000Z" }
+  "status": "pending_verification",
+  "email": "you@example.com",
+  "message": "验证邮件已发送，请查收并点击链接激活账户"
 }
 ```
+
+如果该邮箱已注册但尚未验证，会更新密码并重新发送验证邮件，返回 `200`，
+结构同上。已验证的邮箱再次注册返回 `409`（`email_taken`）。
+
+验证邮件里的链接指向 `GET /api/auth/verify?token=…`。验证成功或失败都会
+`302` 跳转到：
+
+- `/app/#/login?verified=1` — 验证成功；
+- `/app/#/login?verify=invalid` — 令牌无效或已过期。
 
 ### `POST /api/auth/login`
 
 请求：
 
 ```json
-{ "username": "旅人", "password": "password123" }
+{ "email": "you@example.com", "password": "password123" }
 ```
 
-响应 `200`：结构同注册。
+也接受 `{ "username": "老用户名", "password": "…" }`，用于兼容旧账户。
+
+响应 `200`：
+
+```json
+{
+  "token": "…",
+  "expiresAt": "2026-12-11T13:47:23.000Z",
+  "user": {
+    "id": 1,
+    "email": "you@example.com",
+    "displayName": "you",
+    "username": "you@example.com",
+    "emailVerified": true,
+    "createdAt": "2026-11-11T13:47:23.000Z"
+  }
+}
+```
+
+邮箱未验证时返回 `403`（`email_not_verified`），此时可以调用重发接口。
+
+会话采用滑动过期：每次使用令牌都会把有效期续到 `ODYSSEY_SESSION_DAYS` 天之后，
+所以只要还在使用就不会被登出；手动登出、修改密码或重置密码会立即失效。
+
+### `POST /api/auth/resend-verification`
+
+请求：
+
+```json
+{ "email": "you@example.com" }
+```
+
+无论邮箱是否存在都返回 `200`，避免泄露账户信息：
+
+```json
+{ "status": "ok", "message": "如果该邮箱存在且尚未验证，验证邮件已发送" }
+```
+
+### `POST /api/auth/forgot-password`
+
+请求：
+
+```json
+{ "email": "you@example.com" }
+```
+
+已注册且已验证的账户会收到重置密码邮件；未验证的账户会收到验证邮件。
+无论邮箱是否存在都返回 `200`：
+
+```json
+{ "status": "ok", "message": "如果该邮箱已注册，重置邮件已发送" }
+```
+
+### `POST /api/auth/reset-password`
+
+请求：
+
+```json
+{ "token": "邮件链接里的令牌", "password": "newpassword123" }
+```
+
+成功返回 `204`，并让该用户所有现有会话失效。令牌无效、已使用或过期返回
+`400`（`invalid_reset_token`）。
 
 ### `POST /api/auth/logout`
 
@@ -96,8 +171,30 @@ application/json; charset=utf-8`），`204` 响应无正文。
 需要认证。返回当前用户：
 
 ```json
-{ "user": { "id": 1, "username": "旅人", "createdAt": "…" } }
+{
+  "user": {
+    "id": 1,
+    "email": "you@example.com",
+    "displayName": "you",
+    "username": "you@example.com",
+    "emailVerified": true,
+    "createdAt": "…"
+  }
+}
 ```
+
+### `PUT /api/me/password`
+
+需要认证。修改密码：
+
+```json
+{ "currentPassword": "password123", "newPassword": "newpassword123" }
+```
+
+- `newPassword`：8–128 个字符；
+- 当前密码不正确返回 `401`（`invalid_password`）。
+
+成功返回 `204`。当前会话保持有效，**其他设备上的会话全部失效**。
 
 ---
 
@@ -253,7 +350,10 @@ application/json; charset=utf-8`），`204` 响应无正文。
   "users": [
     {
       "id": 1,
-      "username": "旅人",
+      "username": "you@example.com",
+      "email": "you@example.com",
+      "displayName": "you",
+      "emailVerified": true,
       "createdAt": "…",
       "lastLoginAt": "…",
       "lastSeenAt": "…",
@@ -288,15 +388,26 @@ application/json; charset=utf-8`），`204` 响应无正文。
 ```bash
 BASE=http://127.0.0.1:8787
 
-# 注册
+# 注册（之后去收件箱点击验证链接）
 curl -s -X POST "$BASE/api/auth/register" \
   -H 'Content-Type: application/json' \
-  -d '{"username":"旅人","password":"password123"}'
+  -d '{"email":"you@example.com","password":"password123"}'
 
 # 登录并保存令牌
 TOKEN=$(curl -s -X POST "$BASE/api/auth/login" \
   -H 'Content-Type: application/json' \
-  -d '{"username":"旅人","password":"password123"}' | jq -r .token)
+  -d '{"email":"you@example.com","password":"password123"}' | jq -r .token)
+
+# 修改密码
+curl -s -X PUT "$BASE/api/me/password" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"currentPassword":"password123","newPassword":"newpassword123"}'
+
+# 忘记密码（邮件会写入 data/outbox 或通过配置的渠道发送）
+curl -s -X POST "$BASE/api/auth/forgot-password" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com"}'
 
 # 创建旅程
 curl -s -X POST "$BASE/api/journeys" \

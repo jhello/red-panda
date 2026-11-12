@@ -33,6 +33,8 @@ HTML5 应用  http://192.168.10.65:8787/app/
 健康检查    http://192.168.10.65:8787/api/health
 数据库      /.../data/odyssey.db
 AI          未配置（设置 OPENAI_API_KEY 后重启）
+邮件        log · 邮件写入 /.../data/outbox
+公开地址    自动检测（验证邮件中的链接以此为准）
 管理员令牌  xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
@@ -63,7 +65,15 @@ npm run dev        # node --watch，改代码自动重启
 | `ODYSSEY_DATA_DIR` | `<项目>/data` | 运行时数据目录 |
 | `ODYSSEY_DB` | `<data>/odyssey.db` | SQLite 文件路径 |
 | `ODYSSEY_ADMIN_TOKEN` | 自动生成 | 看板管理员令牌；不设则生成并保存到 `data/admin-token` |
-| `ODYSSEY_SESSION_DAYS` | `30` | 登录会话有效天数 |
+| `ODYSSEY_SESSION_DAYS` | `30` | 登录会话闲置有效天数；每次使用会自动续期，直到手动登出 |
+| `ODYSSEY_VERIFY_HOURS` | `24` | 注册验证链接有效小时数 |
+| `ODYSSEY_RESET_MINUTES` | `60` | 重置密码链接有效分钟数 |
+| `ODYSSEY_PUBLIC_URL` | 空 | 邮件链接使用的公开地址；留空自动使用局域网地址 |
+| `ODYSSEY_MAIL_MODE` | `log` | 邮件发送方式：`log` / `command` / `http` |
+| `ODYSSEY_MAIL_FROM` | `Odyssey <no-reply@odyssey.local>` | 发件人 |
+| `ODYSSEY_MAIL_COMMAND` | 空 | `command` 模式下执行的命令，如 `msmtp -t` |
+| `ODYSSEY_MAIL_API_URL` | 空 | `http` 模式下接收邮件的 API 地址 |
+| `ODYSSEY_MAIL_API_KEY` | 空 | `http` 模式下的 Bearer 密钥 |
 | `ODYSSEY_WEB_DIR` | `<项目>/web` | HTML5 前端目录 |
 | `OPENAI_API_KEY` | 空 | OpenAI（或兼容服务）密钥；为空时 AI 未配置 |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API 基地址，可指向兼容服务 |
@@ -85,6 +95,47 @@ OPENAI_MODEL=gpt-4o-mini
 ```bash
 ./scripts/stop-server.sh && ./scripts/start-server.sh
 ```
+
+## 邮件与账户验证
+
+注册只接受邮箱。账户创建后处于「待验证」状态，用户需要点击验证邮件里的链接
+才会激活；未验证的账户无法登录。忘记密码时也通过邮件发送重置链接。
+
+### 发送方式
+
+| `ODYSSEY_MAIL_MODE` | 行为 |
+| --- | --- |
+| `log`（默认） | 把完整邮件写入 `data/outbox/*.eml`，并在 `data/server.log` 打印验证/重置链接。无需任何配置。 |
+| `command` | 把原始邮件通过管道交给 `ODYSSEY_MAIL_COMMAND`，例如 `msmtp -t`。 |
+| `http` | 向 `ODYSSEY_MAIL_API_URL` 发送 JSON：`{from,to,subject,text,html}`；可带 `ODYSSEY_MAIL_API_KEY`。 |
+
+默认的 `log` 模式适合本地开发和自用。想真正收信，可以安装 `msmtp` 并用
+`command` 模式，或把邮件交给任意支持 HTTP 的邮件服务。
+
+### 查看验证链接（log 模式）
+
+```bash
+ls -t data/outbox | head
+tail -n 40 data/server.log | grep -E 'mail:log|链接'
+```
+
+日志里会出现类似：
+
+```
+[odyssey] [mail:log] → you@example.com · 激活你的山海经账户
+[odyssey] [mail:log] 链接: http://192.168.10.65:8787/api/auth/verify?token=…
+```
+
+### 公开地址很重要
+
+验证/重置链接里的域名来自 `ODYSSEY_PUBLIC_URL`；没有设置时会自动选择本机的
+局域网地址。部署到公网时必须显式设置，例如：
+
+```bash
+ODYSSEY_PUBLIC_URL=https://odyssey.example.com
+```
+
+否则用户收到的链接会指向内网 IP，在手机上无法打开。
 
 ## 管理员令牌与看板
 
@@ -160,9 +211,14 @@ sudo firewall-cmd --reload
 
 | 表 | 用途 |
 | --- | --- |
-| `users` | 用户账号、scrypt 密码哈希、登录/在线时间 |
+| `users` | 用户账号、邮箱、scrypt 密码哈希、验证状态、登录/在线时间 |
 | `sessions` | 会话令牌哈希与过期时间 |
+| `email_verifications` | 待使用的邮箱验证令牌 |
+| `password_resets` | 待使用的密码重置令牌 |
 | `journeys` | 旅程（名称、描述、所属用户） |
+
+从旧版本升级时，已有账户会自动补上 `email = NULL`、`email_verified = 1`，
+并继续用原来的用户名登录；新账户使用邮箱登录。
 
 AI 调用次数等运行指标保存在内存中，服务重启后归零，不写入数据库。
 
@@ -182,6 +238,15 @@ AI 调用次数等运行指标保存在内存中，服务重启后归零，不�
 **AI 一直提示 503**
 说明未配置 `OPENAI_API_KEY`，或密钥/网络有问题。看 `data/server.log`
 中的错误；也可先用 `ODYSSEY_AI_MOCK=1` 验证前端流程。
+
+**收不到验证 / 重置邮件**
+默认 `ODYSSEY_MAIL_MODE=log` 不会真的发信：链接在 `data/server.log` 和
+`data/outbox/*.eml` 里。需要真实收信时配置 `ODYSSEY_MAIL_MODE=command`
+（如 `msmtp`）或 `http`。同时确认 `ODYSSEY_PUBLIC_URL` 指向用户能访问的地址。
+
+**登录提示「邮箱尚未验证」**
+用注册邮箱调用 `POST /api/auth/resend-verification`，或在应用的待验证页面点
+「重新发送验证邮件」，然后点击新邮件里的链接。
 
 **端口被占用**
 换端口：`PORT=8788 ./scripts/start-server.sh`，并同步修改 Android 的服务器地址。

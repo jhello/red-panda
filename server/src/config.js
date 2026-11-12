@@ -45,6 +45,9 @@ export function loadConfig(env = process.env) {
   }
 
   const sessionDays = Number(value(env, 'ODYSSEY_SESSION_DAYS', '30'));
+  const verifyHours = Number(value(env, 'ODYSSEY_VERIFY_HOURS', '24'));
+  const resetMinutes = Number(value(env, 'ODYSSEY_RESET_MINUTES', '60'));
+  const publicUrl = value(env, 'ODYSSEY_PUBLIC_URL', '').replace(/\/+$/, '');
 
   return {
     version: pkg.version,
@@ -55,8 +58,19 @@ export function loadConfig(env = process.env) {
     adminToken: admin.token,
     adminTokenSource: admin.source,
     sessionDays: Number.isFinite(sessionDays) && sessionDays > 0 ? sessionDays : 30,
+    verificationHours: Number.isFinite(verifyHours) && verifyHours > 0 ? verifyHours : 24,
+    resetMinutes: Number.isFinite(resetMinutes) && resetMinutes > 0 ? resetMinutes : 60,
+    publicUrl: publicUrl || null,
     webDir: path.resolve(value(env, 'ODYSSEY_WEB_DIR', path.join(PROJECT_ROOT, 'web'))),
     dashboardDir: path.join(SERVER_DIR, 'public', 'dashboard'),
+    mail: {
+      mode: value(env, 'ODYSSEY_MAIL_MODE', 'log').toLowerCase(),
+      from: value(env, 'ODYSSEY_MAIL_FROM', 'Odyssey <no-reply@odyssey.local>'),
+      outboxDir: path.join(dataDir, 'outbox'),
+      command: value(env, 'ODYSSEY_MAIL_COMMAND', ''),
+      apiUrl: value(env, 'ODYSSEY_MAIL_API_URL', ''),
+      apiKey: value(env, 'ODYSSEY_MAIL_API_KEY', ''),
+    },
     ai: {
       apiKey: value(env, 'OPENAI_API_KEY', ''),
       baseUrl: value(env, 'OPENAI_BASE_URL', 'https://api.openai.com/v1').replace(/\/+$/, ''),

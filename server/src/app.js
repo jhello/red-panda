@@ -9,9 +9,11 @@ import { AIError, aiStatus, chat } from './ai.js';
 import { hashPassword, hashToken, newSessionToken, safeEqual, verifyPassword } from './auth.js';
 import { fileSize, openDatabase } from './db.js';
 import { getLanUrls } from './config.js';
+import { createMailer } from './mailer.js';
+import { resetEmail, verificationEmail } from './emails.js';
 
 const MAX_BODY_BYTES = 1024 * 1024;
-const USERNAME_RE = /^[\p{L}\p{N}_-]{2,32}$/u;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
 const MIME = {
@@ -113,10 +115,28 @@ function optionalString(value, label, max = 5000) {
   return text;
 }
 
+function normalizeEmail(value) {
+  const email = String(value ?? '').trim().toLowerCase();
+  if (email.length < 5 || email.length > 254 || !EMAIL_RE.test(email)) {
+    throw new HttpError(400, '请输入有效的邮箱地址', 'validation_error');
+  }
+  return email;
+}
+
+function validatePassword(value) {
+  const password = typeof value === 'string' ? value : '';
+  if (password.length < 8) throw new HttpError(400, '密码至少需要 8 个字符', 'validation_error');
+  if (password.length > 128) throw new HttpError(400, '密码不能超过 128 个字符', 'validation_error');
+  return password;
+}
+
 function publicUser(row) {
   return {
     id: row.id,
+    email: row.email || null,
+    displayName: row.display_name || row.username,
     username: row.username,
+    emailVerified: Boolean(row.email_verified),
     createdAt: row.created_at,
   };
 }
@@ -177,8 +197,9 @@ function notFound(req, res) {
   res.end(body);
 }
 
-export function createApp(config) {
+export function createApp(config, options = {}) {
   const db = openDatabase(config.dbPath);
+  const mailer = options.mailer || createMailer(config);
   const startedAt = new Date();
   const lanUrls = getLanUrls(config.port);
   const state = {
@@ -188,6 +209,7 @@ export function createApp(config) {
     metrics: { total: 0, byStatus: {}, aiCalls: 0 },
   };
   const loginAttempts = new Map();
+  const emailAttempts = new Map();
 
   const routes = [];
 
@@ -207,11 +229,23 @@ export function createApp(config) {
       return null;
     }
     const now = new Date().toISOString();
+    // Sliding session: an active device stays signed in until it has been
+    // unused for the whole session window, or the user logs out manually.
+    const renewedUntil = new Date(
+      Date.now() + config.sessionDays * 24 * 60 * 60 * 1000,
+    ).toISOString();
     db.touchSeen(row.user_id, now);
-    db.touchSession(tokenHash, now);
+    db.touchSession(tokenHash, now, renewedUntil);
     return {
       tokenHash,
-      user: { id: row.user_id, username: row.username, createdAt: row.user_created_at },
+      user: {
+        id: row.user_id,
+        username: row.username,
+        email: row.email,
+        display_name: row.display_name,
+        email_verified: row.email_verified,
+        created_at: row.user_created_at,
+      },
     };
   }
 
@@ -251,12 +285,68 @@ export function createApp(config) {
     if (entry) entry.count += 1;
   }
 
+  function checkEmailRate(ip) {
+    const now = Date.now();
+    const entry = emailAttempts.get(ip);
+    if (!entry || entry.resetAt <= now) {
+      emailAttempts.set(ip, { count: 1, resetAt: now + 10 * 60 * 1000 });
+      return;
+    }
+    if (entry.count >= 20) {
+      throw new HttpError(429, '操作过于频繁，请十分钟后再试', 'rate_limited');
+    }
+    entry.count += 1;
+  }
+
+  function publicBaseUrl() {
+    if (config.publicUrl) return config.publicUrl;
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : config.port;
+    const lan = getLanUrls(port).find((entry) => entry.name !== 'localhost');
+    return lan?.url || `http://127.0.0.1:${port}`;
+  }
+
+  async function sendVerificationEmail(user) {
+    const token = newSessionToken();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + config.verificationHours * 60 * 60 * 1000);
+    db.createEmailVerification({
+      tokenHash: hashToken(token),
+      userId: user.id,
+      now: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    });
+    const link = `${publicBaseUrl()}/api/auth/verify?token=${encodeURIComponent(token)}`;
+    const mail = verificationEmail({ link, email: user.email, hours: config.verificationHours });
+    await mailer.send({ to: user.email, ...mail });
+    return link;
+  }
+
+  async function sendResetEmail(user) {
+    const token = newSessionToken();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + config.resetMinutes * 60 * 1000);
+    db.createPasswordReset({
+      tokenHash: hashToken(token),
+      userId: user.id,
+      now: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    });
+    const link = `${publicBaseUrl()}/app/#/reset-password?token=${encodeURIComponent(token)}`;
+    const mail = resetEmail({ link, email: user.email, minutes: config.resetMinutes });
+    await mailer.send({ to: user.email, ...mail });
+    return link;
+  }
+
   function buildStatus() {
     const now = Date.now();
     const memory = process.memoryUsage();
     const users = db.listUsers().map((user) => ({
       id: user.id,
       username: user.username,
+      email: user.email || null,
+      displayName: user.display_name || user.username,
+      emailVerified: Boolean(user.email_verified),
       createdAt: user.created_at,
       lastLoginAt: user.last_login_at,
       lastSeenAt: user.last_seen_at,
@@ -320,47 +410,84 @@ export function createApp(config) {
   );
 
   route('POST', /^\/api\/auth\/register$/, async ({ body, req }) => {
-    const username = requiredString(body.username, '用户名', { min: 2, max: 32 });
-    if (!USERNAME_RE.test(username)) {
-      throw new HttpError(
-        400,
-        '用户名需为 2–32 位中文、字母、数字、下划线或短横线',
-        'validation_error',
-      );
-    }
-    const password = typeof body.password === 'string' ? body.password : '';
-    if (password.length < 8) throw new HttpError(400, '密码至少需要 8 个字符', 'validation_error');
-    if (password.length > 128) throw new HttpError(400, '密码不能超过 128 个字符', 'validation_error');
-
+    const ip = req.socket.remoteAddress ?? 'unknown';
+    checkEmailRate(ip);
+    const email = normalizeEmail(body.email);
+    const password = validatePassword(body.password);
     const now = new Date().toISOString();
+
+    const existing = db.findUserByEmail(email);
+    if (existing) {
+      if (existing.email_verified) {
+        throw new HttpError(409, '这个邮箱已经注册过了', 'email_taken');
+      }
+      // Unverified accounts may re-register: update the password and resend.
+      db.setPassword(existing.id, hashPassword(password));
+      try {
+        await sendVerificationEmail(existing);
+      } catch (error) {
+        console.error('[odyssey] 验证邮件发送失败:', error);
+        throw new HttpError(502, '账户已存在，但验证邮件发送失败，请稍后重试', 'mail_failed');
+      }
+      return {
+        status: 200,
+        body: {
+          status: 'pending_verification',
+          email,
+          message: '验证邮件已重新发送，请查收',
+        },
+      };
+    }
+
     let userId;
     try {
-      userId = db.createUser({ username, passwordHash: hashPassword(password), now });
+      userId = db.createUser({ email, passwordHash: hashPassword(password), now });
     } catch (error) {
       if (String(error.message).includes('UNIQUE')) {
-        throw new HttpError(409, '这个用户名已经被使用了', 'username_taken');
+        throw new HttpError(409, '这个邮箱已经注册过了', 'email_taken');
       }
       throw error;
     }
-    const session = issueSession(userId);
+
     const user = db.findUserById(userId);
+    try {
+      await sendVerificationEmail(user);
+    } catch (error) {
+      console.error('[odyssey] 验证邮件发送失败:', error);
+      throw new HttpError(502, '账户已创建，但验证邮件发送失败，请稍后重试', 'mail_failed');
+    }
+
     return {
       status: 201,
-      body: { token: session.token, expiresAt: session.expiresAt, user: publicUser(user) },
+      body: {
+        status: 'pending_verification',
+        email,
+        message: '验证邮件已发送，请查收并点击链接激活账户',
+      },
     };
   });
 
   route('POST', /^\/api\/auth\/login$/, async ({ body, req }) => {
     const ip = req.socket.remoteAddress ?? 'unknown';
     checkLoginRate(ip);
-    const username = requiredString(body.username, '用户名', { min: 1, max: 32 });
+    const identifier =
+      typeof body.email === 'string' && body.email.trim()
+        ? body.email.trim().toLowerCase()
+        : typeof body.username === 'string'
+          ? body.username.trim()
+          : '';
     const password = typeof body.password === 'string' ? body.password : '';
+    if (!identifier) throw new HttpError(400, '请输入邮箱', 'validation_error');
     if (!password) throw new HttpError(400, '请输入密码', 'validation_error');
 
-    const user = db.findUserByUsername(username);
+    // New accounts use email; legacy accounts may still log in with a username.
+    const user = db.findUserByEmail(identifier) || db.findUserByUsername(identifier);
     if (!user || !verifyPassword(password, user.password_hash)) {
       noteLoginFailure(ip);
-      throw new HttpError(401, '用户名或密码不正确', 'invalid_credentials');
+      throw new HttpError(401, '邮箱或密码不正确', 'invalid_credentials');
+    }
+    if (!user.email_verified) {
+      throw new HttpError(403, '邮箱尚未验证，请查收验证邮件并点击激活链接', 'email_not_verified');
     }
     loginAttempts.delete(ip);
     const now = new Date().toISOString();
@@ -370,6 +497,84 @@ export function createApp(config) {
       status: 200,
       body: { token: session.token, expiresAt: session.expiresAt, user: publicUser(user) },
     };
+  });
+
+  route('GET', /^\/api\/auth\/verify$/, ({ req, res }) => {
+    let token = '';
+    try {
+      token = new URL(req.url ?? '/', 'http://localhost').searchParams.get('token') ?? '';
+    } catch {
+      token = '';
+    }
+    let verified = false;
+    if (token) {
+      const row = db.consumeEmailVerification(hashToken(token), new Date().toISOString());
+      if (row) {
+        db.markEmailVerified(row.user_id);
+        verified = true;
+      }
+    }
+    const location = verified ? '/app/#/login?verified=1' : '/app/#/login?verify=invalid';
+    res.writeHead(302, { Location: location });
+    res.end();
+    return { status: 302 };
+  });
+
+  route('POST', /^\/api\/auth\/resend-verification$/, async ({ body, req }) => {
+    const ip = req.socket.remoteAddress ?? 'unknown';
+    checkEmailRate(ip);
+    const email = normalizeEmail(body.email);
+    const user = db.findUserByEmail(email);
+    if (user && !user.email_verified) {
+      try {
+        await sendVerificationEmail(user);
+      } catch (error) {
+        console.error('[odyssey] 验证邮件发送失败:', error);
+      }
+    }
+    return {
+      status: 200,
+      body: {
+        status: 'ok',
+        message: '如果该邮箱存在且尚未验证，验证邮件已发送',
+      },
+    };
+  });
+
+  route('POST', /^\/api\/auth\/forgot-password$/, async ({ body, req }) => {
+    const ip = req.socket.remoteAddress ?? 'unknown';
+    checkEmailRate(ip);
+    const email = normalizeEmail(body.email);
+    const user = db.findUserByEmail(email);
+    if (user) {
+      try {
+        if (user.email_verified) await sendResetEmail(user);
+        else await sendVerificationEmail(user);
+      } catch (error) {
+        console.error('[odyssey] 邮件发送失败:', error);
+      }
+    }
+    return {
+      status: 200,
+      body: {
+        status: 'ok',
+        message: '如果该邮箱已注册，重置邮件已发送',
+      },
+    };
+  });
+
+  route('POST', /^\/api\/auth\/reset-password$/, async ({ body, req }) => {
+    const ip = req.socket.remoteAddress ?? 'unknown';
+    checkEmailRate(ip);
+    const token = requiredString(body.token, '重置令牌', { min: 10, max: 200 });
+    const password = validatePassword(body.password);
+    const row = db.consumePasswordReset(hashToken(token), new Date().toISOString());
+    if (!row) {
+      throw new HttpError(400, '重置链接无效或已过期，请重新申请', 'invalid_reset_token');
+    }
+    db.setPassword(row.user_id, hashPassword(password));
+    db.deleteSessionsForUser(row.user_id);
+    return { status: 204 };
   });
 
   // ---- authenticated routes ------------------------------------------------
@@ -389,8 +594,26 @@ export function createApp(config) {
     /^\/api\/me$/,
     ({ auth }) => ({
       status: 200,
-      body: { user: { id: auth.user.id, username: auth.user.username, createdAt: auth.user.createdAt } },
+      body: { user: publicUser(auth.user) },
     }),
+    { auth: true },
+  );
+
+  route(
+    'PUT',
+    /^\/api\/me\/password$/,
+    ({ auth, body }) => {
+      const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
+      const newPassword = validatePassword(body.newPassword);
+      const row = db.findUserById(auth.user.id);
+      if (!row || !verifyPassword(currentPassword, row.password_hash)) {
+        throw new HttpError(401, '当前密码不正确', 'invalid_password');
+      }
+      db.setPassword(auth.user.id, hashPassword(newPassword));
+      // Keep this session, sign out every other device.
+      db.deleteOtherSessions(auth.user.id, auth.tokenHash);
+      return { status: 204 };
+    },
     { auth: true },
   );
 
@@ -605,7 +828,7 @@ export function createApp(config) {
       } else if (pathname.startsWith('/app/')) {
         filePath = safeJoin(config.webDir, pathname.slice('/app/'.length));
       } else if (pathname === '/favicon.ico') {
-        filePath = path.join(config.webDir, 'icon.svg');
+        filePath = path.join(config.webDir, 'icon-192.png');
       }
 
       if (filePath && fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
@@ -661,6 +884,7 @@ export function createApp(config) {
   const cleanup = setInterval(() => {
     try {
       db.deleteExpiredSessions();
+      db.deleteExpiredTokens();
     } catch (error) {
       console.error('[odyssey] session cleanup failed:', error);
     }
@@ -679,8 +903,8 @@ export function createApp(config) {
   };
 }
 
-export function startServer(config) {
-  const app = createApp(config);
+export function startServer(config, options = {}) {
+  const app = createApp(config, options);
   return new Promise((resolve, reject) => {
     app.server.once('error', reject);
     app.server.listen(config.port, config.host, () => {

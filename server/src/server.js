@@ -1,9 +1,11 @@
 import { loadConfig, getLanUrls } from './config.js';
 import { startServer } from './app.js';
 import { aiStatus } from './ai.js';
+import { createMailer } from './mailer.js';
 
 const config = loadConfig();
-const app = await startServer(config);
+const mailer = createMailer(config);
+const app = await startServer(config, { mailer });
 const address = app.server.address();
 const port = typeof address === 'object' && address ? address.port : config.port;
 const urls = getLanUrls(port);
@@ -11,6 +13,12 @@ const ai = aiStatus(config);
 
 const lan = urls.find((entry) => entry.name !== 'localhost');
 const base = lan?.url ?? urls[0].url;
+
+const mailHint = {
+  log: `log · 邮件写入 ${config.mail.outboxDir}`,
+  command: `command · ${config.mail.command || '未配置 ODYSSEY_MAIL_COMMAND'}`,
+  http: `http · ${config.mail.apiUrl || '未配置 ODYSSEY_MAIL_API_URL'}`,
+}[mailer.mode] ?? `${mailer.mode}（未知模式）`;
 
 console.log('');
 console.log('  山海经 · ODYSSEY');
@@ -23,6 +31,8 @@ console.log(`  数据库      ${config.dbPath}`);
 console.log(
   `  AI          ${ai.configured ? `已配置 · ${ai.model}${ai.mock ? ' (mock)' : ''}` : '未配置（设置 OPENAI_API_KEY 后重启）'}`,
 );
+console.log(`  邮件        ${mailHint}`);
+console.log(`  公开地址    ${config.publicUrl || '自动检测（验证邮件中的链接以此为准）'}`);
 console.log(`  管理员令牌  ${config.adminToken}`);
 if (config.adminTokenSource !== 'env') {
   console.log(`              （保存在 ${config.dataDir}/admin-token）`);

@@ -145,6 +145,13 @@ code {
   letter-spacing: 2px;
 }
 
+img.seal {
+  object-fit: cover;
+  border: 0;
+  padding: 0;
+  background: var(--paper);
+}
+
 .pulse {
   animation: pulse 1.6s ease-in-out infinite;
 }

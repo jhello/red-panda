@@ -73,6 +73,13 @@ code {
     0 8px 18px rgba(140, 47, 35, 0.22);
 }
 
+img.seal {
+  object-fit: cover;
+  border: 0;
+  padding: 0;
+  background: var(--paper);
+}
+
 /* ---- token gate --------------------------------------------------------- */
 
 .gate {

@@ -4,6 +4,7 @@
   const STORAGE = {
     token: 'odyssey.token',
     server: 'odyssey.server',
+    user: 'odyssey.user',
   };
 
   const app = document.getElementById('app');
@@ -11,7 +12,6 @@
 
   const state = {
     ready: false,
-    bootError: null,
     token: localStorage.getItem(STORAGE.token) || '',
     user: null,
     server: '',
@@ -147,23 +147,52 @@
     }
   }
 
+  function readCachedUser() {
+    try {
+      const raw = localStorage.getItem(STORAGE.user);
+      if (!raw) return null;
+      const user = JSON.parse(raw);
+      return user && typeof user === 'object' ? user : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function cacheUser(user) {
+    if (!user) {
+      localStorage.removeItem(STORAGE.user);
+      return;
+    }
+    try {
+      localStorage.setItem(STORAGE.user, JSON.stringify(user));
+    } catch {
+      // Private mode or a full quota should not break login.
+    }
+  }
+
   function clearToken() {
     state.token = '';
     state.user = null;
     state.journeys = [];
     state.currentJourney = null;
     localStorage.removeItem(STORAGE.token);
+    localStorage.removeItem(STORAGE.user);
   }
 
   function parseRoute() {
     const raw = location.hash.replace(/^#/, '') || '/';
-    const parts = raw.split('/').filter(Boolean);
-    if (parts.length === 0) return { name: 'home' };
-    if (parts[0] === 'journey' && parts[1]) return { name: 'journey', id: parts[1] };
-    return { name: parts[0] };
+    const [pathPart, queryPart = ''] = raw.split('?');
+    const parts = pathPart.split('/').filter(Boolean);
+    const query = {};
+    for (const [key, value] of new URLSearchParams(queryPart)) query[key] = value;
+    if (parts.length === 0) return { name: 'home', query };
+    if (parts[0] === 'journey' && parts[1]) return { name: 'journey', id: parts[1], query };
+    return { name: parts[0], query };
   }
 
   // ---- API ----------------------------------------------------------------
+
+  let lastNetworkToast = 0;
 
   async function api(path, options = {}) {
     const { method = 'GET', body, auth = true, timeout = 30000 } = options;
@@ -182,6 +211,14 @@
         signal: AbortSignal.timeout(timeout),
       });
     } catch (error) {
+      if (state.ready) {
+        if (error.name === 'TimeoutError') {
+          toast('请求超时，请稍后重试', 'error');
+        } else if (Date.now() - lastNetworkToast > 4000) {
+          lastNetworkToast = Date.now();
+          toast('无法连接服务器，请检查网络', 'error');
+        }
+      }
       if (error.name === 'TimeoutError') {
         throw new ApiError('请求超时，请稍后重试', 0, 'timeout');
       }
@@ -202,6 +239,7 @@
       if (response.status === 401 && auth) {
         clearToken();
         state.authTab = 'login';
+        if (state.ready) toast('登录已失效，请重新登录', 'error');
         setTimeout(() => {
           if (state.ready) render();
         }, 0);
@@ -231,7 +269,7 @@
 
   const brand = `
     <div class="brand">
-      <span class="seal">山海</span>
+      <img class="seal" src="logo.png" alt="山海经" />
       <div class="brand-text">
         <span class="brand-cn">山海经</span>
         <span class="brand-en">Odyssey</span>
@@ -251,7 +289,7 @@
     return `
       <div class="screen center-screen">
         <div class="loading">
-          <span class="seal seal-lg pulse">山海</span>
+          <img class="seal seal-lg pulse" src="logo.png" alt="山海经" />
           <p class="muted">正在翻开山海经…</p>
         </div>
       </div>`;
@@ -271,20 +309,40 @@
       renderSetup();
       return;
     }
-    if (state.bootError) {
-      renderOffline(state.bootError);
+    // Password reset links work whether or not someone is signed in.
+    if (route.name === 'reset-password') {
+      renderResetPassword(route.query);
       return;
     }
+    // Arriving from a verification or reset email should show the signed-out screen.
+    if (route.name === 'login' && (route.query.verified || route.query.verify || route.query.reset)) {
+      clearToken();
+    }
     if (!state.token) {
-      if (route.name === 'settings') {
-        renderSettings({ publicView: true });
-      } else {
-        renderAuth();
+      switch (route.name) {
+        case 'settings':
+          renderSettings({ publicView: true });
+          break;
+        case 'register':
+          renderAuth('register');
+          break;
+        case 'pending':
+          renderPending(route.query);
+          break;
+        case 'forgot':
+          renderForgot();
+          break;
+        default:
+          renderAuth('login');
+          break;
       }
       return;
     }
     if (!state.user) {
-      app.innerHTML = loadingScreen();
+      // We could not verify the cached session (for example offline on first
+      // launch after upgrading). Fall back to the login screen instead of an
+      // error page; the token is kept and will be re-checked on next launch.
+      renderAuth('login');
       return;
     }
 
@@ -319,7 +377,7 @@
     app.innerHTML = `
       <div class="screen setup-screen">
         <div class="auth-hero">
-          <span class="seal seal-lg">山海</span>
+          <img class="seal seal-lg" src="logo.png" alt="山海经" />
           <h1 class="auth-title">山海经</h1>
           <p class="auth-en">ODYSSEY</p>
         </div>
@@ -366,28 +424,25 @@
     });
   }
 
-  function renderOffline(error) {
-    app.innerHTML = `
-      <div class="screen center-screen">
-        <div class="offline">
-          <span class="seal seal-lg">山海</span>
-          <h1 class="page-title">连不上服务器</h1>
-          <p class="muted">${esc(error?.message || '网络请求失败')}</p>
-          <p class="muted">请确认服务端已启动，且手机与电脑在同一网络。</p>
-          <div class="row">
-            <button class="btn primary" data-action="retry">重试</button>
-            <button class="btn ghost" data-action="settings">服务器设置</button>
-          </div>
-        </div>
-      </div>`;
-  }
+  function renderAuth(tab = 'login') {
+    state.authTab = tab === 'register' ? 'register' : 'login';
+    const active = state.authTab;
+    const route = parseRoute();
+    let notice = '';
+    if (active === 'login') {
+      if (route.query.verified === '1') {
+        notice = '<p class="form-ok">邮箱已验证，请登录。</p>';
+      } else if (route.query.verify === 'invalid') {
+        notice = '<p class="form-error">验证链接无效或已过期，请重新发送验证邮件。</p>';
+      } else if (route.query.reset === '1') {
+        notice = '<p class="form-ok">密码已重置，请用新密码登录。</p>';
+      }
+    }
 
-  function renderAuth() {
-    const tab = state.authTab === 'register' ? 'register' : 'login';
     app.innerHTML = `
       <div class="screen auth-screen">
         <div class="auth-hero">
-          <span class="seal seal-lg">山海</span>
+          <img class="seal seal-lg" src="logo.png" alt="山海经" />
           <h1 class="auth-title">山海经</h1>
           <p class="auth-en">ODYSSEY</p>
           <p class="auth-tag">把走过的路，写进山海之间</p>
@@ -395,35 +450,44 @@
 
         <div class="card auth-card">
           <div class="tabs" role="tablist">
-            <button class="tab ${tab === 'login' ? 'active' : ''}" data-tab="login" role="tab">登录</button>
-            <button class="tab ${tab === 'register' ? 'active' : ''}" data-tab="register" role="tab">注册</button>
+            <button class="tab ${active === 'login' ? 'active' : ''}" data-tab="login" role="tab">登录</button>
+            <button class="tab ${active === 'register' ? 'active' : ''}" data-tab="register" role="tab">注册</button>
           </div>
           <form id="auth-form" class="form" novalidate>
             <label class="field">
-              <span>用户名</span>
-              <input name="username" autocomplete="username" maxlength="32" placeholder="你的名字" required />
+              <span>邮箱</span>
+              <input name="email" type="email" autocomplete="username" inputmode="email"
+                maxlength="254" placeholder="you@example.com" autocapitalize="off" spellcheck="false" required />
             </label>
             <label class="field">
               <span>密码</span>
               <input name="password" type="password" maxlength="128"
-                autocomplete="${tab === 'login' ? 'current-password' : 'new-password'}"
-                placeholder="${tab === 'login' ? '输入密码' : '至少 8 个字符'}" required />
+                autocomplete="${active === 'login' ? 'current-password' : 'new-password'}"
+                placeholder="${active === 'login' ? '输入密码' : '至少 8 个字符'}" required />
             </label>
             ${
-              tab === 'register'
+              active === 'register'
                 ? `<label class="field">
                     <span>确认密码</span>
                     <input name="confirm" type="password" maxlength="128" autocomplete="new-password" placeholder="再输入一次" required />
                   </label>`
                 : ''
             }
+            ${notice}
             <p class="form-error" id="auth-error" hidden></p>
-            <button class="btn primary block" type="submit">${tab === 'login' ? '登录' : '创建账户'}</button>
+            <button class="btn primary block" type="submit">${active === 'login' ? '登录' : '注册并验证邮箱'}</button>
           </form>
+          ${
+            active === 'login'
+              ? `<p class="auth-foot">
+                  <button class="link" data-action="forgot">忘记密码？</button>
+                </p>`
+              : ''
+          }
           <p class="auth-foot">
-            ${tab === 'login' ? '还没有账户？' : '已经有账户？'}
-            <button class="link" data-tab-switch="${tab === 'login' ? 'register' : 'login'}">
-              ${tab === 'login' ? '注册一个' : '去登录'}
+            ${active === 'login' ? '还没有账户？' : '已经有账户？'}
+            <button class="link" data-tab-switch="${active === 'login' ? 'register' : 'login'}">
+              ${active === 'login' ? '注册一个' : '去登录'}
             </button>
           </p>
         </div>
@@ -433,14 +497,12 @@
 
     app.querySelectorAll('[data-tab]').forEach((button) => {
       button.addEventListener('click', () => {
-        state.authTab = button.dataset.tab;
-        renderAuth();
+        navigate(button.dataset.tab === 'register' ? '#/register' : '#/login');
       });
     });
     app.querySelectorAll('[data-tab-switch]').forEach((button) => {
       button.addEventListener('click', () => {
-        state.authTab = button.dataset.tabSwitch;
-        renderAuth();
+        navigate(button.dataset.tabSwitch === 'register' ? '#/register' : '#/login');
       });
     });
 
@@ -448,32 +510,232 @@
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       hideError('auth-error');
-      const username = form.username.value.trim();
+      const email = form.email.value.trim();
       const password = form.password.value;
-      if (!username) return showError('auth-error', '请输入用户名');
+      if (!email) return showError('auth-error', '请输入邮箱');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showError('auth-error', '请输入有效的邮箱地址');
       if (!password) return showError('auth-error', '请输入密码');
-      if (tab === 'register') {
+      if (active === 'register') {
         if (password.length < 8) return showError('auth-error', '密码至少需要 8 个字符');
         if (password !== form.confirm.value) return showError('auth-error', '两次输入的密码不一致');
       }
 
       const button = form.querySelector('button[type="submit"]');
-      setBusy(button, true, tab === 'login' ? '正在登录…' : '正在创建…');
+      setBusy(button, true, active === 'login' ? '正在登录…' : '正在注册…');
       try {
-        const data = await api(`/api/auth/${tab}`, {
+        if (active === 'register') {
+          const data = await api('/api/auth/register', {
+            method: 'POST',
+            auth: false,
+            body: { email, password },
+          });
+          toast(data.message || '验证邮件已发送，请查收');
+          navigate(`#/pending?email=${encodeURIComponent(data.email || email)}`);
+          return;
+        }
+        const data = await api('/api/auth/login', {
           method: 'POST',
           auth: false,
-          body: { username, password },
+          body: { email, password },
         });
         state.token = data.token;
         state.user = data.user;
-        state.authTab = 'login';
         localStorage.setItem(STORAGE.token, data.token);
-        toast(tab === 'register' ? '欢迎加入山海经' : '欢迎回来');
+        cacheUser(data.user);
+        toast('欢迎回来');
         navigate('#/');
         render();
       } catch (error) {
+        if (error.code === 'email_not_verified') {
+          toast('请先验证邮箱');
+          navigate(`#/pending?email=${encodeURIComponent(email)}`);
+          return;
+        }
         showError('auth-error', error.message);
+        setBusy(button, false);
+      }
+    });
+  }
+
+  function renderPending(query = {}) {
+    const email = query.email || '';
+    app.innerHTML = `
+      <div class="screen auth-screen">
+        <div class="auth-hero">
+          <img class="seal seal-lg" src="logo.png" alt="山海经" />
+          <h1 class="auth-title">山海经</h1>
+          <p class="auth-en">ODYSSEY</p>
+        </div>
+
+        <div class="card auth-card">
+          <h2 class="setup-title">验证你的邮箱</h2>
+          <p class="setup-sub">
+            我们已向 ${email ? `<b>${esc(email)}</b>` : '你的邮箱'} 发送了一封验证邮件。
+            请点击邮件里的链接激活账户，链接在 24 小时内有效。
+          </p>
+          <p class="form-ok" id="pending-ok" hidden></p>
+          <p class="form-error" id="pending-error" hidden></p>
+          <form id="resend-form" class="form compact" novalidate>
+            <label class="field">
+              <span>邮箱</span>
+              <input name="email" type="email" value="${esc(email)}" inputmode="email"
+                maxlength="254" placeholder="you@example.com" autocapitalize="off" spellcheck="false" required />
+            </label>
+            <button class="btn ghost block" type="submit">重新发送验证邮件</button>
+          </form>
+          <button class="btn primary block" data-action="login">返回登录</button>
+          <p class="hint">没有收到邮件？请检查垃圾邮件目录，或确认邮箱地址是否正确。</p>
+        </div>
+      </div>`;
+
+    const form = document.getElementById('resend-form');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      hideError('pending-error');
+      const ok = document.getElementById('pending-ok');
+      ok.hidden = true;
+      const target = form.email.value.trim();
+      if (!target) return showError('pending-error', '请输入邮箱');
+      const button = form.querySelector('button[type="submit"]');
+      setBusy(button, true, '正在发送…');
+      try {
+        const data = await api('/api/auth/resend-verification', {
+          method: 'POST',
+          auth: false,
+          body: { email: target },
+        });
+        ok.textContent = data.message || '验证邮件已发送，请查收';
+        ok.hidden = false;
+      } catch (error) {
+        showError('pending-error', error.message);
+      } finally {
+        setBusy(button, false);
+      }
+    });
+  }
+
+  function renderForgot() {
+    app.innerHTML = `
+      <div class="screen auth-screen">
+        <div class="auth-hero">
+          <img class="seal seal-lg" src="logo.png" alt="山海经" />
+          <h1 class="auth-title">山海经</h1>
+          <p class="auth-en">ODYSSEY</p>
+        </div>
+
+        <div class="card auth-card">
+          <h2 class="setup-title">重置密码</h2>
+          <p class="setup-sub">输入注册邮箱，我们会发送一封重置密码的邮件。</p>
+          <form id="forgot-form" class="form" novalidate>
+            <label class="field">
+              <span>邮箱</span>
+              <input name="email" type="email" inputmode="email" maxlength="254"
+                placeholder="you@example.com" autocapitalize="off" spellcheck="false" required />
+            </label>
+            <p class="form-error" id="forgot-error" hidden></p>
+            <p class="form-ok" id="forgot-ok" hidden></p>
+            <button class="btn primary block" type="submit">发送重置邮件</button>
+          </form>
+          <p class="auth-foot">
+            <button class="link" data-action="login">返回登录</button>
+          </p>
+        </div>
+      </div>`;
+
+    const form = document.getElementById('forgot-form');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      hideError('forgot-error');
+      const ok = document.getElementById('forgot-ok');
+      ok.hidden = true;
+      const email = form.email.value.trim();
+      if (!email) return showError('forgot-error', '请输入邮箱');
+      const button = form.querySelector('button[type="submit"]');
+      setBusy(button, true, '正在发送…');
+      try {
+        const data = await api('/api/auth/forgot-password', {
+          method: 'POST',
+          auth: false,
+          body: { email },
+        });
+        ok.textContent = data.message || '如果该邮箱已注册，重置邮件已发送';
+        ok.hidden = false;
+      } catch (error) {
+        showError('forgot-error', error.message);
+      } finally {
+        setBusy(button, false);
+      }
+    });
+  }
+
+  function renderResetPassword(query = {}) {
+    const token = query.token || '';
+    if (!token) {
+      app.innerHTML = `
+        <div class="screen auth-screen">
+          <div class="auth-hero">
+            <img class="seal seal-lg" src="logo.png" alt="山海经" />
+            <h1 class="auth-title">山海经</h1>
+            <p class="auth-en">ODYSSEY</p>
+          </div>
+          <div class="card auth-card">
+            <h2 class="setup-title">重置链接无效</h2>
+            <p class="setup-sub">这个链接缺少重置令牌，请重新申请一封重置邮件。</p>
+            <button class="btn primary block" data-action="forgot">重新申请</button>
+            <p class="auth-foot"><button class="link" data-action="login">返回登录</button></p>
+          </div>
+        </div>`;
+      return;
+    }
+
+    app.innerHTML = `
+      <div class="screen auth-screen">
+        <div class="auth-hero">
+          <img class="seal seal-lg" src="logo.png" alt="山海经" />
+          <h1 class="auth-title">山海经</h1>
+          <p class="auth-en">ODYSSEY</p>
+        </div>
+
+        <div class="card auth-card">
+          <h2 class="setup-title">设置新密码</h2>
+          <p class="setup-sub">输入新的密码后，所有设备都需要重新登录。</p>
+          <form id="reset-form" class="form" novalidate>
+            <label class="field">
+              <span>新密码</span>
+              <input name="password" type="password" minlength="8" maxlength="128"
+                autocomplete="new-password" placeholder="至少 8 个字符" required />
+            </label>
+            <label class="field">
+              <span>确认新密码</span>
+              <input name="confirm" type="password" maxlength="128" autocomplete="new-password" placeholder="再输入一次" required />
+            </label>
+            <p class="form-error" id="reset-error" hidden></p>
+            <button class="btn primary block" type="submit">保存新密码</button>
+          </form>
+          <p class="auth-foot"><button class="link" data-action="login">返回登录</button></p>
+        </div>
+      </div>`;
+
+    const form = document.getElementById('reset-form');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      hideError('reset-error');
+      const password = form.password.value;
+      if (password.length < 8) return showError('reset-error', '密码至少需要 8 个字符');
+      if (password !== form.confirm.value) return showError('reset-error', '两次输入的密码不一致');
+      const button = form.querySelector('button[type="submit"]');
+      setBusy(button, true, '正在保存…');
+      try {
+        await api('/api/auth/reset-password', {
+          method: 'POST',
+          auth: false,
+          body: { token, password },
+        });
+        clearToken();
+        toast('密码已重置，请重新登录');
+        navigate('#/login?reset=1');
+      } catch (error) {
+        showError('reset-error', error.message);
         setBusy(button, false);
       }
     });
@@ -491,7 +753,7 @@
 
         <main class="page home-page">
           <section class="hero">
-            <p class="eyebrow">你好，${esc(state.user.username)}</p>
+            <p class="eyebrow">你好，${esc(state.user.displayName || state.user.username)}</p>
             <h1 class="hero-title">山河远阔，<br />从这里启程。</h1>
             <p class="hero-sub">把走过的路，写进属于你的山海经。</p>
           </section>
@@ -835,10 +1097,36 @@
               : `<section class="card panel">
                   <h2 class="panel-title">账户</h2>
                   <dl class="kv">
-                    <div><dt>用户名</dt><dd>${esc(state.user.username)}</dd></div>
+                    <div><dt>邮箱</dt><dd>${esc(state.user.email || '—')}</dd></div>
+                    <div><dt>昵称</dt><dd>${esc(state.user.displayName || state.user.username)}</dd></div>
                     <div><dt>注册时间</dt><dd>${esc(fmtDate(state.user.createdAt))}</dd></div>
                   </dl>
                   <button class="btn danger block" data-action="logout">退出登录</button>
+                </section>
+
+                <section class="card panel">
+                  <h2 class="panel-title">修改密码</h2>
+                  <p class="panel-sub">修改后其他设备会自动退出登录。</p>
+                  <form id="password-form" class="form compact" novalidate>
+                    <label class="field">
+                      <span>当前密码</span>
+                      <input name="currentPassword" type="password" maxlength="128"
+                        autocomplete="current-password" placeholder="输入当前密码" required />
+                    </label>
+                    <label class="field">
+                      <span>新密码</span>
+                      <input name="newPassword" type="password" minlength="8" maxlength="128"
+                        autocomplete="new-password" placeholder="至少 8 个字符" required />
+                    </label>
+                    <label class="field">
+                      <span>确认新密码</span>
+                      <input name="confirm" type="password" maxlength="128"
+                        autocomplete="new-password" placeholder="再输入一次" required />
+                    </label>
+                    <p class="form-error" id="password-error" hidden></p>
+                    <p class="form-ok" id="password-ok" hidden></p>
+                    <button class="btn primary block" type="submit">更新密码</button>
+                  </form>
                 </section>`
           }
 
@@ -889,9 +1177,42 @@
         setBusy(button, false);
       }
     });
-  }
 
-  // ---- actions ------------------------------------------------------------
+    const passwordForm = document.getElementById('password-form');
+    if (passwordForm) {
+      passwordForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        hideError('password-error');
+        const ok = document.getElementById('password-ok');
+        ok.hidden = true;
+
+        const currentPassword = passwordForm.currentPassword.value;
+        const newPassword = passwordForm.newPassword.value;
+        if (!currentPassword) return showError('password-error', '请输入当前密码');
+        if (newPassword.length < 8) return showError('password-error', '新密码至少需要 8 个字符');
+        if (newPassword !== passwordForm.confirm.value) {
+          return showError('password-error', '两次输入的新密码不一致');
+        }
+
+        const button = passwordForm.querySelector('button[type="submit"]');
+        setBusy(button, true, '正在更新…');
+        try {
+          await api('/api/me/password', {
+            method: 'PUT',
+            body: { currentPassword, newPassword },
+          });
+          passwordForm.reset();
+          ok.textContent = '密码已更新，其他设备已退出登录。';
+          ok.hidden = false;
+          toast('密码已更新');
+        } catch (error) {
+          showError('password-error', error.message);
+        } finally {
+          setBusy(button, false);
+        }
+      });
+    }
+  }
 
   async function doLogout() {
     const token = state.token;
@@ -952,6 +1273,12 @@
       case 'login':
         navigate('#/login');
         break;
+      case 'register':
+        navigate('#/register');
+        break;
+      case 'forgot':
+        navigate('#/forgot');
+        break;
       case 'retry':
         init();
         break;
@@ -982,21 +1309,21 @@
 
   async function init() {
     state.ready = false;
-    state.bootError = null;
-    state.user = null;
     state.server = currentServer();
     state.token = localStorage.getItem(STORAGE.token) || '';
+    state.user = state.token ? readCachedUser() : null;
 
     if (state.token && state.server) {
       try {
         const data = await api('/api/me');
         state.user = data.user;
+        cacheUser(data.user);
       } catch (error) {
         if (error.status === 401) {
           clearToken();
-        } else {
-          state.bootError = error;
         }
+        // Network/server errors keep the cached user and token, so the app
+        // opens on the same screen it was left on instead of logging out.
       }
     }
 
