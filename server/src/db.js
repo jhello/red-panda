@@ -59,6 +59,31 @@ CREATE TABLE IF NOT EXISTS journeys (
   updated_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_journeys_user ON journeys(user_id, updated_at DESC);
+
+-- 回忆：某段已经走过的行程，配上照片、视频和文字。
+CREATE TABLE IF NOT EXISTS memories (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  journey_id INTEGER REFERENCES journeys(id) ON DELETE CASCADE,
+  note       TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_memories_user ON memories(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memories_journey ON memories(journey_id);
+
+-- 回忆里的照片 / 视频：文件存在 data/uploads 下，库里只记元数据。
+CREATE TABLE IF NOT EXISTS memory_media (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  memory_id  INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  access_key TEXT NOT NULL UNIQUE,
+  kind       TEXT NOT NULL DEFAULT 'image',
+  mime       TEXT NOT NULL DEFAULT '',
+  size       INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_memory_media_memory ON memory_media(memory_id);
+CREATE INDEX IF NOT EXISTS idx_memory_media_user ON memory_media(user_id);
 `;
 
 /**
@@ -165,6 +190,45 @@ export function openDatabase(dbPath) {
       'UPDATE journeys SET name = ?, description = ?, plan = ?, depart_time = ?, return_time = ?, updated_at = ? WHERE id = ? AND user_id = ?',
     ),
     deleteJourney: db.prepare('DELETE FROM journeys WHERE id = ? AND user_id = ?'),
+
+    insertMemory: db.prepare(
+      'INSERT INTO memories (user_id, journey_id, note, created_at) VALUES (?, ?, ?, ?)',
+    ),
+    listMemories: db.prepare(
+      `SELECT id, user_id, journey_id, note, created_at
+         FROM memories WHERE user_id = ?
+        ORDER BY created_at DESC, id DESC`,
+    ),
+    listMemoriesOfJourney: db.prepare(
+      `SELECT id, user_id, journey_id, note, created_at
+         FROM memories WHERE user_id = ? AND journey_id = ?
+        ORDER BY created_at DESC, id DESC`,
+    ),
+    getMemory: db.prepare(
+      'SELECT id, user_id, journey_id, note, created_at FROM memories WHERE id = ? AND user_id = ?',
+    ),
+    deleteMemory: db.prepare('DELETE FROM memories WHERE id = ? AND user_id = ?'),
+
+    insertMedia: db.prepare(
+      `INSERT INTO memory_media (memory_id, user_id, access_key, kind, mime, size, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ),
+    listMedia: db.prepare(
+      `SELECT id, memory_id, user_id, access_key, kind, mime, size, created_at
+         FROM memory_media WHERE user_id = ? ORDER BY id ASC`,
+    ),
+    listMediaOfMemory: db.prepare(
+      `SELECT id, memory_id, user_id, access_key, kind, mime, size, created_at
+         FROM memory_media WHERE memory_id = ? ORDER BY id ASC`,
+    ),
+    getMedia: db.prepare(
+      `SELECT id, memory_id, user_id, access_key, kind, mime, size, created_at
+         FROM memory_media WHERE access_key = ?`,
+    ),
+    deleteMedia: db.prepare('DELETE FROM memory_media WHERE id = ? AND user_id = ?'),
+    countMemoriesByJourney: db.prepare(
+      'SELECT journey_id, COUNT(*) AS n FROM memories WHERE user_id = ? GROUP BY journey_id',
+    ),
 
     countUsers: db.prepare('SELECT COUNT(*) AS n FROM users'),
     countJourneys: db.prepare('SELECT COUNT(*) AS n FROM journeys'),
@@ -330,6 +394,87 @@ export function openDatabase(dbPath) {
 
     deleteJourney(userId, id) {
       return statements.deleteJourney.run(id, userId).changes > 0;
+    },
+
+    createMemory({ userId, journeyId = null, note = '', now }) {
+      const result = statements.insertMemory.run(userId, journeyId, note, now);
+      return this.getMemory(userId, Number(result.lastInsertRowid));
+    },
+
+    listMemories(userId, journeyId = null) {
+      const rows =
+        journeyId === null || journeyId === undefined
+          ? statements.listMemories.all(userId)
+          : statements.listMemoriesOfJourney.all(userId, journeyId);
+      return this.attachMedia(rows);
+    },
+
+    getMemory(userId, id) {
+      const row = statements.getMemory.get(id, userId);
+      if (!row) return null;
+      return this.attachMedia([row])[0];
+    },
+
+    /** Delete a memory and report the media files that should be removed. */
+    deleteMemory(userId, id) {
+      const media = statements.listMediaOfMemory.all(id);
+      const deleted = statements.deleteMemory.run(id, userId).changes > 0;
+      if (!deleted) return null;
+      return { media };
+    },
+
+    createMedia({ memoryId, userId, accessKey, kind = 'image', mime = '', size = 0, now }) {
+      const result = statements.insertMedia.run(
+        memoryId,
+        userId,
+        accessKey,
+        kind,
+        mime,
+        size,
+        now,
+      );
+      return statements.getMedia.get(accessKey) ?? {
+        id: Number(result.lastInsertRowid),
+        memory_id: memoryId,
+        user_id: userId,
+        access_key: accessKey,
+        kind,
+        mime,
+        size,
+        created_at: now,
+      };
+    },
+
+    getMediaByKey(accessKey) {
+      return statements.getMedia.get(accessKey);
+    },
+
+    listMediaOfMemory(userId, memoryId) {
+      return statements.listMediaOfMemory.all(memoryId);
+    },
+
+    deleteMedia(userId, id) {
+      return statements.deleteMedia.run(id, userId).changes > 0;
+    },
+
+    countMemoriesByJourney(userId) {
+      const counts = {};
+      for (const row of statements.countMemoriesByJourney.all(userId)) {
+        counts[row.journey_id] = Number(row.n);
+      }
+      return counts;
+    },
+
+    /** Attach the media rows of every memory to that memory. */
+    attachMedia(rows) {
+      if (!rows.length) return [];
+      const media = statements.listMedia.all(rows[0].user_id);
+      const grouped = new Map();
+      for (const item of media) {
+        if (!grouped.has(item.memory_id)) grouped.set(item.memory_id, []);
+        grouped.get(item.memory_id).push(item);
+      }
+      return rows.map((row) => ({ ...row, media: grouped.get(row.id) ?? [] }));
     },
 
     stats() {

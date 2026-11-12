@@ -175,6 +175,11 @@ code {
   background: rgba(120, 96, 60, 0.08);
 }
 
+.nav-btn.is-active {
+  color: var(--seal-dark);
+  background: rgba(168, 58, 44, 0.08);
+}
+
 .nav-btn:active {
   transform: scale(0.96);
 }
@@ -385,21 +390,32 @@ img.seal {
   opacity: 0.6;
 }
 
-/* 首页当前行程 */
-.home-current {
-  flex: 1;
+/* 行程页：默认页面 */
+.trip-page {
+  position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  gap: 16px;
+}
+
+.trip-hero {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  padding: 18px 20px;
+  padding: 22px 20px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--card);
   box-shadow: var(--shadow);
 }
 
-.home-current-title {
+.trip-hero.is-empty {
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+}
+
+.trip-title {
   margin: 0;
   font-family: var(--serif);
   font-size: clamp(26px, 7vw, 34px);
@@ -408,7 +424,7 @@ img.seal {
   overflow-wrap: anywhere;
 }
 
-.home-current-dest {
+.trip-dest {
   margin: 0;
   color: var(--seal);
   font-size: 14px;
@@ -417,30 +433,81 @@ img.seal {
   overflow-wrap: anywhere;
 }
 
-.home-current-times {
+.trip-times {
   display: grid;
   gap: 8px;
-  margin-top: 10px;
+  margin: 10px 0 14px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
 
-.home-current-times > div {
+.trip-times > div {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 16px;
 }
 
-.home-current-times span {
+.trip-times span {
   color: var(--muted);
   font-size: 12px;
   letter-spacing: 0.1em;
 }
 
-.home-current-times b {
+.trip-times b {
   font-size: 14px;
   font-weight: 600;
+  text-align: right;
+}
+
+/* 「天气 / 交通 / 门票 / 车票」这些还没做的格子 */
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.info-cell {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+  background: rgba(120, 96, 60, 0.04);
+}
+
+.info-cell span {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+}
+
+.info-cell b {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.info-cell b.is-soon {
+  color: var(--seal);
+  font-size: 13px;
+}
+
+.trip-others {
+  margin-top: 4px;
+}
+
+.section-title {
+  margin: 0 0 2px;
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.trip-all {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 13px;
 }
 
 .home-empty {
@@ -666,12 +733,6 @@ img.seal {
 }
 
 /* ---- home --------------------------------------------------------------- */
-
-.home-page {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-}
 
 .hero {
   padding: 26px 2px 10px;
@@ -1139,45 +1200,6 @@ img.seal {
   bottom: calc(96px + env(safe-area-inset-bottom));
 }
 
-/* 发现页 */
-.discover-grid {
-  display: grid;
-  gap: 14px;
-  margin-top: 18px;
-}
-
-.discover-card {
-  display: grid;
-  gap: 8px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--card);
-  box-shadow: var(--shadow-soft);
-  overflow: hidden;
-  text-align: left;
-  transition: transform 0.14s ease, box-shadow 0.18s ease;
-}
-
-.discover-card:active {
-  transform: scale(0.99);
-}
-
-.discover-card img {
-  display: block;
-  width: 100%;
-  height: 150px;
-  object-fit: cover;
-}
-
-.discover-card span {
-  padding: 12px 16px 14px;
-  font-family: var(--serif);
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
 /* ---- journey plan (create journey) -------------------------------------- */
 
 input#plan-input::placeholder {
@@ -1414,6 +1436,13 @@ input#plan-input::placeholder {
 
 /* ---- buttons ------------------------------------------------------------ */
 
+/*
+ * 按钮只有三种样式，规则固定：
+ * - primary：实心红，一个页面最多一个（页面的主操作）；
+ * - ghost：白底描边，次要操作；
+ * - danger：红色描边，不可撤销的操作（删除、退出登录）。
+ * 其余操作尽量用文字链（.link），不要都做成整行按钮。
+ */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -1525,6 +1554,187 @@ input#plan-input::placeholder {
   background: var(--card);
   color: var(--ink);
   box-shadow: 0 3px 10px rgba(72, 55, 32, 0.08);
+}
+
+/* ---- 回忆 ---------------------------------------------------------------- */
+
+.memory-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.memory-card {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--card);
+  box-shadow: var(--shadow-soft);
+  text-align: left;
+  transition: transform 0.14s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.memory-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: 0 10px 24px rgba(72, 55, 32, 0.1);
+}
+
+.memory-card:active {
+  transform: scale(0.99);
+}
+
+.memory-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.memory-card-name {
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.memory-card-date {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.memory-card-count {
+  color: var(--seal);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.memory-thumbs {
+  display: flex;
+  gap: 6px;
+}
+
+.memory-thumbs img {
+  width: 62px;
+  height: 62px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+
+.memory-items {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.memory-item {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--card);
+  box-shadow: var(--shadow-soft);
+}
+
+.memory-note {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.memory-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.memory-grid img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--paper-deep);
+}
+
+.memory-videos {
+  display: grid;
+  gap: 8px;
+}
+
+.memory-videos video {
+  width: 100%;
+  border-radius: 12px;
+  background: #000;
+}
+
+.memory-item-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.memory-time {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.memory-input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fffdf9;
+  font-size: 15px;
+  line-height: 1.7;
+  resize: vertical;
+  outline: none;
+}
+
+.memory-input:focus {
+  border-color: rgba(168, 58, 44, 0.55);
+  box-shadow: 0 0 0 4px rgba(168, 58, 44, 0.09);
+}
+
+.memory-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.memory-actions .btn {
+  flex: 1;
+}
+
+.memory-files {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.memory-actions-row {
+  margin-top: 16px;
+}
+
+.memory-recap-text {
+  margin: 0 0 14px;
+  color: #30383a;
+  font-size: 15px;
+  line-height: 2;
+  white-space: pre-wrap;
 }
 
 /* ---- journey list ------------------------------------------------------- */

@@ -21,6 +21,7 @@
     journeys: [],
     currentJourney: null,
     currentJourneyId: null,
+    memoryJourneyId: null,
     authTab: 'login',
   };
 
@@ -64,8 +65,47 @@
         me: '我',
       },
 
-      discover: {
-        sub: '挑一个想去的地方，小熊猫帮你把行程安排好。',
+      trip: {
+        ongoing: '进行中',
+        upcoming: '即将开始',
+        ended: '已结束',
+        infoTitle: '行程信息',
+        weather: '天气',
+        traffic: '交通',
+        filesTitle: '文件',
+        ticket: '门票',
+        trainTicket: '车票',
+        soon: '即将上线',
+        soonHint: '天气、交通和票据还在路上，先把行程记下来就好。',
+        openDetail: '查看行程详情',
+        allJourneys: '全部行程',
+        emptyTitle: '还没有行程',
+        emptySub: '说说想去哪里，小熊猫帮你规划',
+        otherTitle: '其他行程',
+      },
+
+      memories: {
+        title: '回忆',
+        sub: '给走过的行程添上照片、视频和文字，小熊猫帮你写成旅行回忆。',
+        emptyTitle: '还没有回忆',
+        emptySub: '选一段走过的行程，开始记录吧。',
+        addTitle: '写一段回忆',
+        notePlaceholder: '那天发生了什么？',
+        pick: '照片 / 视频',
+        save: '保存回忆',
+        savedToast: '回忆已保存',
+        deletedToast: '回忆已删除',
+        deleteConfirm: '删除这条回忆吗？',
+        count: '{n} 条回忆',
+        noCount: '还没有回忆',
+        generate: '生成旅行回忆',
+        generating: '正在落笔…',
+        recapTitle: '旅行回忆',
+        share: '分享',
+        shareSoon: '朋友圈 / 小红书 / Instagram 分享即将上线',
+        uploadFailed: '有文件没能上传成功',
+        needContent: '写点什么，或者选一张照片',
+        noJourney: '还没有行程',
       },
 
       draft: {
@@ -251,7 +291,6 @@
       edit: {
         title: '编辑旅程',
         sub: '名字与描述都可以慢慢改。',
-        cancel: '取消',
         save: '保存修改',
         errName: '旅程名称不能为空',
       },
@@ -339,8 +378,47 @@
         me: 'Me',
       },
 
-      discover: {
-        sub: 'Pick a place and let me plan the trip for you.',
+      trip: {
+        ongoing: 'Ongoing',
+        upcoming: 'Coming up',
+        ended: 'Finished',
+        infoTitle: 'Trip info',
+        weather: 'Weather',
+        traffic: 'Traffic',
+        filesTitle: 'Files',
+        ticket: 'Tickets',
+        trainTicket: 'Rail tickets',
+        soon: 'Coming soon',
+        soonHint: 'Weather, traffic and tickets are still on the way — keep the trip in the app for now.',
+        openDetail: 'Open trip details',
+        allJourneys: 'All journeys',
+        emptyTitle: 'No trip yet',
+        emptySub: 'Tell me where you want to go',
+        otherTitle: 'Other journeys',
+      },
+
+      memories: {
+        title: 'Memories',
+        sub: 'Add photos, videos and words to a journey you already took — I will turn them into a travel memory.',
+        emptyTitle: 'No memories yet',
+        emptySub: 'Pick a journey you already took and start writing.',
+        addTitle: 'Write a memory',
+        notePlaceholder: 'What happened that day?',
+        pick: 'Photos / videos',
+        save: 'Save memory',
+        savedToast: 'Memory saved',
+        deletedToast: 'Memory deleted',
+        deleteConfirm: 'Delete this memory?',
+        count: '{n} memories',
+        noCount: 'No memories yet',
+        generate: 'Write the travel memory',
+        generating: 'Writing…',
+        recapTitle: 'Travel memory',
+        share: 'Share',
+        shareSoon: 'Sharing to Moments, Xiaohongshu and Instagram is coming soon',
+        uploadFailed: 'Some files could not be uploaded',
+        needContent: 'Write something, or pick a photo',
+        noJourney: 'No journey yet',
       },
 
       draft: {
@@ -530,7 +608,6 @@
       edit: {
         title: 'Edit journey',
         sub: 'Take your time with the name and description.',
-        cancel: 'Cancel',
         save: 'Save changes',
         errName: "Journey name can't be empty",
       },
@@ -618,8 +695,47 @@
         me: 'Ich',
       },
 
-      discover: {
-        sub: 'Wähle ein Ziel – ich plane die Reise für dich.',
+      trip: {
+        ongoing: 'Läuft',
+        upcoming: 'Demnächst',
+        ended: 'Beendet',
+        infoTitle: 'Reise-Infos',
+        weather: 'Wetter',
+        traffic: 'Verkehr',
+        filesTitle: 'Dateien',
+        ticket: 'Eintrittskarten',
+        trainTicket: 'Fahrkarten',
+        soon: 'Demnächst',
+        soonHint: 'Wetter, Verkehr und Tickets kommen noch — bis dahin reicht die Reise selbst.',
+        openDetail: 'Reise ansehen',
+        allJourneys: 'Alle Reisen',
+        emptyTitle: 'Noch keine Reise',
+        emptySub: 'Sag mir, wohin es gehen soll',
+        otherTitle: 'Weitere Reisen',
+      },
+
+      memories: {
+        title: 'Erinnerungen',
+        sub: 'Füge Fotos, Videos und Worte zu einer Reise hinzu — ich schreibe daraus eine Reiseerinnerung.',
+        emptyTitle: 'Noch keine Erinnerungen',
+        emptySub: 'Wähle eine bereits gemachte Reise und leg los.',
+        addTitle: 'Erinnerung schreiben',
+        notePlaceholder: 'Was ist an diesem Tag passiert?',
+        pick: 'Fotos / Videos',
+        save: 'Erinnerung speichern',
+        savedToast: 'Erinnerung gespeichert',
+        deletedToast: 'Erinnerung gelöscht',
+        deleteConfirm: 'Diese Erinnerung löschen?',
+        count: '{n} Erinnerungen',
+        noCount: 'Noch keine Erinnerungen',
+        generate: 'Reiseerinnerung schreiben',
+        generating: 'Schreibt…',
+        recapTitle: 'Reiseerinnerung',
+        share: 'Teilen',
+        shareSoon: 'Teilen in Moments, Xiaohongshu und Instagram kommt bald',
+        uploadFailed: 'Einige Dateien konnten nicht hochgeladen werden',
+        needContent: 'Schreib etwas oder wähle ein Foto',
+        noJourney: 'Noch keine Reise',
       },
 
       draft: {
@@ -811,7 +927,6 @@
       edit: {
         title: 'Reise bearbeiten',
         sub: 'Name und Beschreibung kannst du in Ruhe ändern.',
-        cancel: 'Abbrechen',
         save: 'Änderungen speichern',
         errName: 'Der Name darf nicht leer sein',
       },
@@ -1060,19 +1175,75 @@
     }
   }
 
+  /**
+   * 四个主页面（行程 / 回忆 / 发现 / 我）共用同一条历史记录，
+   * 子页面（详情、编辑、回忆详情…）在这条记录之上叠一层。
+   * 这样在主页面上按返回，系统会直接退出应用，而不是回到上一个标签页。
+   */
+  let historyDepth = 0;
+  let pendingTabHash = '';
+  let pendingTabAfter = null;
+
+  const TAB_HASHES = ['#/', '#/memories', '#/discover', '#/settings'];
+
+  function isTabHash(hash) {
+    return TAB_HASHES.includes(String(hash ?? '').split('?')[0]);
+  }
+
+  /** 切换主页面：不新增历史记录，返回键依然直接退出应用。 */
+  function navigateTab(hash, after = null) {
+    pendingTabAfter = after;
+    if (historyDepth === 0) {
+      if (location.hash === hash) {
+        render();
+        runPendingTabAfter();
+      } else if (replaceHash(hash)) {
+        render();
+        runPendingTabAfter();
+      } else {
+        // 极少数环境不允许改写历史，退回普通跳转（会多出一条历史）。
+        location.hash = hash;
+      }
+      return;
+    }
+    // 先退回主页面那条记录，再把它改成新的标签页。
+    pendingTabHash = hash;
+    suppressPopCount += 1;
+    history.go(-historyDepth);
+  }
+
+  /** 改写当前历史条目的地址（不新增条目）。 */
+  function replaceHash(hash) {
+    try {
+      history.replaceState(null, '', hash);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** 主页面切换完成之后，再做一件事（比如接着进入「创建旅程」）。 */
+  function runPendingTabAfter() {
+    const after = pendingTabAfter;
+    pendingTabAfter = null;
+    if (typeof after === 'function') after();
+  }
+
+  /** 进入子页面：在主页面之上叠一层历史记录。 */
   function navigate(hash) {
     if (location.hash === hash) {
       render();
     } else {
       location.hash = hash;
+      historyDepth += 1;
     }
   }
 
   function goBack() {
-    if (history.length > 1) {
+    if (historyDepth > 0) {
       history.back();
     } else {
-      navigate('#/');
+      navigateTab('#/');
     }
   }
 
@@ -1116,6 +1287,7 @@
     for (const [key, value] of new URLSearchParams(queryPart)) query[key] = value;
     if (parts.length === 0) return { name: 'home', query };
     if (parts[0] === 'journey' && parts[1]) return { name: 'journey', id: parts[1], query };
+    if (parts[0] === 'memories' && parts[1]) return { name: 'memories', id: parts[1], query };
     return { name: parts[0], query };
   }
 
@@ -1133,19 +1305,20 @@
   }
 
   async function api(path, options = {}) {
-    const { method = 'GET', body, auth = true, timeout = 30000 } = options;
+    const { method = 'GET', body, auth = true, timeout = 30000, raw = false, contentType = '' } = options;
     if (!state.server) throw new ApiError(t('api.noServer'), 0, 'no_server');
 
     const headers = { Accept: 'application/json' };
     if (auth && state.token) headers.Authorization = `Bearer ${state.token}`;
-    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (body !== undefined && !raw) headers['Content-Type'] = 'application/json';
+    if (raw && contentType) headers['Content-Type'] = contentType;
 
     let response;
     try {
       response = await fetch(`${state.server}${path}`, {
         method,
         headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
         signal: AbortSignal.timeout(timeout),
       });
     } catch (error) {
@@ -1306,7 +1479,7 @@
 
     switch (route.name) {
       case 'home':
-        renderHome();
+        renderTrip();
         break;
       case 'new':
         renderNewJourney();
@@ -1317,6 +1490,10 @@
       case 'journey':
         renderJourneyDetail(route.id);
         break;
+      case 'memories':
+        if (route.id) renderMemoryDetail(route.id);
+        else renderMemories();
+        break;
       case 'settings':
         renderSettings();
         break;
@@ -1325,11 +1502,11 @@
         break;
       case 'login':
         history.replaceState(null, '', '#/');
-        renderHome();
+        renderTrip();
         break;
       default:
         history.replaceState(null, '', '#/');
-        renderHome();
+        renderTrip();
         break;
     }
     renderNavBar();
@@ -1535,7 +1712,9 @@
         localStorage.setItem(STORAGE.token, data.token);
         cacheUser(data.user);
         toast(t('auth.welcome'));
-        navigate('#/');
+        // 登录后回到默认的行程页，并且不留下多余的历史记录。
+        historyDepth = 0;
+        history.replaceState(null, '', '#/');
         render();
       } catch (error) {
         if (error.code === 'email_not_verified') {
@@ -1733,30 +1912,124 @@
     });
   }
 
-  function currentJourneyMarkup(journey) {
+  /** 行程的时间范围：优先用计划里的时间，没有就用创建时间兜底。 */
+  function journeyRange(journey) {
+    const plan = journey?.plan?.items?.length ? journey.plan : null;
+    const depart = journey?.depart_time || plan?.departTime || journey?.created_at || '';
+    const ret = journey?.return_time || plan?.returnTime || '';
+    return { depart, ret };
+  }
+
+  function journeyDestinations(journey) {
+    const items = journey?.plan?.items;
+    if (!Array.isArray(items) || !items.length) return '';
+    return items
+      .map((item) => String(item?.destination ?? '').trim())
+      .filter(Boolean)
+      .join(' · ');
+  }
+
+  /**
+   * 行程页默认展示的那一段：
+   * 正在进行的 > 接下来最近的 > 最近走过的。
+   */
+  function pickTrip(journeys) {
+    const list = Array.isArray(journeys) ? journeys : [];
+    if (!list.length) return { journey: null, status: '' };
+    const now = Date.now();
+    const stamp = (value) => {
+      const time = value ? Date.parse(value) : NaN;
+      return Number.isFinite(time) ? time : null;
+    };
+    let ongoing = null;
+    let next = null;
+    let nextStart = Infinity;
+    let latest = null;
+    let latestStart = -Infinity;
+    for (const journey of list) {
+      const { depart, ret } = journeyRange(journey);
+      const start = stamp(depart);
+      const end = stamp(ret);
+      if (start !== null && start <= now && (end === null || now <= end)) {
+        if (!ongoing) ongoing = journey;
+      }
+      if (start !== null && start > now && start < nextStart) {
+        next = journey;
+        nextStart = start;
+      }
+      if (start !== null && start > latestStart) {
+        latest = journey;
+        latestStart = start;
+      }
+    }
+    if (ongoing) return { journey: ongoing, status: 'ongoing' };
+    if (next) return { journey: next, status: 'upcoming' };
+    return { journey: latest || list[0], status: 'ended' };
+  }
+
+  function tripStatusLabel(status) {
+    if (status === 'ongoing') return t('trip.ongoing');
+    if (status === 'upcoming') return t('trip.upcoming');
+    return t('trip.ended');
+  }
+
+  /** 行程页顶部的大卡片：当前 / 接下来的那一段行程。 */
+  function tripHeroMarkup(trip) {
+    const journey = trip?.journey;
     if (!journey) {
       return `
-        <div class="home-empty">
-          <p>${t('home.emptyTitle')}</p>
-          <p class="muted">${t('home.emptySub')}</p>
-        </div>`;
+        <section class="trip-hero is-empty">
+          <div class="home-empty">
+            <p>${t('trip.emptyTitle')}</p>
+            <p class="muted">${t('trip.emptySub')}</p>
+          </div>
+        </section>`;
     }
-    const plan = journey.plan?.items?.length ? journey.plan : null;
-    const destinations = plan ? plan.items.map((item) => item.destination).join(' · ') : '';
+    const { depart, ret } = journeyRange(journey);
+    const destinations = journeyDestinations(journey);
     return `
-      <p class="eyebrow">${t('home.currentTitle')}</p>
-      <h1 class="home-current-title">${esc(journey.name)}</h1>
-      ${destinations ? `<p class="home-current-dest">${esc(destinations)}</p>` : ''}
-      <div class="home-current-times">
-        <div>
-          <span>${t('plan.fieldDepart')}</span>
-          <b>${esc(fmtDate(journey.depart_time || journey.updated_at))}</b>
+      <section class="trip-hero">
+        <p class="eyebrow">${esc(tripStatusLabel(trip.status))}</p>
+        <h1 class="trip-title">${esc(journey.name)}</h1>
+        ${destinations ? `<p class="trip-dest">${esc(destinations)}</p>` : ''}
+        <div class="trip-times">
+          <div>
+            <span>${t('plan.fieldDepart')}</span>
+            <b>${esc(fmtDate(depart))}</b>
+          </div>
+          <div>
+            <span>${t('plan.fieldReturn')}</span>
+            <b>${esc(ret ? fmtDate(ret) : '—')}</b>
+          </div>
         </div>
-        <div>
-          <span>${t('plan.fieldReturn')}</span>
-          <b>${esc(fmtDate(journey.return_time || journey.updated_at))}</b>
-        </div>
+        <button class="btn ghost block" data-action="trip-open" data-journey-id="${esc(journey.id)}">
+          ${t('trip.openDetail')}
+        </button>
+      </section>`;
+  }
+
+  /** 行程页里「暂时还没有」的信息格子。 */
+  function soonCell(label) {
+    return `
+      <div class="info-cell">
+        <span>${esc(label)}</span>
+        <b class="is-soon">${t('trip.soon')}</b>
       </div>`;
+  }
+
+  function otherJourneysMarkup(journeys, currentId) {
+    const others = (Array.isArray(journeys) ? journeys : [])
+      .filter((journey) => String(journey.id) !== String(currentId))
+      .slice(0, 4);
+    if (!others.length) return '';
+    return `
+      <section class="trip-others">
+        <h2 class="section-title">${t('trip.otherTitle')}</h2>
+        <div class="journey-list">
+          ${others.map(journeyCard).join('')}
+        </div>
+        <button class="link trip-all" data-action="all-journeys">${t('trip.allJourneys')} →</button>
+      </section>`;
   }
 
   /** One draft row; `expanded` turns it into a long pill with preview + delete. */
@@ -1794,19 +2067,43 @@
       </div>`;
   }
 
-  function renderHome() {
+  /** 行程页：默认页面，展示当前（或接下来）的行程与相关资料。 */
+  function renderTrip() {
     if (pendingOverlayOpen) {
       pendingOverlayOpen = false;
       draftOverlayOpen = true;
       createCooldownUntil = Date.now() + 2000;
+      pushOverlayHistory();
     }
     const drafts = sortedDrafts();
+    const trip = pickTrip(state.journeys);
     app.innerHTML = `
       <div class="screen">
-        <main class="page home-page has-nav">
-          <section class="home-current" id="home-current">
-            ${currentJourneyMarkup(state.currentJourney || state.journeys?.[0] || null)}
+        <main class="page trip-page has-nav">
+          <section id="trip-hero">
+            ${tripHeroMarkup(trip)}
           </section>
+
+          <section class="card panel">
+            <h2 class="panel-title">${t('trip.infoTitle')}</h2>
+            <p class="panel-sub">${t('trip.soonHint')}</p>
+            <div class="info-grid">
+              ${soonCell(t('trip.weather'))}
+              ${soonCell(t('trip.traffic'))}
+            </div>
+          </section>
+
+          <section class="card panel">
+            <h2 class="panel-title">${t('trip.filesTitle')}</h2>
+            <div class="info-grid">
+              ${soonCell(t('trip.ticket'))}
+              ${soonCell(t('trip.trainTicket'))}
+            </div>
+          </section>
+
+          <div id="trip-others">
+            ${otherJourneysMarkup(state.journeys, trip.journey?.id)}
+          </div>
 
           <div class="draft-layer" id="draft-layer"${draftOverlayOpen ? '' : ' hidden'}>
             <div class="draft-list" id="draft-list">
@@ -1818,15 +2115,15 @@
             </div>
           </div>
 
-          </main>
+        </main>
       </div>`;
 
     if (draftOverlayOpen) startCreateCooldown();
     positionDraftLayer();
 
-    const home = document.querySelector('.home-page');
-    if (home) {
-      home.addEventListener('click', (event) => {
+    const page = document.querySelector('.trip-page');
+    if (page) {
+      page.addEventListener('click', (event) => {
         if (!draftOverlayOpen) return;
         if (event.target.closest('.draft-list')) return;
         if (event.target.closest('.nav-bar')) return;
@@ -1839,18 +2136,33 @@
       });
     }
 
+    const hero = document.getElementById('trip-hero');
+    const others = document.getElementById('trip-others');
+    const paint = (journeys) => {
+      const next = pickTrip(journeys);
+      if (hero) hero.innerHTML = tripHeroMarkup(next);
+      if (others) {
+        others.innerHTML = otherJourneysMarkup(journeys, next.journey?.id);
+        bindJourneyCards(others);
+      }
+    };
+    bindJourneyCards(others);
+
     api('/api/journeys')
       .then(({ journeys }) => {
         state.journeys = journeys;
-        const card = document.getElementById('home-current');
-        if (card) {
-          card.innerHTML = currentJourneyMarkup(state.currentJourney || journeys[0] || null);
-        }
+        paint(journeys);
       })
       .catch(() => {
-        const card = document.getElementById('home-current');
-        if (card) card.innerHTML = currentJourneyMarkup(state.currentJourney || state.journeys?.[0] || null);
+        paint(state.journeys);
       });
+  }
+
+  /** 行程卡片点开详情。 */
+  function bindJourneyCards(root) {
+    root?.querySelectorAll('[data-journey-id]').forEach((card) => {
+      card.addEventListener('click', () => navigate(`#/journey/${card.dataset.journeyId}`));
+    });
   }
 
   /**
@@ -1902,6 +2214,7 @@
     try {
       history.pushState({ redPandaOverlay: true }, '', location.href);
       overlayPushed = true;
+      historyDepth += 1;
     } catch {
       overlayPushed = false;
     }
@@ -1910,15 +2223,9 @@
   function dropOverlayHistory() {
     if (!overlayPushed) return;
     overlayPushed = false;
+    historyDepth = Math.max(0, historyDepth - 1);
     suppressPopCount += 1;
     history.back();
-  }
-
-  function openDraftOverlay() {
-    draftOverlayOpen = true;
-    createCooldownUntil = Date.now() + 2000;
-    renderHome();
-    pushOverlayHistory();
   }
 
   function closeDraftOverlay() {
@@ -1937,8 +2244,22 @@
     refreshDraftList();
   }
 
-  /** 从浮层跳到别的路由：改写压入的历史条目，避免多出一层返回。 */
+  /**
+   * 从浮层跳到别的路由。
+   * 跳到主页面时退回主页面那条历史记录（返回键仍然是直接退出应用），
+   * 跳到子页面时把浮层那条记录改写成目标页面。
+   */
   function leaveOverlayTo(hash) {
+    draftOverlayOpen = false;
+    expandedDraftId = null;
+    stopCreateCooldown();
+    if (isTabHash(hash)) {
+      overlayPushed = false;
+      pendingTabHash = hash;
+      suppressPopCount += 1;
+      history.go(-historyDepth);
+      return;
+    }
     if (overlayPushed) {
       overlayPushed = false;
       try {
@@ -1947,9 +2268,6 @@
         // 忽略：仍然按普通跳转处理
       }
     }
-    draftOverlayOpen = false;
-    expandedDraftId = null;
-    stopCreateCooldown();
     if (location.hash === hash) {
       render();
     } else {
@@ -1961,7 +2279,7 @@
   function positionDraftLayer() {
     const layer = document.getElementById('draft-layer');
     const nav = document.querySelector('.nav-bar');
-    const page = document.querySelector('.home-page');
+    const page = document.querySelector('.trip-page');
     if (!layer || !nav || !page) return;
     const pageRect = page.getBoundingClientRect();
     const navRect = nav.getBoundingClientRect();
@@ -2488,38 +2806,30 @@
   }
 
   function navBar() {
+    const active = currentRouteName;
+    const isActive = (name) => (active === name ? ' is-active' : '');
     return `
       <nav class="nav-bar">
-        <button class="nav-btn nav-journeys" data-action="current-journey">${t('nav.current')}</button>
-        <button class="nav-btn nav-memories" data-action="journeys">${t('nav.memories')}</button>
+        <button class="nav-btn nav-journeys${isActive('home')}" data-action="current-journey">${t('nav.current')}</button>
+        <button class="nav-btn nav-memories${isActive('memories')}" data-action="memories">${t('nav.memories')}</button>
         <button class="nav-btn nav-create" data-action="new" aria-label="${t('new.title')}">＋</button>
-        <button class="nav-btn nav-discover" data-action="discover">${t('nav.discover')}</button>
-        <button class="nav-btn nav-me" data-action="settings">${t('nav.me')}</button>
+        <button class="nav-btn nav-discover${isActive('discover')}" data-action="discover">${t('nav.discover')}</button>
+        <button class="nav-btn nav-me${isActive('settings')}" data-action="settings">${t('nav.me')}</button>
       </nav>`;
   }
 
-  /** 发现页：挑一个想去的地方。 */
-  const DISCOVER_PLACES = [
-    { name: '雅典卫城', file: 'paintings/athens.jpg', prompt: '我想去雅典卫城' },
-    { name: '卢浮宫', file: 'paintings/louvre.jpg', prompt: '下周去卢浮宫和橘园美术馆' },
-    { name: '新天鹅堡', file: 'paintings/neuschwanstein.jpg', prompt: '去看新天鹅堡的雪景' },
-  ];
-
+  /**
+   * 发现页：展示当前或最近行程目的地里的有趣去处。
+   * 想法还没定下来，先留白。
+   */
   function renderDiscover() {
     app.innerHTML = `
       <div class="screen">
-        ${topbar({ title: t('nav.discover'), back: true })}
         <main class="page has-nav">
           <h1 class="page-title">${t('nav.discover')}</h1>
-          <p class="page-sub">${t('discover.sub')}</p>
-          <div class="discover-grid">
-            ${DISCOVER_PLACES.map(
-              (place, index) => `
-              <button class="discover-card" type="button" data-action="plan-discover" data-prompt-index="${index}">
-                <img src="${place.file}" alt="${esc(place.name)}" />
-                <span>${esc(place.name)}</span>
-              </button>`,
-            ).join('')}
+          <div class="empty">
+            <span class="empty-mark">远</span>
+            <p>${t('nav.discoverSoon')}</p>
           </div>
         </main>
       </div>`;
@@ -2597,6 +2907,305 @@
         }
         <span class="journey-excerpt">${excerpt}</span>
       </button>`;
+  }
+
+  // ---- 回忆 -----------------------------------------------------------------
+
+  /** 回忆列表里的一段行程：名字、时间、已经攒下的回忆。 */
+  function memoryJourneyCard(journey, count, thumbs) {
+    const { depart, ret } = journeyRange(journey);
+    const when = depart ? fmtDay(depart) : fmtDay(journey.updated_at);
+    const range = ret ? `${fmtDay(depart)} – ${fmtDay(ret)}` : when;
+    const preview = thumbs.length
+      ? `<span class="memory-thumbs">${thumbs
+          .map(
+            (media) =>
+              `<img src="${esc(mediaUrl(media))}" alt="" loading="lazy" />`,
+          )
+          .join('')}</span>`
+      : '';
+    return `
+      <button class="memory-card" data-memory-journey="${esc(journey.id)}">
+        <span class="memory-card-top">
+          <span class="memory-card-name">${esc(journey.name)}</span>
+          <span class="memory-card-date">${esc(range)}</span>
+        </span>
+        ${preview}
+        <span class="memory-card-count">${
+          count ? t('memories.count', { n: count }) : t('memories.noCount')
+        }</span>
+      </button>`;
+  }
+
+  function mediaUrl(media) {
+    if (!media?.url) return '';
+    return `${state.server}${media.url}`;
+  }
+
+  /** 回忆页：挑一段走过的行程，给它添上照片、视频和文字。 */
+  function renderMemories() {
+    app.innerHTML = `
+      <div class="screen">
+        <main class="page has-nav">
+          <h1 class="page-title">${t('memories.title')}</h1>
+          <p class="page-sub">${t('memories.sub')}</p>
+          <div class="memory-list" id="memory-list">
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+          </div>
+        </main>
+      </div>`;
+
+    Promise.all([api('/api/journeys'), api('/api/memories')])
+      .then(([{ journeys }, { memories, counts }]) => {
+        state.journeys = journeys;
+        const list = document.getElementById('memory-list');
+        if (!list) return;
+        if (!journeys.length) {
+          list.innerHTML = `
+            <div class="empty">
+              <span class="empty-mark">忆</span>
+              <p>${t('memories.noJourney')}</p>
+              <p class="muted">${t('memories.emptySub')}</p>
+            </div>`;
+          return;
+        }
+        const thumbsByJourney = new Map();
+        for (const memory of memories) {
+          if (!memory.journeyId) continue;
+          const key = String(memory.journeyId);
+          if (!thumbsByJourney.has(key)) thumbsByJourney.set(key, []);
+          const bucket = thumbsByJourney.get(key);
+          for (const media of memory.media || []) {
+            if (media.kind === 'image' && bucket.length < 3) bucket.push(media);
+          }
+        }
+        // 已经走过的行程排在前面，还在路上的行程放在后面。
+        const now = Date.now();
+        const sorted = journeys.slice().sort((a, b) => {
+          const end = (journey) => {
+            const { ret } = journeyRange(journey);
+            const time = ret ? Date.parse(ret) : NaN;
+            return Number.isFinite(time) ? time : now;
+          };
+          return end(a) - end(b);
+        });
+        list.innerHTML = sorted
+          .map((journey) =>
+            memoryJourneyCard(
+              journey,
+              counts?.[journey.id] ?? 0,
+              thumbsByJourney.get(String(journey.id)) ?? [],
+            ),
+          )
+          .join('');
+        list.querySelectorAll('[data-memory-journey]').forEach((card) => {
+          card.addEventListener('click', () => navigate(`#/memories/${card.dataset.memoryJourney}`));
+        });
+      })
+      .catch((error) => {
+        const list = document.getElementById('memory-list');
+        if (list) {
+          list.innerHTML = `
+            <div class="empty">
+              <p>${esc(error.message)}</p>
+              <button class="btn ghost" data-action="retry-memories">${t('common.retry')}</button>
+            </div>`;
+        }
+      });
+  }
+
+  /** 一条回忆：文字 + 照片 / 视频。 */
+  function memoryItemMarkup(memory) {
+    const photos = (memory.media || []).filter((media) => media.kind === 'image');
+    const videos = (memory.media || []).filter((media) => media.kind === 'video');
+    return `
+      <article class="memory-item">
+        ${memory.note ? `<p class="memory-note">${esc(memory.note)}</p>` : ''}
+        ${
+          photos.length
+            ? `<div class="memory-grid">${photos
+                .map(
+                  (media) =>
+                    `<img src="${esc(mediaUrl(media))}" alt="" loading="lazy" />`,
+                )
+                .join('')}</div>`
+            : ''
+        }
+        ${
+          videos.length
+            ? `<div class="memory-videos">${videos
+                .map(
+                  (media) =>
+                    `<video src="${esc(mediaUrl(media))}" controls preload="metadata" playsinline></video>`,
+                )
+                .join('')}</div>`
+            : ''
+        }
+        <div class="memory-item-foot">
+          <span class="memory-time">${esc(fmtDate(memory.createdAt))}</span>
+          <button class="link subtle" data-action="memory-delete" data-memory-id="${esc(memory.id)}">
+            ${t('detail.delete')}
+          </button>
+        </div>
+      </article>`;
+  }
+
+  /** 某段行程的回忆详情：写回忆、放照片、生成旅行回忆。 */
+  function renderMemoryDetail(id) {
+    state.memoryJourneyId = id;
+    app.innerHTML = `
+      <div class="screen">
+        ${topbar({ title: t('memories.title'), back: true })}
+        <main class="page has-nav" id="memory-detail">
+          <div class="skeleton-block"></div>
+        </main>
+      </div>`;
+
+    Promise.all([api(`/api/journeys/${id}`), api(`/api/memories?journeyId=${id}`)])
+      .then(([{ journey }, { memories }]) => {
+        const page = document.getElementById('memory-detail');
+        if (!page) return;
+        page.innerHTML = `
+          <p class="eyebrow">${esc(journeyRange(journey).depart ? fmtDay(journeyRange(journey).depart) : '')}</p>
+          <h1 class="page-title">${esc(journey.name)}</h1>
+          ${
+            journeyDestinations(journey)
+              ? `<p class="page-sub">${esc(journeyDestinations(journey))}</p>`
+              : ''
+          }
+
+          <section class="card panel" id="memory-composer">
+            <h2 class="panel-title">${t('memories.addTitle')}</h2>
+            <textarea id="memory-note" class="memory-input" rows="3"
+              placeholder="${esc(t('memories.notePlaceholder'))}"></textarea>
+            <input type="file" id="memory-files" accept="image/*,video/*" multiple hidden />
+            <div class="memory-actions">
+              <button class="btn ghost" type="button" data-action="memory-pick">${t('memories.pick')}</button>
+              <button class="btn primary" type="button" data-action="memory-save">${t('memories.save')}</button>
+            </div>
+            <p class="memory-files" id="memory-files-list"></p>
+          </section>
+
+          <div class="memory-actions-row">
+            <button class="btn ghost block" type="button" data-action="memory-recap">${t('memories.generate')}</button>
+          </div>
+
+          <section class="memory-recap" id="memory-recap" hidden>
+            <div class="card panel">
+              <h2 class="panel-title">${t('memories.recapTitle')}</h2>
+              <p class="memory-recap-text" id="memory-recap-text"></p>
+              <button class="btn ghost block" type="button" disabled>${t('memories.share')} · ${t('memories.shareSoon')}</button>
+            </div>
+          </section>
+
+          <div class="memory-items" id="memory-items">
+            ${
+              memories.length
+                ? memories.map(memoryItemMarkup).join('')
+                : `<div class="empty">
+                    <span class="empty-mark">忆</span>
+                    <p>${t('memories.emptyTitle')}</p>
+                    <p class="muted">${t('memories.emptySub')}</p>
+                  </div>`
+            }
+          </div>`;
+
+        const fileInput = document.getElementById('memory-files');
+        const fileList = document.getElementById('memory-files-list');
+        fileInput?.addEventListener('change', () => {
+          const files = [...(fileInput.files || [])];
+          if (!fileList) return;
+          fileList.textContent = files.length
+            ? files.map((file) => file.name).join('、')
+            : '';
+        });
+      })
+      .catch((error) => {
+        const page = document.getElementById('memory-detail');
+        if (page) {
+          page.innerHTML = `
+            <div class="empty">
+              <p>${esc(error.message)}</p>
+              <button class="btn ghost" data-action="retry-memories">${t('common.retry')}</button>
+            </div>`;
+        }
+      });
+  }
+
+  /** 保存一条回忆：先建文字，再一张一张上传照片 / 视频。 */
+  async function saveMemory() {
+    const journeyId = state.memoryJourneyId;
+    const noteInput = document.getElementById('memory-note');
+    const fileInput = document.getElementById('memory-files');
+    const button = document.querySelector('[data-action="memory-save"]');
+    const note = noteInput ? noteInput.value.trim() : '';
+    const files = fileInput ? [...(fileInput.files || [])] : [];
+    if (!journeyId) return;
+    if (!note && !files.length) {
+      toast(t('memories.needContent'), 'error');
+      return;
+    }
+    setBusy(button, true, t('busy.saving'));
+    try {
+      const { memory } = await api('/api/memories', {
+        method: 'POST',
+        body: { journeyId: Number(journeyId), note },
+      });
+      let failed = 0;
+      for (const file of files) {
+        try {
+          await api(`/api/memories/${memory.id}/media`, {
+            method: 'POST',
+            raw: true,
+            contentType: file.type || 'application/octet-stream',
+            body: file,
+            timeout: 120000,
+          });
+        } catch {
+          failed += 1;
+        }
+      }
+      toast(failed ? t('memories.uploadFailed') : t('memories.savedToast'), failed ? 'error' : 'info');
+      renderMemoryDetail(journeyId);
+    } catch (error) {
+      toast(error.message, 'error');
+      setBusy(button, false);
+    }
+  }
+
+  /** 让 AI 把这段行程的回忆写成一段话。 */
+  async function generateRecap() {
+    const journeyId = state.memoryJourneyId;
+    const button = document.querySelector('[data-action="memory-recap"]');
+    if (!journeyId) return;
+    setBusy(button, true, t('memories.generating'));
+    try {
+      const data = await api('/api/ai/memory-recap', {
+        method: 'POST',
+        body: { journeyId: Number(journeyId) },
+        timeout: 90000,
+      });
+      const section = document.getElementById('memory-recap');
+      const text = document.getElementById('memory-recap-text');
+      if (text) text.textContent = data.recap || '';
+      if (section) section.hidden = false;
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  async function deleteMemory(id) {
+    if (!confirm(t('memories.deleteConfirm'))) return;
+    try {
+      await api(`/api/memories/${id}`, { method: 'DELETE' });
+      toast(t('memories.deletedToast'));
+      renderMemoryDetail(state.memoryJourneyId);
+    } catch (error) {
+      toast(error.message, 'error');
+    }
   }
 
   function renderJourneyDetail(id) {
@@ -2748,9 +3357,8 @@
   function renderSettings({ publicView = false } = {}) {
     app.innerHTML = `
       <div class="screen">
-        ${topbar({ title: t('settings.title'), back: !publicView })}
         <main class="page has-nav">
-          <h1 class="page-title">${t('settings.title')}</h1>
+          <h1 class="page-title">${t('nav.me')}</h1>
 
           <section class="card panel">
             <h2 class="panel-title">${t('settings.languageTitle')}</h2>
@@ -2801,7 +3409,7 @@
                 <section class="card panel">
                   <h2 class="panel-title">${t('settings.resetPassword')}</h2>
                   <p class="panel-sub">${t('settings.resetPasswordSub')}</p>
-                  <button class="btn ghost block" id="reset-password-btn" type="button">${t('forgot.submit')}</button>
+                  <button class="link subtle" id="reset-password-btn" type="button">${t('forgot.submit')} →</button>
                 </section>`
           }
 
@@ -2885,7 +3493,8 @@
       }
     }
     toast(t('logout.toast'));
-    navigate('#/login');
+    historyDepth = 0;
+    history.replaceState(null, '', '#/login');
     render();
   }
 
@@ -2914,18 +3523,14 @@
     switch (target.dataset.action) {
       case 'settings':
         if (draftOverlayOpen) leaveOverlayTo('#/settings');
-        else navigate('#/settings');
+        else navigateTab('#/settings');
         break;
       case 'new': {
         const drafts = sortedDrafts();
         if (drafts.length > 0 && !draftOverlayOpen) {
-          // 有草稿：回到首页浮出草稿列表，加号冷却两秒。
-          if (parseRoute().name === 'home') {
-            openDraftOverlay();
-          } else {
-            pendingOverlayOpen = true;
-            navigate('#/');
-          }
+          // 有草稿：回到默认的行程页，浮出草稿列表，加号冷却两秒。
+          pendingOverlayOpen = true;
+          navigateTab('#/');
           break;
         }
         if (draftOverlayOpen) {
@@ -2936,29 +3541,49 @@
           break;
         }
         resetPlanState();
-        navigate('#/new');
+        // 背景统一是默认的行程页：先切回行程页，再进入创建旅程。
+        navigateTab('#/', () => navigate('#/new'));
         break;
       }
       case 'journeys':
         if (draftOverlayOpen) leaveOverlayTo('#/journeys');
         else navigate('#/journeys');
         break;
+      case 'memories':
+        if (draftOverlayOpen) leaveOverlayTo('#/memories');
+        else navigateTab('#/memories');
+        break;
       case 'discover':
         if (draftOverlayOpen) leaveOverlayTo('#/discover');
-        else navigate('#/discover');
+        else navigateTab('#/discover');
         break;
-      case 'current-journey': {
-        const target = state.currentJourney
-          ? `#/journey/${state.currentJourney.id}`
-          : state.journeys.length > 0
-            ? `#/journey/${state.journeys[0].id}`
-            : '#/journeys';
-        if (draftOverlayOpen) leaveOverlayTo(target);
-        else navigate(target);
+      case 'current-journey':
+        // 行程页就是默认页面，和加号浮出草稿时的背景是同一页。
+        if (draftOverlayOpen) leaveOverlayTo('#/');
+        else navigateTab('#/');
+        break;
+      case 'trip-open': {
+        const id = target.dataset.journeyId;
+        if (id) navigate(`#/journey/${id}`);
         break;
       }
+      case 'all-journeys':
+        navigate('#/journeys');
+        break;
+      case 'memory-pick':
+        document.getElementById('memory-files')?.click();
+        break;
+      case 'memory-save':
+        saveMemory();
+        break;
+      case 'memory-recap':
+        generateRecap();
+        break;
+      case 'memory-delete':
+        deleteMemory(target.dataset.memoryId);
+        break;
       case 'home':
-        navigate('#/');
+        navigateTab('#/');
         break;
       case 'back':
         goBack();
@@ -2981,6 +3606,10 @@
       case 'retry-journeys':
         renderJourneys();
         break;
+      case 'retry-memories':
+        if (state.memoryJourneyId) renderMemoryDetail(state.memoryJourneyId);
+        else renderMemories();
+        break;
       case 'retry-detail':
         if (state.currentJourneyId) renderJourneyDetail(state.currentJourneyId);
         break;
@@ -2990,14 +3619,6 @@
       case 'plan-confirm':
         confirmPlanInput();
         break;
-      case 'plan-discover': {
-        const place = DISCOVER_PLACES[Number(target.dataset.promptIndex || 0)];
-        if (!place) break;
-        resetPlanState();
-        planState.text = place.prompt;
-        navigate('#/new');
-        break;
-      }
       case 'plan-save':
         savePlanAsJourney();
         break;
@@ -3052,14 +3673,25 @@
   window.addEventListener('hashchange', render);
 
   /**
-   * 系统返回：草稿浮层展开时先收回列表，浮层打开时收起草稿列表，
-   * 两种情况都不会退出应用。
+   * 系统返回：
+   * - 草稿浮层展开时先收回列表，浮层打开时收起草稿列表，都不会退出应用；
+   * - 主页面（行程 / 回忆 / 发现 / 我）没有多余的历史记录，返回即退出应用。
    */
   window.addEventListener('popstate', () => {
     if (suppressPopCount > 0) {
       suppressPopCount -= 1;
+      if (pendingTabHash) {
+        const hash = pendingTabHash;
+        pendingTabHash = '';
+        historyDepth = 0;
+        replaceHash(hash);
+        render();
+        runPendingTabAfter();
+      }
       return;
     }
+    // 用户自己按了返回：历史浅了一层。
+    if (historyDepth > 0) historyDepth -= 1;
     if (!draftOverlayOpen) return;
     overlayPushed = false; // 系统已经弹出了我们压入的那条历史
     if (expandedDraftId) {

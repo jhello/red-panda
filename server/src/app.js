@@ -5,12 +5,21 @@ import os from 'node:os';
 import path from 'node:path';
 import { URL } from 'node:url';
 
-import { AIError, aiStatus, chat, mockPlan } from './ai.js';
+import { AIError, aiStatus, chat, mockPlan, mockRecap } from './ai.js';
 import { hashPassword, hashToken, newSessionToken, safeEqual, verifyPassword } from './auth.js';
 import { fileSize, openDatabase } from './db.js';
 import { getLanUrls } from './config.js';
 import { createMailer } from './mailer.js';
 import { resetEmail, verificationEmail } from './emails.js';
+import {
+  MAX_MEDIA_BYTES,
+  mediaFileName,
+  mediaFilePath,
+  mediaKindFor,
+  mimeForFile,
+  removeMediaFile,
+  saveMediaFile,
+} from './media.js';
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -28,6 +37,13 @@ const MIME = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.heic': 'image/heic',
+  '.avif': 'image/avif',
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
+  '.mkv': 'video/x-matroska',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
@@ -93,6 +109,25 @@ function readJson(req) {
         reject(new HttpError(400, 'JSON 格式不正确', 'bad_json'));
       }
     });
+    req.on('error', reject);
+  });
+}
+
+/** 读取请求体的原始字节（上传照片 / 视频时用）。 */
+function readRaw(req, maxBytes = MAX_MEDIA_BYTES) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        reject(new HttpError(413, '文件太大了', 'payload_too_large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }
@@ -284,6 +319,40 @@ function publicJourney(row) {
   };
 }
 
+/** 行程里的目的地（可能有好几个）。 */
+function destinationsOf(journey) {
+  const items = journey?.plan?.items;
+  if (!Array.isArray(items) || !items.length) return '';
+  return items
+    .map((item) => String(item?.destination ?? '').trim())
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** 回忆里的一张照片 / 视频。 */
+function publicMedia(row) {
+  return {
+    id: row.id,
+    memoryId: row.memory_id,
+    kind: row.kind,
+    mime: row.mime,
+    size: row.size,
+    url: `/api/media/${row.access_key}`,
+    createdAt: row.created_at,
+  };
+}
+
+/** 一条回忆：文字 + 照片 / 视频。 */
+function publicMemory(row) {
+  return {
+    id: row.id,
+    journeyId: row.journey_id,
+    note: row.note,
+    createdAt: row.created_at,
+    media: (row.media ?? []).map(publicMedia),
+  };
+}
+
 function normalizeEmail(value) {
   const email = String(value ?? '').trim().toLowerCase();
   if (email.length < 5 || email.length > 254 || !EMAIL_RE.test(email)) {
@@ -371,6 +440,51 @@ function serveFile(req, res, filePath) {
   return true;
 }
 
+/** 发送照片 / 视频，支持 Range 请求（浏览器播放视频需要拖动进度）。 */
+function serveMedia(req, res, filePath, mime) {
+  const stat = fs.statSync(filePath);
+  const headers = {
+    'Content-Type': mime || mimeForFile(filePath),
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'private, max-age=86400',
+    'X-Content-Type-Options': 'nosniff',
+  };
+  const match = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? '').trim());
+  if (match) {
+    let start = match[1] === '' ? null : Number(match[1]);
+    let end = match[2] === '' ? null : Number(match[2]);
+    if (start === null && end !== null) {
+      start = Math.max(0, stat.size - end);
+      end = stat.size - 1;
+    } else if (start === null) {
+      start = 0;
+    }
+    if (end === null || end >= stat.size) end = stat.size - 1;
+    if (start > end || start >= stat.size) {
+      res.writeHead(416, { 'Content-Range': `bytes */${stat.size}` });
+      res.end();
+      return;
+    }
+    res.writeHead(206, {
+      ...headers,
+      'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+      'Content-Length': end - start + 1,
+    });
+    if (req.method === 'HEAD') {
+      res.end();
+    } else {
+      fs.createReadStream(filePath, { start, end }).pipe(res);
+    }
+    return;
+  }
+  res.writeHead(200, { ...headers, 'Content-Length': stat.size });
+  if (req.method === 'HEAD') {
+    res.end();
+  } else {
+    fs.createReadStream(filePath).pipe(res);
+  }
+}
+
 function notFound(req, res) {
   if (req.url?.startsWith('/api/')) {
     sendJson(res, 404, { error: '接口不存在', code: 'not_found' });
@@ -406,7 +520,14 @@ export function createApp(config, options = {}) {
   const routes = [];
 
   function route(method, pattern, handler, options = {}) {
-    routes.push({ method, pattern, handler, auth: options.auth === true, admin: options.admin === true });
+    routes.push({
+      method,
+      pattern,
+      handler,
+      auth: options.auth === true,
+      admin: options.admin === true,
+      raw: options.raw === true,
+    });
   }
 
   function authenticate(req) {
@@ -920,6 +1041,182 @@ export function createApp(config, options = {}) {
     { auth: true },
   );
 
+  // ---- 回忆（照片 / 视频 / 文字）-------------------------------------------
+
+  route(
+    'GET',
+    /^\/api\/memories$/,
+    ({ auth, query }) => {
+      const journeyId = query.journeyId ? Number(query.journeyId) : null;
+      if (journeyId !== null && !Number.isInteger(journeyId)) {
+        throw new HttpError(400, '行程编号不正确', 'validation_error');
+      }
+      return {
+        status: 200,
+        body: {
+          memories: db.listMemories(auth.user.id, journeyId).map(publicMemory),
+          counts: db.countMemoriesByJourney(auth.user.id),
+        },
+      };
+    },
+    { auth: true },
+  );
+
+  route(
+    'POST',
+    /^\/api\/memories$/,
+    ({ auth, body }) => {
+      const raw = body.journeyId;
+      const journeyId =
+        raw === undefined || raw === null || raw === '' ? null : Number(raw);
+      if (journeyId !== null && !Number.isInteger(journeyId)) {
+        throw new HttpError(400, '行程编号不正确', 'validation_error');
+      }
+      if (journeyId !== null && !db.getJourney(auth.user.id, journeyId)) {
+        throw new HttpError(404, '行程不存在', 'not_found');
+      }
+      const note = optionalString(body.note, '回忆文字', 2000);
+      if (!note && journeyId === null) {
+        throw new HttpError(400, '写点什么，或者选一段行程', 'validation_error');
+      }
+      const memory = db.createMemory({
+        userId: auth.user.id,
+        journeyId,
+        note,
+        now: new Date().toISOString(),
+      });
+      return { status: 201, body: { memory: publicMemory(memory) } };
+    },
+    { auth: true },
+  );
+
+  route(
+    'DELETE',
+    /^\/api\/memories\/(\d+)$/,
+    ({ auth, params }) => {
+      const result = db.deleteMemory(auth.user.id, Number(params[0]));
+      if (!result) throw new HttpError(404, '回忆不存在', 'not_found');
+      for (const item of result.media) {
+        removeMediaFile(
+          config.dataDir,
+          auth.user.id,
+          mediaFileName(item.access_key, item.mime),
+        );
+      }
+      return { status: 204 };
+    },
+    { auth: true },
+  );
+
+  // 上传照片 / 视频：请求体就是文件本身，Content-Type 说明类型。
+  route(
+    'POST',
+    /^\/api\/memories\/(\d+)\/media$/,
+    ({ auth, params, body, req }) => {
+      const memory = db.getMemory(auth.user.id, Number(params[0]));
+      if (!memory) throw new HttpError(404, '回忆不存在', 'not_found');
+      const buffer = Buffer.isBuffer(body) ? body : Buffer.alloc(0);
+      if (!buffer.length) throw new HttpError(400, '文件内容为空', 'validation_error');
+      const mime = String(req.headers['content-type'] ?? '')
+        .split(';')[0]
+        .trim()
+        .toLowerCase();
+      const kind = mediaKindFor(mime);
+      if (!kind) {
+        throw new HttpError(415, '只支持照片和视频', 'unsupported_media');
+      }
+      const saved = saveMediaFile(config.dataDir, auth.user.id, buffer, mime);
+      const media = db.createMedia({
+        memoryId: memory.id,
+        userId: auth.user.id,
+        accessKey: saved.key,
+        kind,
+        mime,
+        size: buffer.length,
+        now: new Date().toISOString(),
+      });
+      return { status: 201, body: { media: publicMedia(media) } };
+    },
+    { auth: true, raw: true },
+  );
+
+  // 媒体文件：访问密钥本身就是凭证，方便 <img> / <video> 直接引用。
+  route('GET', /^\/api\/media\/([a-f0-9]{32})$/, ({ params, res, req }) => {
+    const item = db.getMediaByKey(params[0]);
+    if (!item) throw new HttpError(404, '文件不存在', 'not_found');
+    const fileName = mediaFileName(item.access_key, item.mime);
+    const filePath = mediaFilePath(config.dataDir, item.user_id, fileName);
+    if (!filePath || !fs.existsSync(filePath)) {
+      throw new HttpError(404, '文件不存在', 'not_found');
+    }
+    serveMedia(req, res, filePath, item.mime);
+    return { status: 200 };
+  });
+
+  route(
+    'POST',
+    /^\/api\/ai\/memory-recap$/,
+    async ({ auth, body, req }) => {
+      const journeyId = Number(body.journeyId);
+      if (!Number.isInteger(journeyId)) {
+        throw new HttpError(400, '行程编号不正确', 'validation_error');
+      }
+      const journey = db.getJourney(auth.user.id, journeyId);
+      if (!journey) throw new HttpError(404, '行程不存在', 'not_found');
+      const memories = db.listMemories(auth.user.id, journeyId);
+      const media = memories.flatMap((item) => item.media ?? []);
+      const context = {
+        journeyName: journey.name,
+        destination: destinationsOf(journey),
+        departTime: journey.depart_time || '',
+        returnTime: journey.return_time || '',
+        photos: media.filter((item) => item.kind === 'image').length,
+        videos: media.filter((item) => item.kind === 'video').length,
+        notes: memories.map((item) => item.note).filter(Boolean),
+      };
+      const locale = localeForUser(auth.user, body, req);
+      if (config.ai.mock) {
+        state.metrics.aiCalls += 1;
+        return {
+          status: 200,
+          body: { recap: mockRecap(context, locale), model: 'mock', mock: true },
+        };
+      }
+      const result = await chat(
+        config,
+        [
+          {
+            role: 'system',
+            content:
+              '你是「小熊猫」旅程应用里的回忆作者。' +
+              '根据用户给某段行程添加的照片、视频和文字，写一段温柔、有画面感的旅行回忆。' +
+              '不要罗列清单，不要标题，不要解释，控制在 200 字以内，只输出回忆正文。',
+          },
+          {
+            role: 'user',
+            content:
+              `行程：${context.journeyName}\n` +
+              (context.destination ? `目的地：${context.destination}\n` : '') +
+              (context.departTime ? `出发：${context.departTime}\n` : '') +
+              (context.returnTime ? `返回：${context.returnTime}\n` : '') +
+              `照片 ${context.photos} 张，视频 ${context.videos} 段。\n` +
+              (context.notes.length
+                ? `用户写下的片段：\n${context.notes.map((note) => `- ${note}`).join('\n')}\n`
+                : '用户还没有写下文字。\n') +
+              '请写成一段旅行回忆。',
+          },
+        ],
+        { maxTokens: 600, temperature: 0.9 },
+      );
+      state.metrics.aiCalls += 1;
+      return {
+        status: 200,
+        body: { recap: result.content, model: result.model, mock: result.mock },
+      };
+    },
+    { auth: true },
+  );
+
   route(
     'POST',
     /^\/api\/ai\/journey-description$/,
@@ -1072,10 +1369,11 @@ export function createApp(config, options = {}) {
 
         let body = {};
         if (['POST', 'PUT', 'PATCH'].includes(req.method ?? '')) {
-          body = await readJson(req);
+          body = matched.raw ? await readRaw(req) : await readJson(req);
         }
 
-        const result = await matched.handler({ req, res, body, params, auth });
+        const query = Object.fromEntries(parsed.searchParams);
+        const result = await matched.handler({ req, res, body, params, auth, query });
         status = result?.status ?? 200;
         if (result?.body !== undefined) {
           sendJson(res, status, result.body);

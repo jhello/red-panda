@@ -115,6 +115,38 @@ export function mockPlan(input) {
   };
 }
 
+/**
+ * Offline stand-in for the travel memory: turn the photos, videos and notes
+ * of one journey into a short recap.
+ */
+export function mockRecap(context = {}, locale = 'zh') {
+  const name = context.journeyName || '这趟旅行';
+  const photos = Number(context.photos || 0);
+  const videos = Number(context.videos || 0);
+  const notes = Array.isArray(context.notes) ? context.notes : [];
+  const pieces = [];
+  if (photos) pieces.push(locale === 'zh' ? `${photos} 张照片` : `${photos} photos`);
+  if (videos) pieces.push(locale === 'zh' ? `${videos} 段影像` : `${videos} clips`);
+  if (notes.length) pieces.push(locale === 'zh' ? `${notes.length} 句写给这趟行程的话` : `${notes.length} notes`);
+  const list = pieces.length
+    ? pieces.join(locale === 'zh' ? '、' : ', ')
+    : locale === 'zh'
+      ? '一些还没写下来的片段'
+      : 'a few unwritten moments';
+  if (locale === 'zh') {
+    return (
+      `「${name}」这一路，你留下了${list}。` +
+      '风从目的地吹过来，把没说完的话也一起收好；' +
+      '等下一个季节再翻出来，仍然是当时的光。'
+    );
+  }
+  return (
+    `On "${name}" you kept ${list}. ` +
+    'The wind from that place carries the words you never finished, ' +
+    'and every season you open it again, the light is still the same.'
+  );
+}
+
 export function aiStatus(config) {
   return {
     configured: config.ai.mock || Boolean(config.ai.apiKey),

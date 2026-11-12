@@ -269,6 +269,105 @@ application/json; charset=utf-8`），`204` 响应无正文。
 
 ---
 
+## 回忆
+
+「回忆」用来给**已经走过的行程**添上照片、视频和文字。媒体文件存在服务端
+`data/uploads/<用户 id>/` 下，接口只返回元数据和访问链接。
+
+### `GET /api/memories`
+
+需要认证。列出回忆，`?journeyId=` 可以只看某一段行程的回忆。
+
+```json
+{
+  "memories": [
+    {
+      "id": 1,
+      "journeyId": 3,
+      "note": "那天风很大，狐狸在墙头看我。",
+      "createdAt": "2026-11-12T11:16:00.000Z",
+      "media": [
+        {
+          "id": 1,
+          "memoryId": 1,
+          "kind": "image",
+          "mime": "image/png",
+          "size": 104180,
+          "url": "/api/media/d85a5dcf6d9b98b265450299046d45de",
+          "createdAt": "2026-11-12T11:16:00.000Z"
+        }
+      ]
+    }
+  ],
+  "counts": { "3": 1 }
+}
+```
+
+- `counts`：每段行程的回忆数量，键是行程 id；
+- `media[].kind`：`image` 或 `video`；
+- `media[].url`：访问链接，`/api/media/<访问密钥>`。
+
+### `POST /api/memories`
+
+需要认证。新建一条回忆。
+
+```json
+{ "journeyId": 3, "note": "那天风很大。" }
+```
+
+- `journeyId`：可选，但必须是自己的一段行程；
+- `note`：最多 2000 字符。
+
+`note` 和 `journeyId` 至少要有一项，否则返回 `400`。
+
+响应 `201`：`{ "memory": { … } }`。
+
+### `DELETE /api/memories/:id`
+
+需要认证。删除一条回忆，照片和视频文件会一起删除。成功返回 `204`；
+不存在返回 `404`。
+
+### `POST /api/memories/:id/media`
+
+需要认证。上传一张照片或一段视频。**请求体就是文件本身**，
+`Content-Type` 说明类型（`image/*` 或 `video/*`），单个文件上限 25 MB。
+
+```bash
+curl -s -X POST "$BASE/api/memories/1/media" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: image/png" \
+  --data-binary @photo.png
+```
+
+响应 `201`：`{ "media": { … } }`。类型不支持返回 `415`，文件过大返回 `413`。
+
+### `GET /api/media/:key`
+
+按访问密钥取回照片 / 视频，**不需要登录**（密钥本身就是凭证，32 位随机十六进制）。
+支持 `Range` 请求，视频可以拖动进度。
+
+### `POST /api/ai/memory-recap`
+
+需要认证。根据某段行程和它的回忆，生成一段旅行回忆文字。
+
+```json
+{ "journeyId": 3 }
+```
+
+响应 `200`：
+
+```json
+{
+  "recap": "「雅典卫城」这一路，你留下了 1 张照片、1 句写给这趟行程的话……",
+  "model": "gpt-4o-mini",
+  "mock": false
+}
+```
+
+AI 未配置时返回 `503`（`ai_not_configured`）。
+
+---
+
 ## AI
 
 需要认证。AI 未配置时返回 `503`（`ai_not_configured`）；
@@ -479,6 +578,24 @@ curl -s -X POST "$BASE/api/ai/journey-plan" \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"prompt":"想去卢浮宫，雅典卫城还是新天鹅堡？"}'
+
+# 给走过的行程写一段回忆
+curl -s -X POST "$BASE/api/memories" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"journeyId":1,"note":"那天风很大。"}'
+
+# 上传一张照片
+curl -s -X POST "$BASE/api/memories/1/media" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: image/png" \
+  --data-binary @photo.png
+
+# 让 AI 把回忆写成一段话
+curl -s -X POST "$BASE/api/ai/memory-recap" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"journeyId":1}'
 
 # 看板状态
 curl -s "$BASE/api/admin/status" -H "X-Admin-Token: $(cat data/admin-token)"

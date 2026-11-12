@@ -35,16 +35,18 @@ after(async () => {
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-async function request(pathname, { method = 'GET', token, body, admin, redirect } = {}) {
+async function request(pathname, { method = 'GET', token, body, admin, redirect, raw, contentType } = {}) {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   if (admin) headers['X-Admin-Token'] = admin;
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (body !== undefined && !raw) headers['Content-Type'] = 'application/json';
+  if (raw && contentType) headers['Content-Type'] = contentType;
+  const payload = body === undefined ? undefined : raw ? body : JSON.stringify(body);
   const response = await fetch(`${base}${pathname}`, {
     method,
     headers,
     redirect,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: payload,
   });
   const text = await response.text();
   let data = null;
@@ -600,6 +602,123 @@ test('静态页面：看板与 HTML5 应用', async () => {
 
   const redirect = await fetch(`${base}/app`, { redirect: 'manual' });
   assert.equal(redirect.status, 302);
+});
+
+test('回忆：给走过的行程添加照片、视频和文字', async () => {
+  const created = await request('/api/journeys', {
+    method: 'POST',
+    token,
+    body: {
+      name: '青丘旧事',
+      plan: { items: [{ destination: '青丘', departTime: '2026-01-05T08:00', returnTime: '2026-01-07T20:00' }] },
+    },
+  });
+  assert.equal(created.status, 201);
+  const targetId = created.data.journey.id;
+
+  const memory = await request('/api/memories', {
+    method: 'POST',
+    token,
+    body: { journeyId: targetId, note: '那天风很大，狐狸在墙头看我。' },
+  });
+  assert.equal(memory.status, 201);
+  assert.equal(memory.data.memory.note, '那天风很大，狐狸在墙头看我。');
+  assert.equal(memory.data.memory.journeyId, targetId);
+  assert.deepEqual(memory.data.memory.media, []);
+
+  // 上传照片：请求体就是文件本身
+  const upload = await request(`/api/memories/${memory.data.memory.id}/media`, {
+    method: 'POST',
+    token,
+    raw: true,
+    body: Buffer.from('89504e470d0a1a0a', 'hex'),
+    contentType: 'image/png',
+  });
+  assert.equal(upload.status, 201);
+  assert.equal(upload.data.media.kind, 'image');
+  assert.equal(upload.data.media.mime, 'image/png');
+  assert.match(upload.data.media.url, /^\/api\/media\/[a-f0-9]{32}$/);
+
+  // 其它类型一律拒绝
+  const bad = await request(`/api/memories/${memory.data.memory.id}/media`, {
+    method: 'POST',
+    token,
+    raw: true,
+    body: Buffer.from('hello'),
+    contentType: 'text/plain',
+  });
+  assert.equal(bad.status, 415);
+
+  // 媒体文件可以用访问密钥取回，并且支持 Range（视频要能拖进度）
+  const file = await fetch(`${base}${upload.data.media.url}`);
+  assert.equal(file.status, 200);
+  assert.equal(file.headers.get('content-type'), 'image/png');
+  const range = await fetch(`${base}${upload.data.media.url}`, { headers: { Range: 'bytes=0-3' } });
+  assert.equal(range.status, 206);
+  assert.equal(range.headers.get('content-length'), '4');
+
+  // 列表：可以按行程过滤，并带上每段行程的回忆数量
+  const list = await request(`/api/memories?journeyId=${targetId}`, { token });
+  assert.equal(list.status, 200);
+  assert.equal(list.data.memories.length, 1);
+  assert.equal(list.data.memories[0].media.length, 1);
+  assert.equal(list.data.counts[targetId], 1);
+
+  // 别人的行程写不了回忆
+  await registerAndVerify('stranger@example.com', 'password456');
+  const stranger = await request('/api/auth/login', {
+    method: 'POST',
+    body: { email: 'stranger@example.com', password: 'password456' },
+  });
+  const foreign = await request('/api/memories', {
+    method: 'POST',
+    token: stranger.data.token,
+    body: { journeyId: targetId, note: '偷偷写一条' },
+  });
+  assert.equal(foreign.status, 404);
+
+  // 删除回忆时，照片也一起清掉
+  const deleted = await request(`/api/memories/${memory.data.memory.id}`, { method: 'DELETE', token });
+  assert.equal(deleted.status, 204);
+  const gone = await fetch(`${base}${upload.data.media.url}`);
+  assert.equal(gone.status, 404);
+
+  await request(`/api/journeys/${targetId}`, { method: 'DELETE', token });
+});
+
+test('回忆：文字与行程至少要有一项', async () => {
+  const empty = await request('/api/memories', { method: 'POST', token, body: { note: '   ' } });
+  assert.equal(empty.status, 400);
+
+  const anonymous = await request('/api/memories', { method: 'POST', body: { note: '没有登录' } });
+  assert.equal(anonymous.status, 401);
+});
+
+test('AI 回忆生成（mock 模式）', async () => {
+  const created = await request('/api/journeys', {
+    method: 'POST',
+    token,
+    body: { name: '归墟' },
+  });
+  const targetId = created.data.journey.id;
+
+  const recap = await request('/api/ai/memory-recap', {
+    method: 'POST',
+    token,
+    body: { journeyId: targetId },
+  });
+  assert.equal(recap.status, 200);
+  assert.equal(recap.data.mock, true);
+  assert.ok(recap.data.recap.includes('归墟'));
+
+  const missing = await request('/api/ai/memory-recap', {
+    method: 'POST',
+    token,
+    body: { journeyId: 999999 },
+  });
+  assert.equal(missing.status, 404);
+
+  await request(`/api/journeys/${targetId}`, { method: 'DELETE', token });
 });
 
 test('删除旅程与登出', async () => {
