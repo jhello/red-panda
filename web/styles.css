@@ -460,8 +460,8 @@ img.seal {
   font-size: 13px;
 }
 
-/* 草稿浮层：薄纱盖住首页内容，标题竖向排列 */
-.draft-veil {
+/* 草稿浮在首页内容之上，不再有薄纱遮挡；卡片自身用磨砂半透明 */
+.draft-layer {
   position: absolute;
   top: 0;
   left: 0;
@@ -470,13 +470,10 @@ img.seal {
   z-index: 12;
   padding: 16px 18px;
   overflow-y: auto;
-  background: rgba(247, 242, 232, 0.82);
-  -webkit-backdrop-filter: blur(7px);
-  backdrop-filter: blur(7px);
   animation: draft-veil-in 0.28s ease both;
 }
 
-.draft-veil[hidden] {
+.draft-layer[hidden] {
   display: none;
 }
 
@@ -497,6 +494,7 @@ img.seal {
 
 .draft-none {
   margin: 0;
+  padding: 12px 0;
   color: var(--muted);
   font-size: 13px;
   text-align: center;
@@ -509,7 +507,10 @@ img.seal {
   padding: 4px 6px 4px 16px;
   border: 1px dashed rgba(168, 58, 44, 0.4);
   border-radius: 999px;
-  background: rgba(255, 253, 248, 0.86);
+  background: rgba(255, 253, 248, 0.66);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  backdrop-filter: blur(12px) saturate(1.2);
+  box-shadow: var(--shadow-soft);
 }
 
 .draft-open {
@@ -554,8 +555,10 @@ img.seal {
   overflow: hidden;
   border: 1px dashed rgba(168, 58, 44, 0.42);
   border-radius: 20px;
-  background: var(--card);
-  box-shadow: var(--shadow-soft);
+  background: rgba(255, 253, 248, 0.72);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: var(--shadow);
   animation: draft-expand 0.32s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
 

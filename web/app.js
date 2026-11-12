@@ -178,7 +178,7 @@
       home: {
         greeting: '你好，{name}',
         title: '山河远阔，<br />从这里启程。',
-        sub: '勇敢地探索你的世界。',
+        sub: '勇敢探索你的世界。',
         createTitle: '创建旅程',
         createSub: '记录一段新的山海',
         currentTitle: '当前行程',
@@ -1783,7 +1783,7 @@
             ${currentJourneyMarkup(state.currentJourney || state.journeys?.[0] || null)}
           </section>
 
-          <div class="draft-veil" id="draft-veil"${draftOverlayOpen ? '' : ' hidden'}>
+          <div class="draft-layer" id="draft-layer"${draftOverlayOpen ? '' : ' hidden'}>
             <div class="draft-list" id="draft-list">
               ${
                 drafts.length
@@ -1805,10 +1805,12 @@
 
     if (draftOverlayOpen) startCreateCooldown();
 
-    const veil = document.getElementById('draft-veil');
-    if (veil) {
-      veil.addEventListener('click', (event) => {
-        if (event.target !== veil) return;
+    const home = document.querySelector('.home-page');
+    if (home) {
+      home.addEventListener('click', (event) => {
+        if (!draftOverlayOpen) return;
+        if (event.target.closest('.draft-list')) return;
+        if (event.target.closest('.main-nav')) return;
         // 点空白处：展开的草稿先收回列表，否则收起草稿列表
         if (expandedDraftId) {
           collapseExpanded();
@@ -1893,7 +1895,7 @@
     draftOverlayOpen = false;
     expandedDraftId = null;
     stopCreateCooldown();
-    const veil = document.getElementById('draft-veil');
+    const veil = document.getElementById('draft-layer');
     if (veil) veil.hidden = true;
     dropOverlayHistory();
   }
@@ -2809,8 +2811,8 @@
     if (!target) return;
     switch (target.dataset.action) {
       case 'settings':
-        if (draftOverlayOpen) closeDraftOverlay();
-        navigate('#/settings');
+        if (draftOverlayOpen) leaveOverlayTo('#/settings');
+        else navigate('#/settings');
         break;
       case 'new': {
         const drafts = loadDrafts();
@@ -2821,25 +2823,31 @@
         }
         if (draftOverlayOpen) {
           if (Date.now() < createCooldownUntil) break;
-          closeDraftOverlay();
+          // 改写压入的历史再跳转，避免 history.back() 把页面又带回首页。
+          leaveOverlayTo('#/new');
+          break;
         }
         resetPlanState();
         navigate('#/new');
         break;
       }
       case 'journeys':
-        if (draftOverlayOpen) closeDraftOverlay();
-        navigate('#/journeys');
+        if (draftOverlayOpen) leaveOverlayTo('#/journeys');
+        else navigate('#/journeys');
         break;
       case 'discover':
         toast(t('nav.discoverSoon'));
         break;
-      case 'current-journey':
-        if (draftOverlayOpen) closeDraftOverlay();
-        if (state.currentJourney) navigate(`#/journey/${state.currentJourney.id}`);
-        else if (state.journeys.length > 0) navigate(`#/journey/${state.journeys[0].id}`);
-        else navigate('#/journeys');
+      case 'current-journey': {
+        const target = state.currentJourney
+          ? `#/journey/${state.currentJourney.id}`
+          : state.journeys.length > 0
+            ? `#/journey/${state.journeys[0].id}`
+            : '#/journeys';
+        if (draftOverlayOpen) leaveOverlayTo(target);
+        else navigate(target);
         break;
+      }
       case 'home':
         navigate('#/');
         break;
@@ -2942,7 +2950,7 @@
     }
     draftOverlayOpen = false;
     stopCreateCooldown();
-    const veil = document.getElementById('draft-veil');
+    const veil = document.getElementById('draft-layer');
     if (veil) veil.hidden = true;
   });
 
