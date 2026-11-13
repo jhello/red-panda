@@ -882,6 +882,9 @@ img.seal {
   padding: max(30px, env(safe-area-inset-top)) 24px calc(28px + env(safe-area-inset-bottom));
 }
 
+.auth-login-screen{justify-content:space-between;gap:14px}
+.auth-language-switch{position:static;margin:0 auto;flex-shrink:0}
+
 .auth-hero {
   display: grid;
   justify-items: center;
@@ -1011,6 +1014,25 @@ img.seal {
 .panel .btn.block {
   margin-top: 4px;
 }
+
+.backup-status { margin-top: 12px; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.backup-status p { margin: 0; }
+.backup-status progress { display: block; width: 100%; height: 8px; margin: 8px 0 2px; accent-color: var(--accent, #b97042); }
+.backup-status[data-kind="success"] { color: #3f704d; }
+.backup-status[data-kind="error"] { color: #9c3a32; }
+.backup-status[data-kind="pending"] { color: #94641f; }
+.backup-status p { white-space: pre-line; }
+.database-page { padding-bottom: 36px; }
+.database-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0 18px; }
+.database-summary > div { display: grid; gap: 4px; padding: 14px 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper, #fffdf9); }
+.database-summary span { color: var(--muted); font-size: 11px; }
+.database-summary strong { font-size: 16px; overflow-wrap: anywhere; }
+.database-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.database-table { margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper, #fffdf9); }
+.database-table-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.database-table-head > div { display: flex; gap: 6px; }
+.database-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.database-row span { color: var(--muted); white-space: nowrap; }
 
 .origin-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .origin-chip { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; padding: 3px 7px 3px 0; border: 1px solid var(--line); border-radius: 14px; background: #fffdf9; }
@@ -2043,4 +2065,120 @@ input#plan-input::placeholder {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Me tab and Android-style settings, using the app's warm travel palette */
+.me-screen,.settings-screen{min-height:100vh;background:var(--paper);color:var(--ink)}
+.me-head{height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 22px}
+.me-name-edit{min-width:0;max-width:calc(100% - 70px);padding:6px 0;border:0;background:transparent;text-align:left;color:var(--ink);font:inherit;font-size:24px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.me-name-edit:focus-visible{outline:2px solid var(--seal);outline-offset:3px;border-radius:4px}
+.me-name-input{width:min(75%,360px);min-width:0;padding:6px 0;border:0;border-bottom:2px solid var(--seal);border-radius:0;background:transparent;color:var(--ink);font:inherit;font-size:24px;font-weight:650;outline:none}
+.gear-btn{border:0;background:transparent;font-size:23px;color:var(--ink-soft);padding:10px}
+.me-page{padding-top:8px}
+.footprint-card{width:100%;border:1px solid var(--line);border-radius:var(--radius);background:var(--card);text-align:left;padding:20px;color:var(--ink);box-shadow:var(--shadow-soft)}
+.footprint-copy{display:flex;justify-content:space-between;align-items:center}
+.footprint-copy strong{font-size:19px}.footprint-copy span,.footprint-card p{color:var(--muted);font-size:13px}
+.footprint-map{height:220px;position:relative;margin:16px -4px 8px;background:#e8eee9;border-radius:18px;overflow:hidden}
+.footprint-map svg{width:100%;height:100%;fill:#a8bdb1}
+.footprint-pin{position:absolute;color:var(--seal);font-size:24px;text-shadow:0 1px white}
+.pin-0{left:22%;top:37%}.pin-1{left:50%;top:35%}.pin-2{left:70%;top:45%}.pin-3{left:38%;top:58%}.pin-4{left:83%;top:32%}.pin-5{left:62%;top:61%}
+.settings-screen{background:var(--paper)}.settings-screen .topbar{background:var(--paper)}
+.settings-page{padding-top:8px}.settings-detail .card{background:var(--card);border-color:var(--line)}
+.settings-group{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--shadow-soft)}
+.system-row{width:100%;min-height:62px;padding:0 18px;border:0;border-bottom:1px solid var(--line);background:var(--card);display:flex;align-items:center;gap:16px;text-align:left;color:var(--ink);font-size:15px}
+.system-row:last-child{border-bottom:0}.system-icon{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--paper-deep);color:var(--seal);font-size:17px}
+.system-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.system-row b{margin-left:auto;color:var(--muted);font-size:22px;font-weight:400}
+
+/* Settings detail pages use one header and flat content, without nested cards. */
+.settings-detail .card,.settings-detail .panel{margin:0;padding:12px 0;border:0;border-radius:0;background:transparent;box-shadow:none}
+.settings-detail .card + .card{border-top:1px solid var(--line)}
+.settings-detail .panel-title{display:none}
+.settings-detail .panel-sub{margin-bottom:14px}
+.settings-detail .kv{margin:0 0 20px;padding:0}
+.settings-detail .kv>div{padding:12px 0;border-bottom:1px solid var(--line)}
+.settings-detail .origin-list{margin-bottom:12px}
+.settings-detail .form.compact{margin-top:12px}
+
+/* Android-like language choices and a clearer account/security flow */
+.language-choice-list{width:100%;border:1px solid var(--line);border-radius:16px;background:var(--card);overflow:hidden}
+.language-choice{width:100%;min-height:58px;padding:0 18px;border:0;border-bottom:1px solid var(--line);background:transparent;display:flex;align-items:center;justify-content:space-between;text-align:left;color:var(--ink);font-size:15px}
+.language-choice:last-child{border-bottom:0}
+.language-choice.is-selected{background:rgba(168,58,44,.045)}
+.language-choice-name{font-weight:500}
+.language-radio{width:20px;height:20px;border:2px solid var(--line-strong);border-radius:50%;display:grid;place-items:center}
+.language-choice.is-selected .language-radio{border-color:var(--seal)}
+.language-choice.is-selected .language-radio::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--seal)}
+.settings-detail.account-security-page{padding-top:2px}
+.account-settings-group{padding:15px 0 22px;margin:0 0 10px;border-bottom:1px solid var(--line)}
+.account-settings-group:last-child{border-bottom:0}
+.settings-group-heading{margin:0 0 12px;color:var(--ink);font-size:16px;font-weight:650;letter-spacing:.02em}
+.account-settings-group .kv{gap:0;margin-bottom:2px}
+.account-settings-group .kv>div{align-items:center;padding:11px 0}
+.account-settings-group .kv dt{font-size:13px}
+.account-settings-group .kv dd{font-size:14px;color:var(--ink-soft)}
+.account-settings-group .panel-sub{margin:0 0 14px}
+.account-settings-group .form.compact{gap:14px;margin-top:4px}
+.account-action{min-height:48px;margin-top:4px}
+.account-logout-group{padding-top:3px}
+.btn.account-logout{border:1px solid var(--line);background:transparent;color:var(--muted);box-shadow:none}
+.btn.account-logout:hover{background:rgba(120,96,60,.05);color:var(--ink-soft)}
+
+.account-profile-group{padding-bottom:14px;margin-bottom:0;border-bottom:1px solid var(--line)}
+.account-edit-form{display:grid;gap:10px;margin:0 0 12px}
+.account-edit-field{display:grid;gap:8px}
+.account-edit-field>span,.account-field-title{color:var(--ink-soft);font-size:13px;font-weight:600}
+.account-edit-field input{width:100%;min-height:50px;padding:12px 14px;border:1px solid var(--line-strong);border-radius:14px;background:var(--card);color:var(--ink);font-size:15px;outline:none}
+.account-edit-field input:focus{border-color:var(--seal);box-shadow:0 0 0 3px rgba(168,58,44,.1)}
+.account-edit-field input::placeholder{color:#aaa294}
+.current-email-block{display:grid;gap:6px;margin:4px 0 18px;padding:0}
+.current-email-block strong{font-size:15px;font-weight:600;color:var(--ink)}
+.pending-email-status{position:relative;margin-top:6px;padding:14px;border-radius:14px;background:rgba(62,107,91,.09);color:var(--ink-soft)}
+.status-close-btn{position:absolute;top:6px;right:7px;width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:50%;background:transparent;color:var(--muted);font:inherit;font-size:22px;line-height:1;cursor:pointer}
+.status-close-btn:hover{background:rgba(0,0,0,.06)}
+.pending-email-status[hidden]{display:none}
+.pending-email-status strong{display:block;padding-right:28px;color:var(--jade);font-size:15px;overflow-wrap:anywhere}
+.pending-email-status p{margin:6px 0;color:var(--ink);font-size:13px;line-height:1.6}
+.pending-email-status small{display:block;color:var(--muted);font-size:12px;line-height:1.6}
+
+.email-result-page{display:grid;align-content:center;padding-top:18px;padding-bottom:calc(60px + env(safe-area-inset-bottom))}
+.email-verified-result{width:100%;max-width:480px;margin:0 auto;text-align:center;padding:22px 6px}
+.email-result-check{width:58px;height:58px;margin:0 auto 18px;border-radius:50%;display:grid;place-items:center;background:rgba(62,107,91,.13);color:var(--jade);font-size:30px;font-weight:700}
+.email-verified-result h1{margin:0 0 12px;color:var(--ink);font-family:var(--serif);font-size:25px}
+.email-verified-result p{margin:0 auto 12px;max-width:420px;color:var(--ink-soft);font-size:15px;line-height:1.8}
+.email-verified-result .email-result-note{color:var(--muted);font-size:13px}
+.email-verified-result .btn{margin-top:18px}
+.email-updated-banner{display:grid;gap:4px;margin:0 0 16px;padding:14px 16px;border-left:4px solid var(--jade);border-radius:10px;background:rgba(62,107,91,.10);color:var(--ink-soft)}
+.email-updated-banner strong{color:var(--jade);font-size:15px}
+.email-updated-banner span{font-size:13px;line-height:1.6}
+.account-refresh-status{margin:0 0 12px;color:var(--jade);font-size:13px;text-align:center}
+.account-refresh-status[hidden]{display:none}
+.account-security-page{overscroll-behavior-y:contain}
+
+/* Visually hidden but layout-present file inputs so Android WebView's
+   onShowFileChooser fires when they are clicked programmatically. */
+.file-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  left: -9999px;
+  top: 0;
+}
+
+.file-picker-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.file-picker-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
 }

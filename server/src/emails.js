@@ -41,12 +41,12 @@ const COPY = {
     reset: {
       subject: '重置你的小熊猫密码',
       title: '重置密码',
-      intro: (email, minutes) =>
-        `我们收到了重置 ${email} 密码的请求。请点击下面的按钮设置新密码，链接在 ${minutes} 分钟内有效。`,
+      intro: (email, hours) =>
+        `我们收到了重置 ${email} 密码的请求。请点击下面的按钮设置新密码，链接在 ${hours} 小时内有效。`,
       action: '设置新密码',
       hello: '你好，',
       textIntro: (email) => `我们收到了重置 ${email} 密码的请求。`,
-      textCta: (minutes) => `请点击下面的链接设置新密码（${minutes} 分钟内有效）：`,
+      textCta: (hours) => `请点击下面的链接设置新密码（${hours} 小时内有效）：`,
       note: '如果这不是你本人的操作，请忽略这封邮件，你的密码不会被修改。',
     },
   },
@@ -70,13 +70,13 @@ const COPY = {
     reset: {
       subject: 'Reset your Red Panda password',
       title: 'Reset your password',
-      intro: (email, minutes) =>
-        `We received a request to reset the password for ${email}. Click the button below to choose a new password. The link is valid for ${minutes} minutes.`,
+      intro: (email, hours) =>
+        `We received a request to reset the password for ${email}. Click the button below to choose a new password. The link is valid for ${hours} hours.`,
       action: 'Set a new password',
       hello: 'Hello,',
       textIntro: (email) => `we received a request to reset the password for ${email}.`,
-      textCta: (minutes) =>
-        `Please open the link below to choose a new password (valid for ${minutes} minutes):`,
+      textCta: (hours) =>
+        `Please open the link below to choose a new password (valid for ${hours} hours):`,
       note: "If this wasn't you, simply ignore this email and your password won't be changed.",
     },
   },
@@ -100,13 +100,13 @@ const COPY = {
     reset: {
       subject: 'Setze dein Red Panda Passwort zurück',
       title: 'Passwort zurücksetzen',
-      intro: (email, minutes) =>
-        `Wir haben eine Anfrage zum Zurücksetzen des Passworts für ${email} erhalten. Klicke auf die Schaltfläche unten, um ein neues Passwort festzulegen. Der Link ist ${minutes} Minuten gültig.`,
+      intro: (email, hours) =>
+        `Wir haben eine Anfrage zum Zurücksetzen des Passworts für ${email} erhalten. Klicke auf die Schaltfläche unten, um ein neues Passwort festzulegen. Der Link ist ${hours} Stunden gültig.`,
       action: 'Neues Passwort festlegen',
       hello: 'Hallo,',
       textIntro: (email) => `wir haben eine Anfrage zum Zurücksetzen des Passworts für ${email} erhalten.`,
-      textCta: (minutes) =>
-        `Bitte öffne den Link unten, um ein neues Passwort festzulegen (gültig für ${minutes} Minuten):`,
+      textCta: (hours) =>
+        `Bitte öffne den Link unten, um ein neues Passwort festzulegen (gültig für ${hours} Stunden):`,
       note: 'Falls du das nicht warst, ignoriere diese E-Mail einfach – dein Passwort bleibt unverändert.',
     },
   },
@@ -167,7 +167,7 @@ export function verificationEmail({ link, email, hours, locale = 'zh' }) {
   };
 }
 
-export function resetEmail({ link, email, minutes, locale = 'zh' }) {
+export function resetEmail({ link, email, hours = 24, locale = 'zh' }) {
   const copy = copyFor(locale);
   const mail = copy.reset;
   return {
@@ -177,7 +177,7 @@ export function resetEmail({ link, email, minutes, locale = 'zh' }) {
       '',
       mail.textIntro(email),
       '',
-      mail.textCta(minutes),
+      mail.textCta(hours),
       link,
       '',
       mail.note,
@@ -188,11 +188,45 @@ export function resetEmail({ link, email, minutes, locale = 'zh' }) {
       lang: copy.lang,
       brand: copy.brand,
       title: mail.title,
-      intro: mail.intro(email, minutes),
+      intro: mail.intro(email, hours),
       link,
       action: mail.action,
       fallback: copy.fallback,
       note: mail.note,
     }),
+  };
+}
+
+
+export function emailChangeVerificationEmail({ link, email, hours = 24, locale = 'zh' }) {
+  const copy = copyFor(locale);
+  const wording = {
+    zh: {
+      subject: '验证新的邮箱地址', title: '确认更换邮箱',
+      intro: `你请求将小熊猫账户邮箱更换为 ${email}。请点击链接确认，链接在 ${hours} 小时内有效。验证完成前，原邮箱仍然有效。`,
+      action: '确认新邮箱', fallback: '如果按钮无法点击，请复制下面的链接到浏览器打开：',
+      note: '如果这不是你本人的操作，请忽略这封邮件；原邮箱地址不会改变。',
+    },
+    en: {
+      subject: 'Verify your new email address', title: 'Confirm your email change',
+      intro: `You requested to change your Red Panda account email to ${email}. Confirm it using the link below within ${hours} hours. Your current email stays active until verification.`,
+      action: 'Confirm new email', fallback: copy.fallback,
+      note: 'If you did not request this change, ignore this email. Your current address will remain unchanged.',
+    },
+    de: {
+      subject: 'Neue E-Mail-Adresse bestätigen', title: 'E-Mail-Änderung bestätigen',
+      intro: `Du möchtest die E-Mail-Adresse deines Red-Panda-Kontos in ${email} ändern. Bestätige sie innerhalb von ${hours} Stunden über den Link. Bis dahin bleibt deine bisherige Adresse aktiv.`,
+      action: 'Neue E-Mail bestätigen', fallback: copy.fallback,
+      note: 'Falls du diese Änderung nicht angefordert hast, ignoriere diese E-Mail. Deine bisherige Adresse bleibt unverändert.',
+    },
+  }[locale] || {
+    subject: '验证新的邮箱地址', title: '确认更换邮箱',
+    intro: `请在 ${hours} 小时内确认新的邮箱地址 ${email}。`, action: '确认新邮箱',
+    fallback: copy.fallback, note: '验证前原邮箱仍然有效。',
+  };
+  return {
+    subject: wording.subject,
+    text: `${wording.title}\n\n${wording.intro}\n\n${link}\n\n${wording.note}\n\n${copy.signoff}`,
+    html: layout({ lang: copy.lang, brand: copy.brand, title: wording.title, intro: wording.intro, link, action: wording.action, fallback: wording.fallback, note: wording.note }),
   };
 }

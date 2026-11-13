@@ -46,7 +46,8 @@ export function loadConfig(env = process.env) {
 
   const sessionDays = Number(value(env, 'RED_PANDA_SESSION_DAYS', '30'));
   const verifyHours = Number(value(env, 'RED_PANDA_VERIFY_HOURS', '24'));
-  const resetMinutes = Number(value(env, 'RED_PANDA_RESET_MINUTES', '60'));
+  const resetMinutes = Number(value(env, 'RED_PANDA_RESET_MINUTES', '1440'));
+  const emailRateLimit = Number(value(env, 'RED_PANDA_EMAIL_RATE_LIMIT', '20'));
   const publicUrl = value(env, 'RED_PANDA_PUBLIC_URL', '').replace(/\/+$/, '');
 
   const smtpUser = value(env, 'RED_PANDA_SMTP_USER', '');
@@ -67,7 +68,8 @@ export function loadConfig(env = process.env) {
     adminTokenSource: admin.source,
     sessionDays: Number.isFinite(sessionDays) && sessionDays > 0 ? sessionDays : 30,
     verificationHours: Number.isFinite(verifyHours) && verifyHours > 0 ? verifyHours : 24,
-    resetMinutes: Number.isFinite(resetMinutes) && resetMinutes > 0 ? resetMinutes : 60,
+    resetMinutes: Number.isFinite(resetMinutes) && resetMinutes > 0 ? resetMinutes : 1440,
+    emailRateLimit: Number.isInteger(emailRateLimit) && emailRateLimit > 0 ? emailRateLimit : 20,
     publicUrl: publicUrl || null,
     webDir: path.resolve(value(env, 'RED_PANDA_WEB_DIR', path.join(PROJECT_ROOT, 'web'))),
     dashboardDir: path.join(SERVER_DIR, 'public', 'dashboard'),

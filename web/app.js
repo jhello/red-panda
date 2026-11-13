@@ -26,6 +26,344 @@
     authTab: 'login',
   };
 
+  // All personal travel content lives in IndexedDB so Web, Android WebView and
+  // future browser shells share one portable storage format. Each account gets
+  // its own database so two people sharing a device never see each other's trips.
+  const LOCAL_DB = 'red-panda-local-v1';
+  const localDbCache = new Map();
+  function localDbName() {
+    const owner = state.user?.id
+      ? `u${state.user.id}`
+      : state.user?.email
+        ? `e${String(state.user.email).toLowerCase()}`
+        : 'guest';
+    return `${LOCAL_DB}-${owner.replace(/[^a-z0-9._-]+/gi, '_')}`;
+  }
+  function openIndexedDb(name) {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(name, 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        for (const store of ['journeys', 'memories', 'settings']) {
+          if (!db.objectStoreNames.contains(store)) db.createObjectStore(store, { keyPath: 'id' });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+  function readDbStore(db, name) {
+    return new Promise((resolve, reject) => {
+      const request = db.transaction(name).objectStore(name).getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+  function writeDbStore(db, name, values) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(name, 'readwrite');
+      for (const value of values) tx.objectStore(name).put(value);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  /**
+   * The first version of client storage used one device-wide database. Claim it
+   * for the current account once, so upgrading does not hide existing trips and
+   * a second account cannot pick up the same data.
+   */
+  async function importLegacyLocalDb(targetDb) {
+    if (!indexedDB.databases || localDbName() === LOCAL_DB) return;
+    let names = [];
+    try {
+      names = (await indexedDB.databases()).map((item) => item.name);
+    } catch {
+      return;
+    }
+    if (!names.includes(LOCAL_DB)) return;
+    let source;
+    try {
+      source = await openIndexedDb(LOCAL_DB);
+    } catch {
+      return;
+    }
+    try {
+      const sourceSettings = await readDbStore(source, 'settings');
+      if (sourceSettings.some((item) => item.id === 'legacy-claimed')) return;
+      const [sourceJourneys, sourceMemories] = await Promise.all([
+        readDbStore(source, 'journeys'),
+        readDbStore(source, 'memories'),
+      ]);
+      const [targetJourneys, targetMemories, targetSettings] = await Promise.all([
+        readDbStore(targetDb, 'journeys'),
+        readDbStore(targetDb, 'memories'),
+        readDbStore(targetDb, 'settings'),
+      ]);
+      const targetJourneyIds = new Set(targetJourneys.map((item) => String(item.id)));
+      const targetMemoryIds = new Set(targetMemories.map((item) => String(item.id)));
+      const settingsById = new Map(targetSettings.map((item) => [item.id, item]));
+      for (const item of sourceSettings) {
+        if (item.id === 'migration-v1' || item.id === 'legacy-claimed') continue;
+        const existing = settingsById.get(item.id);
+        settingsById.set(item.id, existing ? { ...item, ...existing, id: item.id } : item);
+      }
+      await new Promise((resolve, reject) => {
+        const tx = targetDb.transaction(['journeys', 'memories', 'settings'], 'readwrite');
+        for (const item of sourceJourneys) if (!targetJourneyIds.has(String(item.id))) tx.objectStore('journeys').put(item);
+        for (const item of sourceMemories) if (!targetMemoryIds.has(String(item.id))) tx.objectStore('memories').put(item);
+        for (const item of settingsById.values()) tx.objectStore('settings').put(item);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      await writeDbStore(source, 'settings', [{ id: 'legacy-claimed', by: localDbName(), at: new Date().toISOString() }]);
+    } catch {
+      // Keep the old database untouched if any part of the copy fails.
+    } finally {
+      source.close();
+    }
+  }
+
+  function localDb() {
+    const name = localDbName();
+    if (!localDbCache.has(name)) {
+      localDbCache.set(name, (async () => {
+        const db = await openIndexedDb(name);
+        await importLegacyLocalDb(db);
+        return db;
+      })());
+    }
+    return localDbCache.get(name);
+  }
+  async function storeAll(name) {
+    const db = await localDb();
+    return new Promise((resolve, reject) => {
+      const request = db.transaction(name).objectStore(name).getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+  async function storePut(name, value) {
+    const db = await localDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(name, 'readwrite');
+      tx.objectStore(name).put(value);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  async function storeDelete(name, id) {
+    const db = await localDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(name, 'readwrite');
+      tx.objectStore(name).delete(id);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  const makeId = () => Date.now() * 1000 + Math.floor(Math.random() * 1000);
+
+  /** Keep one object URL per stored media item instead of leaking a new one per render. */
+  const mediaObjectUrls = new Map();
+  function mediaObjectUrl(item) {
+    if (!item?.blob) return item?.url || '';
+    if (!mediaObjectUrls.has(item.id)) mediaObjectUrls.set(item.id, URL.createObjectURL(item.blob));
+    return mediaObjectUrls.get(item.id);
+  }
+  function revokeMediaObjectUrl(id) {
+    const url = mediaObjectUrls.get(id);
+    if (!url) return;
+    URL.revokeObjectURL(url);
+    mediaObjectUrls.delete(id);
+  }
+
+  /** Mirror the server's normalization so local journeys keep the same shape. */
+  function normalizeLocalPlan(value) {
+    if (!value || typeof value !== 'object') return null;
+    const rawItems = Array.isArray(value.items) ? value.items : Array.isArray(value) ? value : [];
+    const items = [];
+    for (const raw of rawItems) {
+      if (!raw || typeof raw !== 'object') continue;
+      const destination = String(raw.destination ?? '').trim();
+      if (!destination) continue;
+      items.push({
+        destination: destination.slice(0, 80),
+        departTime: String(raw.departTime ?? '').trim().slice(0, 16),
+        returnTime: String(raw.returnTime ?? '').trim().slice(0, 16),
+      });
+    }
+    if (!items.length) return null;
+    const departs = items.map((item) => item.departTime).filter(Boolean).sort();
+    const returns = items.map((item) => item.returnTime).filter(Boolean).sort();
+    return { items, departTime: departs[0] ?? '', returnTime: returns.at(-1) ?? '' };
+  }
+
+  function buildLocalJourney(body, base = {}) {
+    const plan = body.plan === undefined ? (base.plan || null) : normalizeLocalPlan(body.plan);
+    const now = new Date().toISOString();
+    return {
+      ...base,
+      id: base.id ?? makeId(),
+      name: body.name ?? base.name ?? '',
+      description: body.description ?? base.description ?? '',
+      plan,
+      depart_time: plan?.departTime || '',
+      return_time: plan?.returnTime || '',
+      created_at: base.created_at || now,
+      updated_at: now,
+    };
+  }
+
+  async function hydrateClientProfile(user, { migrateServerProfile = false } = {}) {
+    if (!user) return user;
+    const saved = (await storeAll('settings')).find((item) => item.id === 'profile') || { id: 'profile' };
+    const fallbackName = String(user.email || '').split('@')[0] || t('nav.me');
+    const profile = {
+      ...saved,
+      id: 'profile',
+      displayName: saved.displayName || (migrateServerProfile && user.displayName) || fallbackName,
+      locale: saved.locale || (migrateServerProfile && normalizeLocaleTag(user.locale)) || '',
+      usualOrigin: saved.usualOrigin || (migrateServerProfile && user.usualOrigin) || [],
+    };
+    await storePut('settings', profile);
+    if (!localStorage.getItem(STORAGE.lang) && profile.locale) {
+      currentLocale = profile.locale;
+      localStorage.setItem(STORAGE.lang, profile.locale);
+      applyDocumentLocale();
+    }
+    return { ...user, displayName: profile.displayName, locale: profile.locale || getLocale(), usualOrigin: profile.usualOrigin };
+  }
+
+  /**
+   * Journeys, memories, preferences and media are read/written locally. The
+   * server only keeps account authentication and legacy copies for migration.
+   */
+  async function localDataApi(path, options = {}) {
+    const method = options.method || 'GET';
+    const url = new URL(path, location.origin);
+    const p = url.pathname;
+    const body = options.body || {};
+
+    if (p === '/api/journeys' && method === 'GET') {
+      const journeys = (await storeAll('journeys')).sort((a, b) => String(a.depart_time).localeCompare(String(b.depart_time)));
+      return { journeys };
+    }
+    if (p === '/api/journeys' && method === 'POST') {
+      const journey = buildLocalJourney(body);
+      await storePut('journeys', journey);
+      return { journey };
+    }
+
+    let match = /^\/api\/journeys\/([^/]+)$/.exec(p);
+    if (match) {
+      const id = match[1];
+      const journeys = await storeAll('journeys');
+      const journey = journeys.find((item) => String(item.id) === id);
+      if (method === 'GET') {
+        if (!journey) throw new ApiError(t('api.requestFailed'), 404, 'not_found');
+        return { journey };
+      }
+      if (method === 'PUT') {
+        if (!journey) throw new ApiError(t('api.requestFailed'), 404, 'not_found');
+        const updated = buildLocalJourney(body, journey);
+        await storePut('journeys', updated);
+        return { journey: updated };
+      }
+      if (method === 'DELETE') {
+        for (const memory of await storeAll('memories')) {
+          if (String(memory.journeyId) !== id) continue;
+          for (const item of memory.media || []) revokeMediaObjectUrl(item.id);
+          await storeDelete('memories', memory.id);
+        }
+        await storeDelete('journeys', journey?.id ?? id);
+        return {};
+      }
+    }
+
+    if (p === '/api/memories' && method === 'GET') {
+      const all = (await storeAll('memories')).map((memory) => ({
+        ...memory,
+        media: (memory.media || []).map((item) => ({ ...item, url: mediaObjectUrl(item) })),
+      }));
+      const journeyId = url.searchParams.get('journeyId');
+      const memories = journeyId ? all.filter((item) => String(item.journeyId) === journeyId) : all;
+      const counts = {};
+      for (const memory of all) {
+        const key = String(memory.journeyId);
+        counts[key] = (counts[key] || 0) + 1;
+      }
+      return { memories, counts };
+    }
+    if (p === '/api/memories' && method === 'POST') {
+      const journeyId = body.journeyId ?? null;
+      const note = String(body.note ?? '').trim();
+      if (journeyId !== null && !(await storeAll('journeys')).some((item) => String(item.id) === String(journeyId))) {
+        throw new ApiError(getLocale() === 'zh' ? '行程不存在' : 'Journey not found', 404, 'not_found');
+      }
+      if (!note && journeyId === null) {
+        throw new ApiError(getLocale() === 'zh' ? '写点什么，或者选一段行程' : 'Write something or pick a journey', 400, 'validation_error');
+      }
+      const memory = { id: makeId(), journeyId, note, createdAt: new Date().toISOString(), media: [] };
+      await storePut('memories', memory);
+      return { memory };
+    }
+
+    match = /^\/api\/memories\/([^/]+)(\/media)?$/.exec(p);
+    if (match) {
+      const id = match[1];
+      const all = await storeAll('memories');
+      const memory = all.find((item) => String(item.id) === id);
+      if (p.endsWith('/media') && method === 'POST') {
+        if (!memory) throw new ApiError(getLocale() === 'zh' ? '回忆不存在' : 'Memory not found', 404, 'not_found');
+        const blob = options.body;
+        if (!(blob instanceof Blob) || !blob.size) {
+          throw new ApiError(getLocale() === 'zh' ? '文件内容为空' : 'The file is empty', 400, 'validation_error');
+        }
+        const media = {
+          id: makeId(),
+          kind: blob.type.startsWith('video/') ? 'video' : 'image',
+          mime: blob.type,
+          size: blob.size,
+          createdAt: new Date().toISOString(),
+          blob,
+        };
+        memory.media.push(media);
+        await storePut('memories', memory);
+        return { media: { ...media, url: mediaObjectUrl(media) } };
+      }
+      if (method === 'DELETE') {
+        if (!memory) throw new ApiError(getLocale() === 'zh' ? '回忆不存在' : 'Memory not found', 404, 'not_found');
+        for (const item of memory.media || []) revokeMediaObjectUrl(item.id);
+        await storeDelete('memories', memory.id);
+        return {};
+      }
+    }
+
+    if (p === '/api/me/profile' && method === 'PUT') {
+      const existing = (await storeAll('settings')).find((item) => item.id === 'profile') || { id: 'profile' };
+      const displayName = String(body.displayName || '').trim();
+      if (!displayName || displayName.length > 40) {
+        throw new ApiError(getLocale() === 'zh' ? '昵称需要为 1 到 40 个字符' : 'Nickname must be 1 to 40 characters', 400, 'validation_error');
+      }
+      existing.displayName = displayName;
+      await storePut('settings', existing);
+      return { displayName };
+    }
+    if (p === '/api/me/locale' && method === 'PUT') {
+      const existing = (await storeAll('settings')).find((item) => item.id === 'profile') || { id: 'profile' };
+      existing.locale = body.locale;
+      await storePut('settings', existing);
+      return {};
+    }
+    if (p === '/api/me/usual-origin' && method === 'PUT') {
+      const existing = (await storeAll('settings')).find((item) => item.id === 'profile') || { id: 'profile' };
+      existing.usualOrigin = body.origins;
+      await storePut('settings', existing);
+      return { usualOrigin: body.origins };
+    }
+    return null;
+  }
+
   class ApiError extends Error {
     constructor(message, status = 0, code = 'error') {
       super(message);
@@ -200,6 +538,7 @@
         backLogin: '返回登录',
         hint: '没有收到邮件？请检查垃圾邮件目录，或确认邮箱地址是否正确。',
         sending: '正在发送…',
+        resendHint: '如果未收到，请点击重新发送按钮。',
       },
 
       forgot: {
@@ -207,6 +546,12 @@
         sub: '输入注册邮箱，我们会发送一封重置密码的邮件。',
         submit: '发送重置邮件',
         sentFallback: '如果该邮箱已注册，重置邮件已发送',
+        sent: '重置邮件已发送',
+        sentTo: '重置邮件已发送至 {email}',
+        expires: '请在 24 小时内点击邮件中的链接。链接有效期至 {date}。',
+        notReceived: '如果未收到，请点击重新发送按钮。',
+        resend: '重新发送重置邮件',
+        sending: '发送中…',
       },
 
       reset: {
@@ -305,7 +650,7 @@
 
       busy: {
         saving: '正在保存…',
-        sending: '正在发送…',
+        sending: '发送中…',
         updating: '正在更新…',
       },
 
@@ -352,8 +697,8 @@
         originMap: '地图选点', originMapHint: '点击地图或拖动图钉选择位置', originMapUse: '使用此地点', originEmpty: '还没有常用地点',
         originEdit: '编辑', originUpdate: '保存修改', originCancel: '取消编辑', originLocate: '定位到当前位置', originSearching: '正在搜索地点…', originNoResults: '没有找到地点', originSearchAttribution: '地点数据 © OpenStreetMap contributors', originLocationError: '无法获取当前位置，请检查定位权限。',
         originSecureRequired: '网页定位需要 HTTPS，请用安全连接打开页面，或使用 Android App。',
-        resetPassword: '重置密码',
-        resetPasswordSub: '忘记密码时，输入邮箱后我们会发送重置邮件。',
+        resetPassword: '忘记密码',
+        resetPasswordSub: '点击下方按钮，我们会向当前账户邮箱发送密码重置邮件。',
         aboutTitle: '关于',
         aboutBody: '小熊猫 · Red Panda {version}',
         aboutData: '数据保存在你自己的服务器上。',
@@ -528,6 +873,7 @@
         backLogin: 'Back to login',
         hint: "No email? Check the spam folder, or double-check the address.",
         sending: 'Sending…',
+        resendHint: 'If you do not receive it, tap Resend verification email.',
       },
 
       forgot: {
@@ -535,6 +881,12 @@
         sub: "Enter your registered email and we'll send you a reset link.",
         submit: 'Send reset email',
         sentFallback: 'If that address is registered, the reset email is on its way',
+        sent: 'Password reset email sent',
+        sentTo: 'Password reset email sent to {email}',
+        expires: 'Open the link in the email within 24 hours. It expires at {date}.',
+        notReceived: 'If it does not arrive, tap Resend email.',
+        resend: 'Resend reset email',
+        sending: 'Sending…',
       },
 
       reset: {
@@ -684,8 +1036,8 @@
         originMap: 'Pick on map', originMapHint: 'Click the map or drag the pin to choose a place', originMapUse: 'Use this place', originEmpty: 'No saved places yet',
         originEdit: 'Edit', originUpdate: 'Save changes', originCancel: 'Cancel edit', originLocate: 'Locate me', originSearching: 'Searching places…', originNoResults: 'No places found', originSearchAttribution: 'Place data © OpenStreetMap contributors', originLocationError: 'Could not get your location. Check location permission.',
         originSecureRequired: 'Web location requires HTTPS. Open this page securely or use the Android app.',
-        resetPassword: 'Reset password',
-        resetPasswordSub: 'Forgot your password? We will send you a reset link.',
+        resetPassword: 'Forgot password',
+        resetPasswordSub: 'Use the button below to send a password reset email to your account address.',
         aboutTitle: 'About',
         aboutBody: 'Red Panda · 小熊猫 {version}',
         aboutData: 'Your data lives on your own server.',
@@ -862,6 +1214,7 @@
         backLogin: 'Zur Anmeldung',
         hint: 'Keine E-Mail erhalten? Prüfe den Spam-Ordner und die Adresse.',
         sending: 'Sende…',
+        resendHint: 'Falls sie nicht ankommt, tippe auf „Bestätigungs-E-Mail erneut senden“.',
       },
 
       forgot: {
@@ -869,6 +1222,12 @@
         sub: 'Gib deine registrierte E-Mail-Adresse ein und wir senden dir einen Reset-Link.',
         submit: 'Reset-E-Mail senden',
         sentFallback: 'Falls die Adresse registriert ist, ist die Reset-E-Mail unterwegs',
+        sent: 'E-Mail zum Zurücksetzen des Passworts wurde gesendet',
+        sentTo: 'E-Mail zum Zurücksetzen gesendet an {email}',
+        expires: 'Öffne den Link in der E-Mail innerhalb von 24 Stunden. Er ist gültig bis {date}.',
+        notReceived: 'Falls sie nicht ankommt, tippe auf „Erneut senden“.',
+        resend: 'Reset-E-Mail erneut senden',
+        sending: 'Wird gesendet…',
       },
 
       reset: {
@@ -1018,8 +1377,8 @@
         originMap: 'Auf Karte wählen', originMapHint: 'Karte anklicken oder Markierung ziehen', originMapUse: 'Diesen Ort verwenden', originEmpty: 'Noch keine gespeicherten Orte',
         originEdit: 'Bearbeiten', originUpdate: 'Änderungen speichern', originCancel: 'Bearbeitung abbrechen', originLocate: 'Mein Standort', originSearching: 'Orte werden gesucht…', originNoResults: 'Keine Orte gefunden', originSearchAttribution: 'Ortsdaten © OpenStreetMap contributors', originLocationError: 'Standort nicht verfügbar. Bitte Standortberechtigung prüfen.',
         originSecureRequired: 'Der Web-Standort benötigt HTTPS. Öffne die Seite sicher oder nutze die Android-App.',
-        resetPassword: 'Passwort zurücksetzen',
-        resetPasswordSub: 'Passwort vergessen? Wir senden dir einen Reset-Link.',
+        resetPassword: 'Passwort vergessen',
+        resetPasswordSub: 'Mit der Schaltfläche unten senden wir einen Link an deine Konto-E-Mail-Adresse.',
         aboutTitle: 'Über',
         aboutBody: 'Red Panda · 小熊猫 {version}',
         aboutData: 'Deine Daten liegen auf deinem eigenen Server.',
@@ -1079,16 +1438,10 @@
     currentLocale = locale;
     localStorage.setItem(STORAGE.lang, locale);
     applyDocumentLocale();
-    // Signed-in users also get their emails in this language.
     if (state.token && state.user) {
-      api('/api/me/locale', { method: 'PUT', body: { locale } })
-        .then(() => {
-          state.user = { ...state.user, locale };
-          cacheUser(state.user);
-        })
-        .catch(() => {
-          // Offline is fine: the next successful login syncs it anyway.
-        });
+      state.user = { ...state.user, locale };
+      cacheUser(state.user);
+      api('/api/me/locale', { method: 'PUT', body: { locale } }).catch(() => {});
     }
     render();
   }
@@ -1107,13 +1460,14 @@
   function languageSwitcher() {
     const active = getLocale();
     return `
-      <div class="lang-switch" role="group" aria-label="${t('lang.label')}">
-        ${LOCALE_KEYS.map(
-          (key) => `
-            <button type="button" class="lang-opt ${key === active ? 'active' : ''}"
-              data-lang="${key}" aria-pressed="${key === active}">${I18N[key].langName}</button>`,
-        ).join('')}
+      <div class="language-choice-list" role="radiogroup" aria-label="${t('lang.label')}">
+        ${LOCALE_KEYS.map((key) => `<button type="button" class="language-choice${key === active ? ' is-selected' : ''}" data-lang="${key}" role="radio" aria-checked="${key === active}"><span class="language-choice-name">${I18N[key].langName}</span><span class="language-radio" aria-hidden="true"></span></button>`).join('')}
       </div>`;
+  }
+
+  function authLanguageSwitcher() {
+    const active = getLocale();
+    return `<div class="lang-switch auth-language-switch" role="group" aria-label="${t('lang.label')}">${LOCALE_KEYS.map((key) => `<button type="button" class="lang-opt${key === active ? ' active' : ''}" data-lang="${key}" aria-pressed="${key === active}">${I18N[key].langName}</button>`).join('')}</div>`;
   }
 
   // ---- utilities ----------------------------------------------------------
@@ -1230,7 +1584,7 @@
   let pendingTabHash = '';
   let pendingTabAfter = null;
 
-  const TAB_HASHES = ['#/', '#/memories', '#/discover', '#/settings'];
+  const TAB_HASHES = ['#/', '#/memories', '#/discover', '#/me'];
 
   function isTabHash(hash) {
     return TAB_HASHES.includes(String(hash ?? '').split('?')[0]);
@@ -1333,6 +1687,7 @@
     for (const [key, value] of new URLSearchParams(queryPart)) query[key] = value;
     if (parts.length === 0) return { name: 'home', query };
     if (parts[0] === 'journey' && parts[1]) return { name: 'journey', id: parts[1], query };
+    if (parts[0] === 'settings' && parts[1]) return { name: 'settings', section: ['security','account'].includes(parts[1]) ? 'account-security' : parts[1], query };
     if (parts[0] === 'memories' && parts[1]) return { name: 'memories', id: parts[1], query };
     return { name: parts[0], query };
   }
@@ -1352,6 +1707,11 @@
 
   async function api(path, options = {}) {
     const { method = 'GET', body, auth = true, timeout = 30000, raw = false, contentType = '' } = options;
+    const pathname = path.split('?')[0];
+    if (/^\/api\/(journeys|memories)(\/|$)/.test(pathname) || ['/api/me/profile', '/api/me/locale', '/api/me/usual-origin'].includes(pathname)) {
+      const local = await localDataApi(path, options);
+      if (local !== null) return local;
+    }
     if (!state.server) throw new ApiError(t('api.noServer'), 0, 'no_server');
 
     const headers = { Accept: 'application/json' };
@@ -1406,6 +1766,165 @@
     return data ?? {};
   }
 
+  let databaseSort='count';
+  let databaseStatus={message:'',percent:null,kind:''};
+  let databaseSnapshotCache=null;
+  function backupStatus(message, percent = null, kind = '') {
+    databaseStatus={message,percent,kind};
+    const host=document.getElementById('database-status'); if(!host)return;
+    host.dataset.kind=kind; host.innerHTML=`<p>${esc(message)}</p>${percent===null?'':`<progress max="100" value="${Math.max(0,Math.min(100,percent))}"></progress><span>${Math.round(percent)}%</span>`}`;
+  }
+  function byteSize(value){return new TextEncoder().encode(JSON.stringify(value,(_key,item)=>item instanceof Blob?undefined:item).replace(/,"(?:blob|url|data)":(?:null|"[^"]*")/g,'')).length;}
+  async function databaseSnapshot(){
+    const [journeys,memories,settings]=await Promise.all([storeAll('journeys'),storeAll('memories'),storeAll('settings')]);
+    const media=memories.flatMap(m=>m.media||[]);
+    const types=[
+      {key:'journeys',name:getLocale()==='zh'?'行程':'Journeys',count:journeys.length,size:byteSize(journeys)},
+      {key:'memories',name:getLocale()==='zh'?'回忆文字':'Memory entries',count:memories.length,size:byteSize(memories.map(({media,...m})=>m))},
+      {key:'media',name:getLocale()==='zh'?'照片与视频':'Photos and videos',count:media.length,size:media.reduce((n,x)=>n+Number(x.blob?.size||x.size||0),0)},
+      {key:'settings',name:getLocale()==='zh'?'偏好设置':'Preferences',count:settings.length,size:byteSize(settings)},
+    ];
+    return {journeys,memories,settings,types,totalCount:types.reduce((n,x)=>n+x.count,0),totalSize:types.reduce((n,x)=>n+x.size,0)};
+  }
+  function formatBytes(value){if(value<1024)return`${value} B`;if(value<1048576)return`${(value/1024).toFixed(1)} KB`;return`${(value/1048576).toFixed(1)} MB`;}
+  function drawDatabaseSummary(snapshot){
+    const summary=document.getElementById('database-summary'); if(!summary)return;
+    summary.innerHTML=`<div><span>${getLocale()==='zh'?'数据条目':'Records'}</span><strong>${snapshot.totalCount}</strong></div><div><span>${getLocale()==='zh'?'总占用估算':'Estimated total'}</span><strong>${formatBytes(snapshot.totalSize)}</strong></div><div><span>${getLocale()==='zh'?'数据类型':'Types'}</span><strong>${snapshot.types.length}</strong></div>`;
+  }
+  function drawDatabaseTypes(){
+    if(!databaseSnapshotCache)return;
+    const rows=databaseSnapshotCache.types.slice().sort((a,b)=>databaseSort==='size'?b.size-a.size:b.count-a.count);
+    const list=document.getElementById('database-types'); if(list)list.innerHTML=rows.map(x=>`<div class="database-row"><strong>${esc(x.name)}</strong><span>${x.count} ${getLocale()==='zh'?'条':'items'}</span><span>${formatBytes(x.size)}</span></div>`).join('');
+    document.querySelectorAll('[data-action^="database-sort-"]').forEach(button=>{const active=button.dataset.action===`database-sort-${databaseSort}`;button.classList.toggle('is-active',active);const arrow=button.querySelector('.database-sort-arrow');if(arrow)arrow.textContent=active?'▼':'';});
+  }
+  async function refreshDatabaseStats(){databaseSnapshotCache=await databaseSnapshot();drawDatabaseSummary(databaseSnapshotCache);drawDatabaseTypes();}
+  async function renderDatabase(){
+    app.innerHTML=`<div class="screen">${topbar({title:getLocale()==='zh'?'数据库':'Database',back:true})}<main class="page database-page">
+      <div id="database-summary" class="database-summary"><div class="skeleton-block"></div></div>
+      <div class="database-actions"><button class="btn primary" data-action="backup-export">${getLocale()==='zh'?'导出数据':'Export data'}</button><label class="btn ghost" for="backup-file">${getLocale()==='zh'?'选择备份文件并导入':'Choose backup file'}</label><input id="backup-file" type="file" accept=".rpd,.json,application/json,application/gzip" hidden /></div>
+      <div id="database-status" class="backup-status" role="status" aria-live="polite"></div>
+      <section class="database-table"><div class="database-table-head"><strong>${getLocale()==='zh'?'数据明细':'Data details'}</strong><div><button class="link subtle" data-action="database-sort-count">${getLocale()==='zh'?'按条数':'By count'}<span class="database-sort-arrow" aria-hidden="true"></span></button><button class="link subtle" data-action="database-sort-size">${getLocale()==='zh'?'按体积':'By size'}<span class="database-sort-arrow" aria-hidden="true"></span></button></div></div><div id="database-types"><div class="skeleton-block"></div></div></section>
+      <p class="panel-sub">${getLocale()==='zh'?'体积为本机数据的估算值；媒体按文件大小统计。':'Sizes are estimates; media uses file sizes.'}</p>
+    </main></div>`;
+    databaseSnapshotCache=await databaseSnapshot();
+    drawDatabaseSummary(databaseSnapshotCache);
+    drawDatabaseTypes();
+    backupStatus(databaseStatus.message,databaseStatus.percent,databaseStatus.kind);
+  }
+  async function exportBackup() {
+    // Invoke the destination picker during the user gesture where supported.
+    const clock=new Date(),stamp=`${clock.getFullYear()}${String(clock.getMonth()+1).padStart(2,'0')}${String(clock.getDate()).padStart(2,'0')}${String(clock.getHours()).padStart(2,'0')}${String(clock.getMinutes()).padStart(2,'0')}${String(clock.getSeconds()).padStart(2,'0')}`,filename=`red-panda-backup-${stamp}.rpd`;
+    let destination = null;
+    const androidSave = typeof window.AndroidBackup?.saveBackup === 'function';
+    if (!androidSave && window.showSaveFilePicker) {
+      try { destination = await window.showSaveFilePicker({ suggestedName:filename, types:[{description:'Red Panda backup',accept:{'application/gzip':['.rpd']}}] }); }
+      catch (error) { if(error.name==='AbortError'){backupStatus(getLocale()==='zh'?'已取消导出': 'Export cancelled');return;} destination=null; }
+    }
+    const snapshot=await databaseSnapshot();
+    const {journeys,memories,settings}=snapshot;
+    const mediaTotal=snapshot.types.find(x=>x.key==='media').count;let mediaDone=0;
+    backupStatus(getLocale()==='zh'?`正在导出行程（${journeys.length}/${journeys.length}）…`:`Exporting journeys (${journeys.length}/${journeys.length})…`,8);
+    const journeyRecords=journeys.map(x=>({...x}));
+    backupStatus(getLocale()==='zh'?`行程导出完成，${journeyRecords.length} 条。正在处理回忆…`:`Journeys complete (${journeyRecords.length}). Processing memories…`,25);
+    const packed=[];
+    for(let i=0;i<memories.length;i++){const m=memories[i];const media=[];for(const v of(m.media||[])){media.push({...v,url:undefined,blob:undefined,data:v.blob?await blobToBase64(v.blob):''});mediaDone++;backupStatus(getLocale()==='zh'?`回忆 ${i+1}/${memories.length}；媒体 ${mediaDone}/${mediaTotal} 已导出…`:`Memories ${i+1}/${memories.length}; media ${mediaDone}/${mediaTotal} exported…`,25+(mediaTotal?55*mediaDone/mediaTotal:55));}packed.push({...m,media});if(!media.length)backupStatus(getLocale()==='zh'?`正在导出回忆 ${i+1}/${memories.length}…`:`Exporting memories ${i+1}/${memories.length}…`,25+(memories.length?55*(i+1)/memories.length:55));}
+    backupStatus(getLocale()==='zh'?`媒体导出完成，${mediaDone} 个。正在写入偏好设置（${settings.length} 条）…`:`Media complete (${mediaDone}). Writing preferences (${settings.length})…`,82);
+    const data={format:'red-panda-backup',schemaVersion:1,version:1,journeys:journeyRecords,memories:packed,settings:settings.map(x=>({...x}))};
+    backupStatus(getLocale()==='zh'?'正在压缩备份…':'Compressing backup…',85);
+    const stream=new Blob([new TextEncoder().encode(JSON.stringify(data))]).stream().pipeThrough(new CompressionStream('gzip'));
+    const file=await new Response(stream).blob();
+    if(destination){const writer=await destination.createWritable();await writer.write(file);await writer.close();backupStatus(`${getLocale()==='zh'?'全部导出成功':'All data exported successfully'} · ${journeyRecords.length} ${getLocale()==='zh'?'段行程':'journeys'} · ${packed.length} ${getLocale()==='zh'?'条回忆':'memories'} · ${mediaDone} ${getLocale()==='zh'?'个媒体':'media'} · ${settings.length} ${getLocale()==='zh'?'条设置':'settings'} · ${destination.name}`,100,'success');}
+    else if(window.AndroidBackup?.saveBackup){backupStatus(getLocale()==='zh'?'各类数据已打包，正在选择保存位置…':'Data packaged; choose a save location…',95);const base64=await blobToBase64(file);await new Promise((resolve,reject)=>{window.__backupSaveResult=(ok,message)=>{window.__backupSaveResult=null;if(ok){backupStatus(`${getLocale()==='zh'?'全部导出成功':'All data exported successfully'} · ${journeyRecords.length} 段行程 · ${packed.length} 条回忆 · ${mediaDone} 个媒体 · ${settings.length} 条设置 · ${message}`,100,'success');resolve();}else{backupStatus(`${getLocale()==='zh'?'导出失败':'Export failed'}: ${message}`,null,'error');reject(new Error(message));}};window.AndroidBackup.saveBackup(filename,base64);});}
+    else {const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),60000);backupStatus(getLocale()==='zh'?`已发起下载 ${filename}（${formatBytes(file.size)}）。请检查下载列表确认文件已保存。`:`Download started: ${filename} (${formatBytes(file.size)}). Check your downloads list to confirm it was saved.`,100,'pending');}
+  }
+  function blobToBase64(blob) { return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]);r.onerror=()=>reject(r.error);r.readAsDataURL(blob);}); }
+  const BACKUP_IMPORTERS = {
+    1: async data => ({journeys:data.journeys,memories:data.memories,settings:data.settings||[]}),
+  };
+  function stableValue(value){
+    if(value instanceof Blob)return {blobSize:value.size,blobType:value.type};
+    if(Array.isArray(value))return value.map(stableValue);
+    if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).filter(k=>!['blob','data','url'].includes(k)).sort().map(k=>[k,stableValue(value[k])]));
+    return value;
+  }
+  async function blobFingerprint(blob){
+    if(!blob)return '';
+    const bytes=await blob.arrayBuffer();
+    if(crypto.subtle){const hash=await crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(hash),x=>x.toString(16).padStart(2,'0')).join('');}
+    let hash=2166136261;const view=new Uint8Array(bytes);for(const b of view)hash=Math.imul(hash^b,16777619);
+    return `${(hash>>>0).toString(16)}:${blob.size}:${blob.type}`;
+  }
+  async function backupRecordSignature(record, includeMedia=false){
+    const base={...record};
+    if(record.blob){base.blobFingerprint=await blobFingerprint(record.blob);delete base.blob;}
+    if(includeMedia)base.media=await Promise.all((record.media||[]).map(async item=>({...item,blobFingerprint:await blobFingerprint(item.blob),blob:undefined,data:undefined,url:undefined})));
+    return JSON.stringify(stableValue(base));
+  }
+  async function compareBackupRecords(incoming,existing,includeMedia=false){
+    const oldById=new Map(existing.map(x=>[String(x.id),x]));const result={old:existing.length,added:0,identical:0,updated:0,records:[]};
+    for(const item of incoming){const old=oldById.get(String(item.id));if(!old){result.added++;result.records.push(item);continue;}const [a,b]=await Promise.all([backupRecordSignature(item,includeMedia),backupRecordSignature(old,includeMedia)]);if(a===b)result.identical++;else{result.updated++;result.records.push(item);}}
+    return result;
+  }
+  const importStatsText=(label,s)=>`${label}：原有 ${s.old} 条，新增 ${s.added} 条，完全相同 ${s.identical} 条，更新 ${s.updated} 条`;
+  async function importBackup(file) {
+    if (!confirm(getLocale()==='zh'?'导入将合并备份数据：新增记录会加入，内容不同的同编号记录会更新，完全相同的记录会跳过。继续吗？':'Import will merge the backup: new records are added, changed records with matching IDs are updated, and identical records are skipped. Continue?')) return false;
+    backupStatus(getLocale()==='zh'?`正在读取 ${file.name}…`:`Reading ${file.name}…`,0);
+    let buf=await file.arrayBuffer(); const u=new Uint8Array(buf);
+    backupStatus(getLocale()==='zh'?'正在解压并检查备份…':'Decompressing and checking backup…',15);
+    if(u[0]===0x1f&&u[1]===0x8b) buf=await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+    const data=JSON.parse(new TextDecoder().decode(buf));
+    if(data.format!=='red-panda-backup') throw new Error('文件不是小熊猫备份');
+    // schemaVersion is the current explicit format field; `version` remains
+    // accepted for backups written by the first released format.
+    const schemaVersion=Number(data.schemaVersion ?? data.version);
+    const adapt=BACKUP_IMPORTERS[schemaVersion]; if(!adapt)throw new Error(`不支持的数据结构版本：${schemaVersion}`);
+    const normalized=await adapt(data); if(!Array.isArray(normalized.journeys)||!Array.isArray(normalized.memories))throw new Error('备份内容不完整');
+    backupStatus(getLocale()==='zh'?`行程数据：已读取 ${normalized.journeys.length} 条。`:`Journeys: read ${normalized.journeys.length} records.`,25);
+    const memories=[];let count=0,total=normalized.memories.reduce((n,m)=>n+(m.media||[]).length,0);
+    for(let i=0;i<normalized.memories.length;i++){const m=normalized.memories[i],media=[];backupStatus(getLocale()==='zh'?`正在读取回忆 ${i+1}/${normalized.memories.length}…`:`Reading memories ${i+1}/${normalized.memories.length}…`,20+(normalized.memories.length?15*(i+1)/normalized.memories.length:15));for(const v of(m.media||[])){const raw=atob(v.data||'');const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));const {data,url:_url,...metadata}=v;media.push({...metadata,blob:new Blob([bytes],{type:v.mime||'application/octet-stream'})});count++;backupStatus(getLocale()==='zh'?`正在读取照片/视频 ${count}/${total}…`:`Reading photos/videos ${count}/${total}…`,35+(total?35*count/total:35));}memories.push({...m,media});}
+    backupStatus(getLocale()==='zh'?`媒体数据：已读取 ${count} 个；偏好设置：${normalized.settings.length} 条，开始比较本机数据…`:`Media: read ${count}; preferences: ${normalized.settings.length}. Comparing with local data…`,75);
+    const oldJourneys=await storeAll('journeys'),oldMemories=await storeAll('memories'),oldSettings=await storeAll('settings');
+    const [journeyStats,memoryStats,settingStats]=await Promise.all([
+      compareBackupRecords(normalized.journeys,oldJourneys),compareBackupRecords(memories,oldMemories,true),compareBackupRecords(normalized.settings,oldSettings),
+    ]);
+    const oldMedia=oldMemories.flatMap(m=>m.media||[]),newMedia=memories.flatMap(m=>m.media||[]);
+    const mediaStats=await compareBackupRecords(newMedia,oldMedia);
+    backupStatus(getLocale()==='zh'?'比较完成，正在合并设置与数据…':'Comparison complete; merging settings and data…',82);
+    const db=await localDb();await new Promise((resolve,reject)=>{const tx=db.transaction(['journeys','memories','settings'],'readwrite');for(const j of journeyStats.records)tx.objectStore('journeys').put(j);for(const m of memoryStats.records)tx.objectStore('memories').put(m);for(const s of settingStats.records)tx.objectStore('settings').put(s);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
+    await refreshDatabaseStats();
+    const results=[importStatsText('行程',journeyStats),importStatsText('回忆',memoryStats),importStatsText('媒体',mediaStats),importStatsText('设置',settingStats)];
+    backupStatus(`导入合并完成：\n${results.join('\n')}`,100,'success');
+    return true;
+  }
+  async function migrateLegacyServerData() {
+    if (!state.token || !state.server) return;
+    const headers={Authorization:`Bearer ${state.token}`,Accept:'application/json'};
+    const clearServer=async()=>{const response=await fetch(`${state.server}/api/me/personal-data`,{method:'DELETE',headers,signal:AbortSignal.timeout(30000)});if(!response.ok)throw new Error('Server cleanup failed');};
+    const marker=(await storeAll('settings')).find(item=>item.id==='migration-v1');
+    if(marker?.imported){if(marker.cleanupPending){try{await clearServer();await storePut('settings',{...marker,cleanupPending:false});}catch{}}return;}
+    const get=async path=>{const response=await fetch(`${state.server}${path}`,{headers,signal:AbortSignal.timeout(30000)});if(!response.ok)throw new Error('Legacy data unavailable');return response.json();};
+    try {
+      const [{journeys=[]},{memories=[]}]=await Promise.all([get('/api/journeys'),get('/api/memories')]);
+      const journeyIds=new Map(journeys.map(journey=>[String(journey.id),makeId()]));
+      const importedJourneys=journeys.map(journey=>({...journey,id:journeyIds.get(String(journey.id))}));
+      const importedMemories=[];
+      for(const memory of memories){
+        const media=await Promise.all((memory.media||[]).map(async item=>{const response=await fetch(`${state.server}${item.url}`,{headers,signal:AbortSignal.timeout(120000)});if(!response.ok)throw new Error('Media migration failed');const {url,...metadata}=item;return {...metadata,id:makeId(),blob:await response.blob()};}));
+        importedMemories.push({...memory,id:makeId(),journeyId:journeyIds.get(String(memory.journeyId))||null,media});
+      }
+      const hydrated=await hydrateClientProfile(state.user,{migrateServerProfile:true});
+      const localProfile=(await storeAll('settings')).find(item=>item.id==='profile')||{id:'profile'};
+      const profile={...localProfile,displayName:hydrated.displayName,locale:hydrated.locale,usualOrigin:hydrated.usualOrigin};
+      const db=await localDb();
+      await new Promise((resolve,reject)=>{const tx=db.transaction(['journeys','memories','settings'],'readwrite');for(const journey of importedJourneys)tx.objectStore('journeys').put(journey);for(const memory of importedMemories)tx.objectStore('memories').put(memory);tx.objectStore('settings').put(profile);tx.objectStore('settings').put({id:'migration-v1',at:new Date().toISOString(),imported:true,cleanupPending:true});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
+      state.user=hydrated;cacheUser(hydrated);
+      await clearServer();
+      await storePut('settings',{id:'migration-v1',at:new Date().toISOString(),imported:true,cleanupPending:false});
+    } catch {
+      // Keep the server copy until the complete client-side copy has succeeded.
+    }
+  }
+
   async function pingServer(server) {
     let response;
     try {
@@ -1432,10 +1951,10 @@
       </div>
     </div>`;
 
-  function topbar({ title = '', back = false, right = '' } = {}) {
+  function topbar({ title = '', back = false, backAction = 'back', right = '' } = {}) {
     return `
       <header class="topbar">
-        ${back ? `<button class="icon-btn" data-action="back" aria-label="${t('common.back')}">←</button>` : '<span class="topbar-lead"></span>'}
+        ${back ? `<button class="icon-btn" data-action="${backAction}" aria-label="${t('common.back')}">←</button>` : '<span class="topbar-lead"></span>'}
         <span class="topbar-title">${esc(title)}</span>
         <div class="topbar-right">${right}</div>
       </header>`;
@@ -1545,8 +2064,14 @@
         if (route.id) renderMemoryDetail(route.id);
         else renderMemories();
         break;
+      case 'me':
+        renderMe();
+        break;
       case 'settings':
         renderSettings();
+        break;
+      case 'database':
+        renderDatabase();
         break;
       case 'discover':
         renderDiscover();
@@ -1632,12 +2157,12 @@
     }
 
     app.innerHTML = `
-      <div class="screen auth-screen">
-        ${languageSwitcher()}
+      <div class="screen auth-screen${active === 'login' ? ' auth-login-screen' : ''}">
+        ${active === 'login' ? '' : languageSwitcher()}
         <div class="auth-hero">
           <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
           <h1 class="auth-title">${t('brand.big')}</h1>
-          <p class="auth-tag">${t('home.sub')}</p>
+          <p class="auth-tag">${active === 'login' && getLocale()==='zh' ? '出门带只小熊猫。' : t('home.sub')}</p>
         </div>
 
         <div class="card auth-card">
@@ -1702,7 +2227,7 @@
             </button>
           </p>
         </div>
-
+        ${active === 'login' ? authLanguageSwitcher() : ''}
       </div>`;
 
     app.querySelectorAll('[data-tab]').forEach((button) => {
@@ -1762,8 +2287,10 @@
         });
         state.token = data.token;
         state.user = data.user;
+        state.user = await hydrateClientProfile(data.user, { migrateServerProfile: true });
         localStorage.setItem(STORAGE.token, data.token);
-        cacheUser(data.user);
+        cacheUser(state.user);
+        await migrateLegacyServerData();
         toast(t('auth.welcome'));
         // 登录后回到默认的行程页，并且不留下多余的历史记录。
         historyDepth = 0;
@@ -2782,7 +3309,7 @@
     renderNewJourney();
   }
 
-  /** Save the extracted plan as a real journey on the server. */
+  /** Save the extracted plan as a real journey in this device's IndexedDB. */
   async function savePlanAsJourney() {
     const items = Array.isArray(planState.items) ? planState.items : [];
     if (!items.length) return;
@@ -2842,6 +3369,7 @@
    */
   function renderNavBar() {
     if (!navHost) return;
+    if (['database', 'settings'].includes(parseRoute().name)) { navHost.innerHTML=''; navHost.hidden = true; return; }
     // 只要已登录就常驻显示：任何页面（含等待服务器时）都不会缺失。
     const show = Boolean(state.user);
     navHost.hidden = !show;
@@ -2859,7 +3387,7 @@
         <button class="nav-btn nav-memories${isActive('memories')}" data-action="memories">${t('nav.memories')}</button>
         <button class="nav-btn nav-create" data-action="new" aria-label="${t('new.title')}">＋</button>
         <button class="nav-btn nav-discover${isActive('discover')}" data-action="discover">${t('nav.discover')}</button>
-        <button class="nav-btn nav-me${isActive('settings')}" data-action="settings">${t('nav.me')}</button>
+        <button class="nav-btn nav-me${isActive('me')}" data-action="me">${t('nav.me')}</button>
       </nav>`;
   }
 
@@ -2984,6 +3512,7 @@
 
   function mediaUrl(media) {
     if (!media?.url) return '';
+    if (/^(blob:|data:)/.test(media.url)) return media.url;
     return `${state.server}${media.url}`;
   }
 
@@ -3124,9 +3653,9 @@
             <h2 class="panel-title">${t('memories.addTitle')}</h2>
             <textarea id="memory-note" class="memory-input" rows="3"
               placeholder="${esc(t('memories.notePlaceholder'))}"></textarea>
-            <input type="file" id="memory-files" accept="image/*,video/*" multiple hidden />
             <div class="memory-actions">
-              <button class="btn ghost" type="button" data-action="memory-pick">${t('memories.pick')}</button>
+              <label class="btn ghost" for="memory-files">${t('memories.pick')}</label>
+              <input type="file" id="memory-files" accept="image/*,video/*" multiple hidden />
               <button class="btn primary" type="button" data-action="memory-save">${t('memories.save')}</button>
             </div>
             <p class="memory-files" id="memory-files-list"></p>
@@ -3226,9 +3755,12 @@
     if (!journeyId) return;
     setBusy(button, true, t('memories.generating'));
     try {
+      const journey = (await storeAll('journeys')).find(item=>String(item.id)===String(journeyId));
+      const memories = (await storeAll('memories')).filter(item=>String(item.journeyId)===String(journeyId));
+      const media = memories.flatMap(item=>item.media||[]);
       const data = await api('/api/ai/memory-recap', {
         method: 'POST',
-        body: { journeyId: Number(journeyId) },
+        body: { journeyId: Number(journeyId), context: { journeyName:journey?.name||'', destination:journeyDestinations(journey||{}), departTime:journeyRange(journey||{}).depart||'', returnTime:journeyRange(journey||{}).ret||'', photos:media.filter(x=>x.kind==='image').length, videos:media.filter(x=>x.kind==='video').length, notes:memories.map(x=>x.note).filter(Boolean) } },
         timeout: 90000,
       });
       const section = document.getElementById('memory-recap');
@@ -3399,83 +3931,242 @@
     });
   }
 
-  function renderSettings({ publicView = false } = {}) {
+  function renderMe() {
+    const places = (state.journeys || []).filter((journey) => journey.destination || journey.name);
+    const pins = places.slice(0, 12).map((journey, index) => `<span class="footprint-pin pin-${index % 6}" title="${esc(journey.destination || journey.name)}">•</span>`).join('');
+    const displayName = state.user?.displayName || state.user?.email?.split('@')[0] || t('nav.me');
+    app.innerHTML = `<div class="screen me-screen"><header class="me-head"><button type="button" class="me-name-edit" id="me-name-edit">${esc(displayName)}</button><button class="gear-btn" data-action="settings" aria-label="${t('settings.title')}">⚙</button></header><main class="page me-page"><button class="footprint-card" data-action="journeys"><div class="footprint-copy"><strong>${getLocale()==='zh'?'我的足迹':'My footprints'}</strong><span id="footprint-count">${places.length} ${getLocale()==='zh'?'个目的地':'destinations'}</span></div><div class="footprint-map" aria-label="${getLocale()==='zh'?'世界地图足迹':'World map footprints'}"><svg viewBox="0 0 720 330" role="img"><path d="M45 90 82 50 154 38 194 62 220 51 250 80 225 111 195 117 177 151 144 158 129 194 92 190 74 156 48 142ZM230 188 266 176 299 193 309 229 289 267 265 292 245 259 232 230ZM320 80 362 58 404 63 418 79 451 65 495 79 530 100 573 96 622 130 606 155 565 145 538 171 499 162 469 189 439 179 424 151 396 144 373 163 346 145 318 130ZM433 193 461 184 490 204 496 239 474 266 449 243Z"/></svg><span id="footprint-pins">${pins}</span></div><p>${getLocale()==='zh'?'记录旅程，点亮去过的地方':'Your journeys, marked on the map'}</p></button></main></div>`;
+
+    const nameButton = document.getElementById('me-name-edit');
+    nameButton?.addEventListener('click', () => {
+      const originalName = state.user?.displayName || state.user?.email?.split('@')[0] || t('nav.me');
+      const input = document.createElement('input');
+      input.className = 'me-name-input';
+      input.type = 'text';
+      input.maxLength = 40;
+      input.autocomplete = 'nickname';
+      input.setAttribute('aria-label', getLocale()==='zh'?'修改昵称':'Edit nickname');
+      input.value = originalName;
+      nameButton.hidden = true;
+      nameButton.parentElement.insertBefore(input, nameButton.nextSibling);
+      input.focus();
+      input.select();
+
+      let saving = false;
+      const restoreName = (name) => {
+        if (input.isConnected) input.remove();
+        nameButton.textContent = name;
+        nameButton.hidden = false;
+      };
+      const saveName = async () => {
+        if (saving || !input.isConnected) return;
+        const nextName = input.value.trim();
+        if (!nextName) {
+          toast(getLocale()==='zh'?'昵称不能为空':'Nickname cannot be empty', 'error');
+          input.focus();
+          return;
+        }
+        if (nextName === originalName) {
+          restoreName(originalName);
+          return;
+        }
+        saving = true;
+        input.disabled = true;
+        try {
+          const result = await api('/api/me/profile', { method: 'PUT', body: { displayName: nextName } });
+          state.user = { ...state.user, displayName: result.displayName };
+          cacheUser(state.user);
+          restoreName(result.displayName);
+          toast(getLocale()==='zh'?'昵称已保存':'Nickname saved');
+        } catch (error) {
+          saving = false;
+          input.disabled = false;
+          toast(error.message, 'error');
+          input.focus();
+          input.select();
+        }
+      };
+      input.addEventListener('blur', saveName);
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') { event.preventDefault(); input.blur(); }
+        if (event.key === 'Escape') { event.preventDefault(); restoreName(originalName); }
+      });
+    });
+
+    api('/api/journeys').then(({ journeys }) => {
+      state.journeys = journeys;
+      if (parseRoute().name !== 'me') return;
+      const count = document.getElementById('footprint-count');
+      const markers = document.getElementById('footprint-pins');
+      if (count) count.textContent = `${journeys.length} ${getLocale()==='zh'?'个目的地':'destinations'}`;
+      if (markers) markers.innerHTML = journeys.filter((journey) => journey.destination || journey.name).slice(0, 12).map((journey, index) => `<span class="footprint-pin pin-${index % 6}" title="${esc(journey.destination || journey.name)}">•</span>`).join('');
+    }).catch(() => {});
+  }
+
+  async function refreshAccountSettings({ notify = false } = {}) {
+    if (!state.token || !state.server) throw new Error(t('api.noServer'));
+    const { user: serverUser } = await api('/api/me');
+    const user = await hydrateClientProfile(serverUser, { migrateServerProfile: true });
+    const previous = state.user || {};
+    const changed = ['email', 'pendingEmail', 'pendingEmailExpiresAt', 'pendingResetExpiresAt', 'displayName'].some((key) => (previous[key] || null) !== (user[key] || null));
+    state.user = user;
+    cacheUser(user);
+    const route = parseRoute();
+    if (changed && route.name === 'settings' && route.section === 'account-security') renderSettings({ refreshProfile: false });
+    if (notify) toast(changed ? (getLocale()==='zh'?'账户信息已更新':'Account information updated') : (getLocale()==='zh'?'账户信息已是最新':'Account information is up to date'));
+    return changed;
+  }
+
+  function bindAccountPullRefresh() {
+    const page = document.querySelector('.account-security-page');
+    const status = document.getElementById('account-refresh-status');
+    if (!page || !status) return;
+    let startY = null;
+    let armed = false;
+    const atTop = () => window.scrollY <= 0 && document.documentElement.scrollTop <= 0;
+    page.addEventListener('touchstart', (event) => {
+      if (!atTop() || event.target.closest('input,button,textarea,select')) { startY = null; return; }
+      startY = event.touches[0]?.clientY ?? null;
+      armed = false;
+    }, { passive: true });
+    page.addEventListener('touchmove', (event) => {
+      if (startY === null || !atTop()) return;
+      const distance = (event.touches[0]?.clientY ?? startY) - startY;
+      if (distance < 0) return;
+      if (distance >= 58) {
+        armed = true;
+        status.hidden = false;
+        status.textContent = getLocale()==='zh'?'松开即可刷新账户信息':'Release to refresh account information';
+        if (event.cancelable) event.preventDefault();
+      }
+    }, { passive: false });
+    const finish = async () => {
+      if (startY === null) return;
+      startY = null;
+      if (!armed) { status.hidden = true; return; }
+      status.hidden = false;
+      status.textContent = getLocale()==='zh'?'正在刷新账户信息…':'Refreshing account information…';
+      try { await refreshAccountSettings({ notify: true }); }
+      catch (error) { toast(error.message, 'error'); }
+      if (status.isConnected) { status.textContent = getLocale()==='zh'?'账户信息已刷新':'Account information refreshed'; setTimeout(() => { if (status.isConnected) status.hidden = true; }, 900); }
+    };
+    page.addEventListener('touchend', finish, { passive: true });
+    page.addEventListener('touchcancel', finish, { passive: true });
+  }
+
+  function renderSettings({ publicView = false, refreshProfile = true } = {}) {
+    const route = parseRoute();
+    const section = route.section || '';
+    if (publicView) {
+      const emailChanged = route.query.emailChanged === '1';
+      app.innerHTML = `<div class="screen settings-screen"><main class="page settings-page email-result-page"><section class="email-verified-result" role="status"><span class="email-result-check" aria-hidden="true">✓</span><h1>${emailChanged ? (getLocale()==='zh'?'邮箱已更新':'Email updated') : (getLocale()==='zh'?'设置':'Settings')}</h1><p>${emailChanged ? (getLocale()==='zh'?'新邮箱验证成功，已替换账户中的原邮箱地址。':'Your new email has been verified and now replaces the previous address on your account.') : t('settings.publicSub')}</p>${emailChanged ? `<p class="email-result-note">${getLocale()==='zh'?'请返回小熊猫应用，账户资料会自动同步。':'Return to Red Panda to sync your account details.'}</p>` : ''}<button class="btn primary block" data-action="login">${emailChanged ? (getLocale()==='zh'?'前往登录':'Go to sign in') : t('settings.goLogin')}</button></section></main></div>`;
+      return;
+    }
+    if (!publicView && !section) {
+      const entries = [['language',t('settings.languageTitle'),'🌐'],['account-security',getLocale()==='zh'?'账户与安全':'Account & security','person'],['origin',t('settings.originTitle'),'⌖'],['data',getLocale()==='zh'?'数据与备份':'Data & backup','▤'],['about',t('settings.aboutTitle'),'ⓘ']];
+      app.innerHTML = `<div class="screen settings-screen">${topbar({ title: t('settings.title'), back: true, backAction: 'me' })}<main class="page settings-page"><div class="settings-group">${entries.map(([id,label,icon])=>`<button class="system-row" data-action="settings-section" data-section="${id}"><span class="system-icon">${icon === '🌐' ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>' : icon === 'person' ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c.6-4 3.2-6 7.5-6s6.9 2 7.5 6"/></svg>' : icon}</span><span>${label}</span><b>›</b></button>`).join('')}</div></main></div>`;
+      return;
+    }
+    const sectionTitles = {
+      language: t('settings.languageTitle'),
+      'account-security': getLocale()==='zh'?'账户与安全':'Account & security',
+      origin: t('settings.originTitle'),
+      data: getLocale()==='zh'?'数据与备份':'Data & backup',
+      about: t('settings.aboutTitle'),
+    };
+    const panel = (id, html) => (section === id || (publicView && id === 'language')) ? html : '';
+    const pendingEmailActive = Boolean(state.user?.pendingEmail && Date.parse(state.user.pendingEmailExpiresAt || '') > Date.now());
+    const pendingResetActive = Boolean(state.user?.pendingResetExpiresAt && Date.parse(state.user.pendingResetExpiresAt) > Date.now());
+    const emailChangedNotice = section === 'account-security' && route.query.emailChanged === '1';
     app.innerHTML = `
-      <div class="screen">
-        <main class="page has-nav">
-          <section class="card panel">
-            <h2 class="panel-title">${t('settings.languageTitle')}</h2>
-            <div class="lang-panel">${languageSwitcher()}</div>
-          </section>
-
-          ${!publicView ? `<section class="card panel">
-            <h2 class="panel-title">${t('settings.originTitle')}</h2>
+      <div class="screen settings-screen">
+        ${topbar({ title: sectionTitles[section] || t('settings.title'), back: true, backAction: 'settings-home' })}
+        <main class="page settings-page settings-detail${section === 'account-security' ? ' account-security-page' : ''}">
+          ${emailChangedNotice ? `<div class="email-updated-banner" role="status"><strong>${getLocale()==='zh'?'邮箱已更新':'Email updated'}</strong><span>${getLocale()==='zh'?'新邮箱验证成功，已替换原邮箱。':'The verified address is now your account email.'}</span></div>` : ''}
+          ${section === 'account-security' ? `<div class="account-refresh-status" id="account-refresh-status" role="status" hidden></div>` : ''}
+          ${panel('language', `<section class="card panel"><div class="lang-panel">${languageSwitcher()}</div></section>`)}
+          ${panel('origin', `<section class="card panel">
             <div id="origin-list" class="origin-list"></div>
-            <form id="origin-form" class="origin-entry" novalidate>
-              <input name="text" maxlength="1000" placeholder="${esc(t('settings.originInput'))}" aria-label="${esc(t('settings.originInput'))}" />
-              <button class="btn origin-map" type="button" id="origin-map" title="${esc(t('settings.originMap'))}" aria-label="${esc(t('settings.originMap'))}">⌖</button>
-              <button class="btn primary" type="submit" id="origin-submit">＋</button>
-              <button class="btn origin-cancel-edit" type="button" id="origin-cancel-edit" hidden>${esc(t('settings.originCancel'))}</button>
-            </form>
-            <div id="origin-suggestions" class="origin-suggestions" hidden></div>
-            <p class="form-error" id="origin-error" hidden></p>
+            <form id="origin-form" class="origin-entry" novalidate><input name="text" maxlength="1000" placeholder="${esc(t('settings.originInput'))}" aria-label="${esc(t('settings.originInput'))}" /><button class="btn origin-map" type="button" id="origin-map" title="${esc(t('settings.originMap'))}" aria-label="${esc(t('settings.originMap'))}">⌖</button><button class="btn primary" type="submit" id="origin-submit">＋</button><button class="btn origin-cancel-edit" type="button" id="origin-cancel-edit" hidden>${esc(t('settings.originCancel'))}</button></form>
+            <div id="origin-suggestions" class="origin-suggestions" hidden></div><p class="form-error" id="origin-error" hidden></p>
             <div id="origin-map-modal" class="origin-map-modal" hidden><div class="origin-map-head"><strong>${esc(t('settings.originMap'))}</strong><div class="origin-map-actions"><button type="button" class="btn origin-locate" id="origin-locate">◎ ${esc(t('settings.originLocate'))}</button><button type="button" class="btn" id="origin-map-close">×</button></div></div><div id="origin-map-canvas"></div><p>${esc(t('settings.originMapHint'))}</p><p class="form-error origin-map-error" id="origin-map-error" hidden></p><button class="btn primary block" id="origin-map-use" type="button" disabled>${esc(t('settings.originMapUse'))}</button></div>
-          </section>` : ''}
-
-          ${
-            publicView
-              ? `<section class="card panel">
-                  <p class="panel-sub">${t('settings.publicSub')}</p>
-                  <button class="btn primary block" data-action="login">${t('settings.goLogin')}</button>
-                </section>`
-              : `<section class="card panel">
-                  <h2 class="panel-title">${t('settings.accountTitle')}</h2>
-                  <dl class="kv">
-                    <div><dt>${t('settings.email')}</dt><dd>${esc(state.user.email || '—')}</dd></div>
-                    <div><dt>${t('settings.displayName')}</dt><dd>${esc(state.user.displayName || state.user.username)}</dd></div>
-                    <div><dt>${t('settings.createdAt')}</dt><dd>${esc(fmtDate(state.user.createdAt))}</dd></div>
-                  </dl>
-                  <button class="btn danger block" data-action="logout">${t('home.logout')}</button>
-                </section>
-
-                <section class="card panel">
-                  <h2 class="panel-title">${t('settings.passwordTitle')}</h2>
-                  <p class="panel-sub">${t('settings.passwordSub')}</p>
-                  <form id="password-form" class="form compact" novalidate>
-                    <label class="field">
-                      <span>${t('settings.currentPassword')}</span>
-                      <input name="currentPassword" type="password" maxlength="128"
-                        autocomplete="current-password" placeholder="${t('settings.currentPlaceholder')}" required />
-                    </label>
-                    <label class="field">
-                      <span>${t('reset.newPasswordLabel')}</span>
-                      <input name="newPassword" type="password" minlength="8" maxlength="128"
-                        autocomplete="new-password" placeholder="${t('auth.passwordPlaceholderRegister')}" required />
-                    </label>
-                    <label class="field">
-                      <span>${t('reset.confirmLabel')}</span>
-                      <input name="confirm" type="password" maxlength="128"
-                        autocomplete="new-password" placeholder="${t('auth.confirmPlaceholder')}" required />
-                    </label>
-                    <p class="form-error" id="password-error" hidden></p>
-                    <p class="form-ok" id="password-ok" hidden></p>
-                    <button class="btn primary block" type="submit">${t('settings.updatePassword')}</button>
-                  </form>
-                </section>
-
-                <section class="card panel">
-                  <h2 class="panel-title">${t('settings.resetPassword')}</h2>
-                  <p class="panel-sub">${t('settings.resetPasswordSub')}</p>
-                  <button class="link subtle" id="reset-password-btn" type="button">${t('forgot.submit')} →</button>
-                </section>`
-          }
-
-          <section class="card panel">
-            <h2 class="panel-title">${t('settings.aboutTitle')}</h2>
-            <p class="panel-sub">${t('settings.aboutBody', { version: esc(window.REDPANDA_CONFIG?.version || '1.0.0') })}</p>
-          </section>
+          </section>`)}
+          ${publicView ? `<section class="card panel"><p class="panel-sub">${t('settings.publicSub')}</p><button class="btn primary block" data-action="login">${t('settings.goLogin')}</button></section>` : ''}
+          ${panel('account-security', `<section class="account-settings-group account-profile-group"><h2 class="settings-group-heading">${getLocale()==='zh'?'账户资料':'Account information'}</h2><div class="current-email-block"><span class="account-field-title">${t('settings.email')}</span><strong>${esc(state.user.email || '—')}</strong></div><form id="email-form" class="account-edit-form" novalidate><label class="account-edit-field"><span>${getLocale()==='zh'?'新邮箱地址':'New email address'}</span><input name="email" type="email" maxlength="254" inputmode="email" autocomplete="email" placeholder="${getLocale()==='zh'?'输入新的邮箱地址':'Enter a new email address'}" required /></label><p class="form-error" id="email-error" hidden></p><button class="btn primary account-action" type="submit">${getLocale()==='zh'?'发送验证邮件':'Send verification email'}</button></form><div id="pending-email-status" class="pending-email-status" ${pendingEmailActive?'':'hidden'}><button class="status-close-btn" type="button" data-dismiss-status="pending-email-status" aria-label="${getLocale()==='zh'?'关闭':'Close'}">×</button><strong>${getLocale()==='zh'?'验证邮件已发送至':'Verification email sent to'} ${esc(pendingEmailActive ? state.user.pendingEmail : '')}</strong><p>${getLocale()==='zh'?'请前往新邮箱点击验证链接。验证完成后返回此页，下拉页面即可刷新邮箱地址。链接有效期至':'Open the verification link sent to this address. After verifying, return here and pull down to refresh your email address. It expires at'} ${esc(pendingEmailActive ? fmtDate(state.user.pendingEmailExpiresAt) : '')}${getLocale()==='zh'?'。':'.'}</p><small>${getLocale()==='zh'?'验证前仍使用原邮箱；超过 24 小时链接失效，新邮箱地址将不再显示。':'Your current email remains active until verified. After 24 hours the link and pending address expire.'}</small><p>${t('pending.resendHint')}</p><button class="btn ghost block account-action" id="resend-email-btn" type="button">${t('pending.resend')}</button></div></section><section class="account-settings-group"><h2 class="settings-group-heading">${t('settings.passwordTitle')}</h2><p class="panel-sub">${t('settings.passwordSub')}</p><form id="password-form" class="form compact" novalidate><label class="field"><span>${t('settings.currentPassword')}</span><input name="currentPassword" type="password" maxlength="128" autocomplete="current-password" placeholder="${t('settings.currentPlaceholder')}" required /></label><label class="field"><span>${t('reset.newPasswordLabel')}</span><input name="newPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" placeholder="${t('auth.passwordPlaceholderRegister')}" required /></label><label class="field"><span>${t('reset.confirmLabel')}</span><input name="confirm" type="password" maxlength="128" autocomplete="new-password" placeholder="${t('auth.confirmPlaceholder')}" required /></label><p class="form-error" id="password-error" hidden></p><p class="form-ok" id="password-ok" hidden></p><button class="btn primary block account-action" type="submit">${t('settings.updatePassword')}</button></form></section><section class="account-settings-group"><h2 class="settings-group-heading">${t('settings.resetPassword')}</h2><p class="panel-sub">${t('settings.resetPasswordSub')}</p><div id="pending-reset-status" class="pending-email-status pending-reset-status" ${pendingResetActive?'':'hidden'}><button class="status-close-btn" type="button" data-dismiss-status="pending-reset-status" aria-label="${getLocale()==='zh'?'关闭':'Close'}">×</button><strong>${t('forgot.sentTo',{email:state.user.email || ''})}</strong><p>${t('forgot.expires',{date:fmtDate(state.user.pendingResetExpiresAt)})}</p><small>${t('forgot.notReceived')}</small><button class="btn ghost block account-action" id="resend-reset-btn" type="button">${t('forgot.resend')}</button></div><button class="btn ghost block account-action" id="reset-password-btn" type="button">${t('forgot.submit')}</button></section><section class="account-settings-group account-logout-group"><button class="btn account-logout block" data-action="logout">${t('home.logout')}</button></section>`) }
+          ${panel('data', `<section class="card panel"><p class="panel-sub">${getLocale()==='zh'?'查看本机数据占用，导入或导出跨平台备份。':'Review local storage and manage portable backups.'}</p><button class="btn ghost block" data-action="database-open">${getLocale()==='zh'?'打开数据库':'Open database'}</button></section>`)}
+          ${panel('about', `<section class="card panel"><p class="panel-sub">${t('settings.aboutBody', { version: esc(window.REDPANDA_CONFIG?.version || '1.0.0') })}</p></section>`)}
         </main>
       </div>`;
+
+    app.querySelectorAll('[data-dismiss-status]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const target = document.getElementById(button.dataset.dismissStatus);
+        if (target) target.hidden = true;
+      });
+    });
+
+    if (!publicView && section === 'account-security') {
+      if (refreshProfile && state.token) refreshAccountSettings().catch(() => {});
+      bindAccountPullRefresh();
+    }
+
+    const emailForm = document.getElementById('email-form');
+    emailForm?.addEventListener('submit', async (event) => {
+      event.preventDefault(); hideError('email-error');
+      const email = emailForm.elements.email.value.trim();
+      if (!email) { showError('email-error', getLocale()==='zh'?'请输入新邮箱地址':'Enter a new email address'); return; }
+      const button = emailForm.querySelector('button[type="submit"]'); setBusy(button, true, t('busy.sending'));
+      try {
+        const result = await api('/api/me/email', { method: 'PUT', body: { email, locale: getLocale() } });
+        state.user = { ...state.user, pendingEmail: result.pendingEmail || null, pendingEmailExpiresAt: result.pendingEmailExpiresAt || null };
+        cacheUser(state.user); emailForm.reset();
+        if (result.pendingEmail) { toast(getLocale()==='zh'?'验证邮件已发送，请在 24 小时内完成验证':'Verification email sent. Verify within 24 hours'); renderSettings(); }
+        else { toast(getLocale()==='zh'?'邮箱未更改，待验证地址已取消':'Email unchanged; pending address cancelled'); renderSettings(); }
+      } catch (error) { showError('email-error', error.message); }
+      finally { if (button.isConnected) setBusy(button, false); }
+    });
+
+    const resendEmailButton = document.getElementById('resend-email-btn');
+    resendEmailButton?.addEventListener('click', async () => {
+      const email = state.user?.pendingEmail;
+      if (!email) return;
+      const scrollY = window.scrollY;
+      setBusy(resendEmailButton, true, t('pending.sending'));
+      try {
+        const result = await api('/api/me/email', { method: 'PUT', body: { email, locale: getLocale() } });
+        state.user = { ...state.user, pendingEmail: result.pendingEmail || null, pendingEmailExpiresAt: result.pendingEmailExpiresAt || null };
+        cacheUser(state.user);
+        toast(getLocale()==='zh'?'验证邮件已重新发送，请在 24 小时内完成验证':'Verification email resent. Verify within 24 hours');
+        renderSettings();
+        window.scrollTo(0, scrollY);
+      } catch (error) {
+        toast(error.message, 'error');
+      } finally {
+        if (resendEmailButton.isConnected) setBusy(resendEmailButton, false);
+      }
+    });
+
+    if (pendingEmailActive) {
+      const pendingEmail = state.user.pendingEmail;
+      const pendingExpiresAt = Date.parse(state.user.pendingEmailExpiresAt);
+      setTimeout(() => {
+        if (state.user?.pendingEmail !== pendingEmail || Date.now() < pendingExpiresAt) return;
+        state.user = { ...state.user, pendingEmail: null, pendingEmailExpiresAt: null };
+        cacheUser(state.user);
+        if (parseRoute().name === 'settings' && parseRoute().section === 'account-security') renderSettings();
+      }, Math.max(1, pendingExpiresAt - Date.now() + 50));
+    }
+
+    if (pendingResetActive) {
+      const resetExpiry = state.user.pendingResetExpiresAt;
+      const resetExpiresAt = Date.parse(resetExpiry);
+      setTimeout(() => {
+        if (state.user?.pendingResetExpiresAt !== resetExpiry || Date.now() < resetExpiresAt) return;
+        state.user = { ...state.user, pendingResetExpiresAt: null };
+        cacheUser(state.user);
+        if (parseRoute().name === 'settings' && parseRoute().section === 'account-security') renderSettings();
+      }, Math.max(1, resetExpiresAt - Date.now() + 50));
+    }
 
     const passwordForm = document.getElementById('password-form');
     const originForm = document.getElementById('origin-form');
@@ -3720,26 +4411,33 @@
       });
     }
 
-    const resetPasswordButton = document.getElementById('reset-password-btn');
-    if (resetPasswordButton) {
+    const resetPasswordButtons = [
+      document.getElementById('reset-password-btn'),
+      document.getElementById('resend-reset-btn'),
+    ].filter(Boolean);
+    resetPasswordButtons.forEach((resetPasswordButton) => {
       resetPasswordButton.addEventListener('click', async () => {
         const email = state.user?.email;
         if (!email) return;
-        setBusy(resetPasswordButton, true, t('forgot.submit'));
+        const scrollY = window.scrollY;
+        setBusy(resetPasswordButton, true, t('forgot.sending'));
         try {
-          const data = await api('/api/auth/forgot-password', {
+          const result = await api('/api/me/password-reset', {
             method: 'POST',
-            auth: false,
-            body: { email, locale: getLocale() },
+            body: { locale: getLocale() },
           });
-          toast(data.message || t('forgot.sentFallback'));
+          state.user = { ...state.user, pendingResetExpiresAt: result.pendingResetExpiresAt };
+          cacheUser(state.user);
+          toast(t('forgot.sent'));
+          renderSettings();
+          window.scrollTo(0, scrollY);
         } catch (error) {
           toast(error.message, 'error');
         } finally {
-          setBusy(resetPasswordButton, false);
+          if (resetPasswordButton.isConnected) setBusy(resetPasswordButton, false);
         }
       });
-    }
+    });
   }
 
   async function doLogout() {
@@ -3786,9 +4484,29 @@
     const target = event.target.closest('[data-action]');
     if (!target) return;
     switch (target.dataset.action) {
+      case 'backup-export':
+        exportBackup().catch(error=>{backupStatus(`${getLocale()==='zh'?'导出失败':'Export failed'}: ${error.message}`,null,'error');toast(error.message,'error');});
+        break;
+      case 'database-open':
+        navigate('#/database');
+        break;
+      case 'database-sort-count':
+        databaseSort='count'; drawDatabaseTypes(); break;
+      case 'database-sort-size':
+        databaseSort='size'; drawDatabaseTypes(); break;
+      case 'settings-section':
+        replaceHash(`#/settings/${target.dataset.section}`);
+        render();
+        break;
+      case 'settings-home':
+        replaceHash('#/settings');
+        render();
+        break;
       case 'settings':
-        if (draftOverlayOpen) leaveOverlayTo('#/settings');
-        else navigateTab('#/settings');
+        navigate('#/settings');
+        break;
+      case 'me':
+        navigateTab('#/me');
         break;
       case 'new': {
         const drafts = sortedDrafts();
@@ -3832,9 +4550,6 @@
       }
       case 'all-journeys':
         navigate('#/journeys');
-        break;
-      case 'memory-pick':
-        document.getElementById('memory-files')?.click();
         break;
       case 'memory-save':
         saveMemory();
@@ -3931,6 +4646,12 @@
   }
 
   app.addEventListener('click', handleAction);
+  app.addEventListener('change', async event => {
+    if (event.target.id !== 'backup-file' || !event.target.files?.[0]) return;
+    try { backupStatus(`${getLocale()==='zh'?'已选择文件':'Selected file'}: ${event.target.files[0].name}`); const imported=await importBackup(event.target.files[0]); if(imported)toast(getLocale()==='zh'?'数据已导入':'Data imported'); else backupStatus(getLocale()==='zh'?'已取消导入':'Import cancelled'); }
+    catch (error) { backupStatus(`${getLocale()==='zh'?'导入失败':'Import failed'}: ${error.message}`,null,'error'); toast(`${getLocale()==='zh'?'导入失败':'Import failed'}: ${error.message}`,'error'); }
+    event.target.value='';
+  });
   navHost?.addEventListener('click', handleAction);
 
   /**
@@ -3946,6 +4667,22 @@
       return;
     }
     closeDraftOverlay();
+  });
+
+  window.__redPandaSystemBack = () => {
+    const route = parseRoute();
+    if (route.name === 'settings') {
+      if (route.section) replaceHash('#/settings');
+      else replaceHash('#/me');
+      render();
+      return true;
+    }
+    return false;
+  };
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !state.token || !state.server) return;
+    refreshAccountSettings().catch(() => {});
   });
 
   window.addEventListener('hashchange', render);
@@ -3997,7 +4734,8 @@
       try {
         const data = await api('/api/me');
         state.user = data.user;
-        cacheUser(data.user);
+        state.user = await hydrateClientProfile(data.user, { migrateServerProfile: true });
+        cacheUser(state.user);
       } catch (error) {
         if (error.status === 401) {
           clearToken();
@@ -4006,6 +4744,12 @@
         // opens on the same screen it was left on instead of logging out.
       }
     }
+
+    try {
+      if(state.user) state.user=await hydrateClientProfile(state.user,{migrateServerProfile:true});
+    } catch { /* IndexedDB can be unavailable in restricted browser modes. */ }
+
+    await migrateLegacyServerData();
 
     state.ready = true;
     render();

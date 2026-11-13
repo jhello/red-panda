@@ -16,7 +16,7 @@ application/json; charset=utf-8`），`204` 响应无正文。
   ```
 
 - **登录限流**：同一 IP 10 分钟内最多失败 20 次，超出返回 `429`。
-- **邮件限流**：同一 IP 10 分钟内最多触发 20 次注册 / 重发 / 找回操作，超出返回 `429`。
+- **邮件限流**：同一 IP 10 分钟内最多触发 20 次注册 / 重发 / 找回操作（可用 `RED_PANDA_EMAIL_RATE_LIMIT` 调整），超出返回 `429`。
 
 ## 状态码
 
@@ -31,6 +31,7 @@ application/json; charset=utf-8`），`204` 响应无正文。
 | `403` | 邮箱尚未验证 |
 | `404` | 资源不存在 |
 | `409` | 邮箱已注册 |
+| `410` | 该数据已迁移到客户端，服务端不再接收写入 |
 | `429` | 尝试或邮件操作过多 |
 | `502` / `503` / `504` | 邮件发送失败 / AI 未配置 / AI 超时 |
 | `500` | 服务器内部错误 |
@@ -58,7 +59,7 @@ application/json; charset=utf-8`），`204` 响应无正文。
 ## 账号
 
 账户以**邮箱**为唯一标识。注册后需要点击验证邮件里的链接激活，才能登录。
-老版本用用户名注册的账户仍然可以用用户名登录。
+旧版本中不含邮箱、只能使用用户名登录的账户会在升级时被删除，服务端不再接受用户名登录。
 
 ### `POST /api/auth/register`
 
@@ -98,7 +99,7 @@ application/json; charset=utf-8`），`204` 响应无正文。
 { "email": "you@example.com", "password": "password123" }
 ```
 
-也接受 `{ "username": "老用户名", "password": "…" }`，用于兼容旧账户。
+邮箱是唯一登录标识，请求体里带 `username` 不再有效。
 
 响应 `200`：
 
@@ -109,13 +110,17 @@ application/json; charset=utf-8`），`204` 响应无正文。
   "user": {
     "id": 1,
     "email": "you@example.com",
-    "displayName": "you",
-    "username": "you@example.com",
+    "displayName": "",
     "emailVerified": true,
+    "locale": "",
+    "usualOrigin": [],
     "createdAt": "2026-11-11T13:47:23.000Z"
   }
 }
 ```
+
+`displayName`、`locale`、`usualOrigin` 只可能出现在尚未完成迁移的旧账户上；
+客户端迁移完成后会通过 `DELETE /api/me/personal-data` 清除，之后以本机 IndexedDB 为准。
 
 邮箱未验证时返回 `403`（`email_not_verified`），此时可以调用重发接口。
 
@@ -175,21 +180,59 @@ application/json; charset=utf-8`），`204` 响应无正文。
   "user": {
     "id": 1,
     "email": "you@example.com",
-    "displayName": "you",
-    "username": "you@example.com",
+    "displayName": "",
     "emailVerified": true,
-    "createdAt": "…"
+    "locale": "",
+    "usualOrigin": [],
+    "createdAt": "…",
+    "pendingEmail": null,
+    "pendingEmailExpiresAt": null,
+    "pendingResetExpiresAt": null
   }
 }
 ```
 
-### `PUT /api/me/usual-origin`
+`pendingEmail` 是等待新邮箱验证的地址；`pendingResetExpiresAt` 是最近一次
+密码重置邮件的有效期。
 
-需要认证。保存最多 20 个常用出发地。新客户端发送 `origins` 数组；旧版单地点对象仍可兼容：
+### `PUT /api/me/email`
+
+需要认证。申请更换账户邮箱，会向新地址发送验证邮件。链接 24 小时内有效，
+在验证完成前原邮箱仍然有效：
 
 ```json
-{ "origins": [{ "name": "家", "country": "中国", "city": "上海市", "district": "徐汇区", "street": "天钥桥路", "streetNumber": "88号" }] }
+{ "email": "new@example.com", "locale": "zh" }
 ```
+
+响应 `200`：
+
+```json
+{ "pendingEmail": "new@example.com", "pendingEmailExpiresAt": "…" }
+```
+
+新邮箱已被其他账户使用返回 `409`（`email_taken`）。重复提交同一地址会重发并
+延长有效期；提交当前邮箱会取消待验证的更换。
+
+验证链接指向 `GET /api/auth/verify?token=…`，成功后跳转到
+`/app/#/settings/account-security?emailChanged=1`。
+
+### `POST /api/me/password-reset`
+
+需要认证。向当前账户邮箱发送重置密码邮件，返回链接有效期：
+
+```json
+{ "pendingResetExpiresAt": "…" }
+```
+
+### `DELETE /api/me/personal-data`
+
+需要认证。清除服务端为旧版本保留的个人数据副本：昵称、语言、常用出发地、
+旅程、回忆和媒体文件。客户端确认本地写入成功后调用。返回 `204`。
+
+### `PUT /api/me/profile`、`PUT /api/me/locale`、`PUT /api/me/usual-origin`
+
+返回 `410`（`client_storage_only`）。昵称、界面语言和常用出发地现在保存在
+客户端 IndexedDB。
 
 ### `POST /api/me/usual-origin/parse`
 
@@ -214,11 +257,14 @@ application/json; charset=utf-8`），`204` 响应无正文。
 
 ---
 
-## 旅程
+## 旅程（旧数据读取）
 
-所有旅程接口都需要认证，且只能访问**自己**的旅程。
+旅程、行程计划、出发和返回时间现在保存在客户端 IndexedDB。以下读取接口
+只用于把旧版本服务端数据迁移到客户端；迁移完成后客户端会删除服务端副本。
 
 ### `GET /api/journeys`
+
+需要认证。返回该账户在旧版本中的旅程：
 
 ```json
 {
@@ -227,6 +273,9 @@ application/json; charset=utf-8`），`204` 响应无正文。
       "id": 1,
       "name": "东海之行",
       "description": "…",
+      "plan": null,
+      "depart_time": "",
+      "return_time": "",
       "created_at": "2026-11-11T13:40:00.000Z",
       "updated_at": "2026-11-11T13:41:00.000Z"
     }
@@ -234,65 +283,26 @@ application/json; charset=utf-8`），`204` 响应无正文。
 }
 ```
 
-按 `updated_at` 倒序排列。
-
-### `POST /api/journeys`
-
-```json
-{ "name": "东海之行", "description": "从青丘出发……", "plan": { "items": [] } }
-```
-
-- `name`：1–80 字符，必填；
-- `description`：最多 5000 字符，可省略；
-- `plan`：可选，结构化行程（即 `POST /api/ai/journey-plan` 的结果）。
-
-响应 `201`：
-
-```json
-{
-  "journey": {
-    "id": 1,
-    "name": "东海之行",
-    "description": "…",
-    "plan": {
-      "items": [{ "destination": "卢浮宫", "departTime": "2026-12-15T09:30", "returnTime": "2026-12-18T19:00" }],
-      "departTime": "2026-12-15T09:30",
-      "returnTime": "2026-12-18T19:00"
-    },
-    "depart_time": "2026-12-15T09:30",
-    "return_time": "2026-12-18T19:00",
-    "created_at": "…",
-    "updated_at": "…"
-  }
-}
-```
-
-- `plan`：结构化行程；没有结构化数据时为 `null`；
-- `depart_time` / `return_time`：整段行程的最早出发与最晚返回时间；列表按出发时间升序排列。
+按 `depart_time` 升序排列。
 
 ### `GET /api/journeys/:id`
 
-响应 `200`：`{ "journey": { … } }`；不存在返回 `404`。
+需要认证。返回 `{ "journey": { … } }`；不存在返回 `404`。
 
-### `PUT /api/journeys/:id`
+### `POST /api/journeys`、`PUT /api/journeys/:id`、`DELETE /api/journeys/:id`
 
-请求体同创建（`name` 必填，`description` 可选）。响应 `200`：
-`{ "journey": { … } }`；不存在返回 `404`。
-
-### `DELETE /api/journeys/:id`
-
-成功返回 `204`；不存在返回 `404`。
+返回 `410`（`client_storage_only`）。服务端不再保存或删除旅程。
 
 ---
 
-## 回忆
+## 回忆（旧数据读取）
 
-「回忆」用来给**已经走过的行程**添上照片、视频和文字。媒体文件存在服务端
-`data/uploads/<用户 id>/` 下，接口只返回元数据和访问链接。
+「回忆」用来给**已经走过的行程**添上照片、视频和文字。文字、照片、视频和
+元数据现在保存在客户端 IndexedDB，实际文件以 Blob 形式存放。
 
 ### `GET /api/memories`
 
-需要认证。列出回忆，`?journeyId=` 可以只看某一段行程的回忆。
+需要认证。返回旧版本保存的回忆，`?journeyId=` 可以只看某一段行程：
 
 ```json
 {
@@ -319,56 +329,35 @@ application/json; charset=utf-8`），`204` 响应无正文。
 }
 ```
 
-- `counts`：每段行程的回忆数量，键是行程 id；
-- `media[].kind`：`image` 或 `video`；
-- `media[].url`：访问链接，`/api/media/<访问密钥>`。
-
-### `POST /api/memories`
-
-需要认证。新建一条回忆。
-
-```json
-{ "journeyId": 3, "note": "那天风很大。" }
-```
-
-- `journeyId`：可选，但必须是自己的一段行程；
-- `note`：最多 2000 字符。
-
-`note` 和 `journeyId` 至少要有一项，否则返回 `400`。
-
-响应 `201`：`{ "memory": { … } }`。
-
-### `DELETE /api/memories/:id`
-
-需要认证。删除一条回忆，照片和视频文件会一起删除。成功返回 `204`；
-不存在返回 `404`。
-
-### `POST /api/memories/:id/media`
-
-需要认证。上传一张照片或一段视频。**请求体就是文件本身**，
-`Content-Type` 说明类型（`image/*` 或 `video/*`），单个文件上限 25 MB。
-
-```bash
-curl -s -X POST "$BASE/api/memories/1/media" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: image/png" \
-  --data-binary @photo.png
-```
-
-响应 `201`：`{ "media": { … } }`。类型不支持返回 `415`，文件过大返回 `413`。
-
 ### `GET /api/media/:key`
 
-按访问密钥取回照片 / 视频，**不需要登录**（密钥本身就是凭证，32 位随机十六进制）。
-支持 `Range` 请求，视频可以拖动进度。
+按访问密钥取回旧版本保存的照片 / 视频，**不需要登录**。迁移时客户端会把
+文件下载成 Blob，完成后再删除服务端文件。新上传不会写入这里。
+
+### `POST /api/memories`、`DELETE /api/memories/:id`、`POST /api/memories/:id/media`
+
+返回 `410`（`client_storage_only`）。回忆和媒体现在由客户端管理。
 
 ### `POST /api/ai/memory-recap`
 
-需要认证。根据某段行程和它的回忆，生成一段旅行回忆文字。
+需要认证。根据客户端提供的临时上下文生成旅行回忆文字，服务端不会保存这些内容：
 
 ```json
-{ "journeyId": 3 }
+{
+  "journeyId": 3,
+  "context": {
+    "journeyName": "东海之行",
+    "destination": "东海",
+    "departTime": "2026-11-01T09:00",
+    "returnTime": "2026-11-03T18:00",
+    "photos": 2,
+    "videos": 0,
+    "notes": ["海面有光"]
+  }
+}
 ```
+
+`journeyId` 仍需是整数；传入 `context` 时不会再读取服务端旅程表。
 
 响应 `200`：
 
@@ -574,13 +563,16 @@ curl -s -X POST "$BASE/api/auth/forgot-password" \
   -H 'Content-Type: application/json' \
   -d '{"email":"you@example.com"}'
 
-# 创建旅程
-curl -s -X POST "$BASE/api/journeys" \
+# 申请更换账户邮箱（去新邮箱点击验证链接）
+curl -s -X PUT "$BASE/api/me/email" \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"name":"东海之行","description":"从青丘出发。"}'
+  -d '{"email":"new@example.com"}'
 
-# 列出旅程
+# 迁移完成、确认客户端已写入后，清除服务端旧副本
+curl -s -X DELETE "$BASE/api/me/personal-data" -H "Authorization: Bearer $TOKEN"
+
+# 读取旧版本旅程（只读，供客户端迁移）
 curl -s "$BASE/api/journeys" -H "Authorization: Bearer $TOKEN"
 
 # 生成描述（需配置 AI 或 mock）
@@ -595,23 +587,11 @@ curl -s -X POST "$BASE/api/ai/journey-plan" \
   -H 'Content-Type: application/json' \
   -d '{"prompt":"想去卢浮宫，雅典卫城还是新天鹅堡？"}'
 
-# 给走过的行程写一段回忆
-curl -s -X POST "$BASE/api/memories" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"journeyId":1,"note":"那天风很大。"}'
-
-# 上传一张照片
-curl -s -X POST "$BASE/api/memories/1/media" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: image/png" \
-  --data-binary @photo.png
-
-# 让 AI 把回忆写成一段话
+# 让 AI 把本机回忆写成一段话（内容只作为一次性上下文发送）
 curl -s -X POST "$BASE/api/ai/memory-recap" \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"journeyId":1}'
+  -d '{"journeyId":1,"context":{"journeyName":"东海之行","photos":1,"videos":0,"notes":["那天风很大。"]}}'
 
 # 看板状态
 curl -s "$BASE/api/admin/status" -H "X-Admin-Token: $(cat data/admin-token)"

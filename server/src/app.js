@@ -10,7 +10,7 @@ import { hashPassword, hashToken, newSessionToken, safeEqual, verifyPassword } f
 import { fileSize, openDatabase } from './db.js';
 import { getLanUrls } from './config.js';
 import { createMailer } from './mailer.js';
-import { resetEmail, verificationEmail } from './emails.js';
+import { emailChangeVerificationEmail, resetEmail, verificationEmail } from './emails.js';
 import {
   MAX_MEDIA_BYTES,
   mediaFileName,
@@ -373,11 +373,11 @@ function normalizeLocale(value) {
   return '';
 }
 
-/** Language for a user's emails: stored preference → request → Accept-Language. */
+/** The language selected for this action wins; otherwise use the saved preference. */
 function localeForUser(user, body, req) {
   return (
-    normalizeLocale(user?.locale) ||
     normalizeLocale(body?.locale) ||
+    normalizeLocale(user?.locale) ||
     normalizeLocale(req?.headers?.['accept-language']) ||
     'zh'
   );
@@ -396,10 +396,9 @@ function publicUser(row) {
   return {
     id: row.id,
     email: row.email || null,
-    displayName: row.display_name || row.username,
-    username: row.username,
+    displayName: row.display_name || '',
     emailVerified: Boolean(row.email_verified),
-    locale: row.locale || 'zh',
+    locale: row.locale || '',
     createdAt: row.created_at,
     usualOrigin: Array.isArray(usualOrigin) ? usualOrigin : (usualOrigin && Object.values(usualOrigin).some(Boolean) ? [usualOrigin] : []),
   };
@@ -508,6 +507,15 @@ function notFound(req, res) {
 
 export function createApp(config, options = {}) {
   const db = openDatabase(config.dbPath);
+  const uploadRoot = path.join(config.dataDir, 'uploads');
+  if (fs.existsSync(uploadRoot)) {
+    const activeUserIds = new Set(db.raw.prepare('SELECT id FROM users').all().map((row) => String(row.id)));
+    for (const entry of fs.readdirSync(uploadRoot, { withFileTypes: true })) {
+      if (entry.isDirectory() && /^\d+$/.test(entry.name) && !activeUserIds.has(entry.name)) {
+        fs.rmSync(path.join(uploadRoot, entry.name), { recursive: true, force: true });
+      }
+    }
+  }
   const mailer = options.mailer || createMailer(config);
   const startedAt = new Date();
   const lanUrls = getLanUrls(config.port);
@@ -523,10 +531,17 @@ export function createApp(config, options = {}) {
   const routes = [];
 
   function route(method, pattern, handler, options = {}) {
+    const methodUpper = method.toUpperCase();
+    const routePath = pattern.source.replaceAll('\\/', '/').replace(/^\^/, '').replace(/\$$/, '');
+    const movedToClient = ['POST', 'PUT', 'DELETE'].includes(methodUpper)
+      && (/^\/api\/(journeys|memories)/.test(routePath)
+        || /^\/api\/me\/(profile|locale|usual-origin)$/.test(routePath));
     routes.push({
-      method,
+      method: methodUpper,
       pattern,
-      handler,
+      handler: movedToClient
+        ? () => { throw new HttpError(410, '个人行程与偏好已迁移到本机保存', 'client_storage_only'); }
+        : handler,
       auth: options.auth === true,
       admin: options.admin === true,
       raw: options.raw === true,
@@ -556,7 +571,6 @@ export function createApp(config, options = {}) {
       tokenHash,
       user: {
         id: row.user_id,
-        username: row.username,
         email: row.email,
         display_name: row.display_name,
         email_verified: row.email_verified,
@@ -610,7 +624,7 @@ export function createApp(config, options = {}) {
       emailAttempts.set(ip, { count: 1, resetAt: now + 10 * 60 * 1000 });
       return;
     }
-    if (entry.count >= 20) {
+    if (entry.count >= config.emailRateLimit) {
       throw new HttpError(429, '操作过于频繁，请十分钟后再试', 'rate_limited');
     }
     entry.count += 1;
@@ -645,10 +659,28 @@ export function createApp(config, options = {}) {
     return link;
   }
 
+  async function sendEmailChangeVerification(user, email, context = {}) {
+    const token = newSessionToken();
+    const now = new Date();
+    const hours = 24;
+    const expiresAt = new Date(now.getTime() + hours * 60 * 60 * 1000);
+    db.createEmailVerification({ tokenHash: hashToken(token), userId: user.id, now: now.toISOString(), expiresAt: expiresAt.toISOString(), targetEmail: email });
+    const link = `${publicBaseUrl()}/api/auth/verify?token=${encodeURIComponent(token)}`;
+    const mail = emailChangeVerificationEmail({ link, email, hours, locale: localeForUser(user, context.body, context.req) });
+    try {
+      await mailer.send({ to: email, ...mail });
+    } catch (error) {
+      db.deletePendingEmailChange(user.id);
+      throw error;
+    }
+    return { pendingEmail: email, pendingEmailExpiresAt: expiresAt.toISOString() };
+  }
+
   async function sendResetEmail(user, context = {}) {
     const token = newSessionToken();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + config.resetMinutes * 60 * 1000);
+    db.deleteResetsForUser(user.id);
     db.createPasswordReset({
       tokenHash: hashToken(token),
       userId: user.id,
@@ -659,11 +691,16 @@ export function createApp(config, options = {}) {
     const mail = resetEmail({
       link,
       email: user.email,
-      minutes: config.resetMinutes,
+      hours: Math.ceil(config.resetMinutes / 60),
       locale: localeForUser(user, context.body, context.req),
     });
-    await mailer.send({ to: user.email, ...mail });
-    return link;
+    try {
+      await mailer.send({ to: user.email, ...mail });
+    } catch (error) {
+      db.deleteResetsForUser(user.id);
+      throw error;
+    }
+    return { pendingResetExpiresAt: expiresAt.toISOString() };
   }
 
   function buildStatus() {
@@ -671,9 +708,8 @@ export function createApp(config, options = {}) {
     const memory = process.memoryUsage();
     const users = db.listUsers().map((user) => ({
       id: user.id,
-      username: user.username,
-      email: user.email || null,
-      displayName: user.display_name || user.username,
+      email: user.email,
+      displayName: user.display_name || user.email.split('@')[0],
       emailVerified: Boolean(user.email_verified),
       createdAt: user.created_at,
       lastLoginAt: user.last_login_at,
@@ -742,8 +778,6 @@ export function createApp(config, options = {}) {
     checkEmailRate(ip);
     const email = normalizeEmail(body.email);
     const password = validatePassword(body.password);
-    const locale =
-      normalizeLocale(body.locale) || normalizeLocale(req.headers['accept-language']) || 'zh';
     const now = new Date().toISOString();
 
     const existing = db.findUserByEmail(email);
@@ -753,9 +787,8 @@ export function createApp(config, options = {}) {
       }
       // Unverified accounts may re-register: update the password and resend.
       db.setPassword(existing.id, hashPassword(password));
-      db.setLocale(existing.id, locale);
       try {
-        await sendVerificationEmail(db.findUserById(existing.id));
+        await sendVerificationEmail(db.findUserById(existing.id), { body, req });
       } catch (error) {
         console.error('[red-panda] 验证邮件发送失败:', error);
         throw new HttpError(502, '账户已存在，但验证邮件发送失败，请稍后重试', 'mail_failed');
@@ -772,7 +805,7 @@ export function createApp(config, options = {}) {
 
     let userId;
     try {
-      userId = db.createUser({ email, passwordHash: hashPassword(password), locale, now });
+      userId = db.createUser({ email, passwordHash: hashPassword(password), now });
     } catch (error) {
       if (String(error.message).includes('UNIQUE')) {
         throw new HttpError(409, '这个邮箱已经注册过了', 'email_taken');
@@ -782,7 +815,7 @@ export function createApp(config, options = {}) {
 
     const user = db.findUserById(userId);
     try {
-      await sendVerificationEmail(user);
+      await sendVerificationEmail(user, { body, req });
     } catch (error) {
       console.error('[red-panda] 验证邮件发送失败:', error);
       throw new HttpError(502, '账户已创建，但验证邮件发送失败，请稍后重试', 'mail_failed');
@@ -801,18 +834,14 @@ export function createApp(config, options = {}) {
   route('POST', /^\/api\/auth\/login$/, async ({ body, req }) => {
     const ip = req.socket.remoteAddress ?? 'unknown';
     checkLoginRate(ip);
-    const identifier =
-      typeof body.email === 'string' && body.email.trim()
-        ? body.email.trim().toLowerCase()
-        : typeof body.username === 'string'
-          ? body.username.trim()
-          : '';
+    const identifier = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
     const password = typeof body.password === 'string' ? body.password : '';
     if (!identifier) throw new HttpError(400, '请输入邮箱', 'validation_error');
     if (!password) throw new HttpError(400, '请输入密码', 'validation_error');
 
-    // New accounts use email; legacy accounts may still log in with a username.
-    let user = db.findUserByEmail(identifier) || db.findUserByUsername(identifier);
+    // Email is the only login identifier; username-only legacy accounts are
+    // removed by database migration and are no longer accepted.
+    let user = db.findUserByEmail(identifier);
     if (!user || !verifyPassword(password, user.password_hash)) {
       noteLoginFailure(ip);
       throw new HttpError(401, '邮箱或密码不正确', 'invalid_credentials');
@@ -821,13 +850,6 @@ export function createApp(config, options = {}) {
       throw new HttpError(403, '邮箱尚未验证，请查收验证邮件并点击激活链接', 'email_not_verified');
     }
     loginAttempts.delete(ip);
-    // Keep the stored email language in sync with the app language so later
-    // emails (password reset, etc.) arrive in the language the user picked.
-    const locale = normalizeLocale(body.locale);
-    if (locale && locale !== normalizeLocale(user.locale)) {
-      db.setLocale(user.id, locale);
-      user = { ...user, locale };
-    }
     const now = new Date().toISOString();
     db.touchLogin(user.id, now);
     const session = issueSession(user.id);
@@ -845,14 +867,22 @@ export function createApp(config, options = {}) {
       token = '';
     }
     let verified = false;
+    let emailChanged = false;
     if (token) {
       const row = db.consumeEmailVerification(hashToken(token), new Date().toISOString());
-      if (row) {
+      if (row?.target_email) {
+        const existing = db.findUserByEmail(row.target_email);
+        if (!existing || existing.id === row.user_id) {
+          db.setEmail(row.user_id, row.target_email);
+          emailChanged = true;
+          verified = true;
+        }
+      } else if (row) {
         db.markEmailVerified(row.user_id);
         verified = true;
       }
     }
-    const location = verified ? '/app/#/login?verified=1' : '/app/#/login?verify=invalid';
+    const location = emailChanged ? '/app/#/settings/account-security?emailChanged=1' : (verified ? '/app/#/login?verified=1' : '/app/#/login?verify=invalid');
     res.writeHead(302, { Location: location });
     res.end();
     return { status: 302 };
@@ -930,12 +960,49 @@ export function createApp(config, options = {}) {
   route(
     'GET',
     /^\/api\/me$/,
-    ({ auth }) => ({
-      status: 200,
-      body: { user: publicUser(auth.user) },
-    }),
+    ({ auth }) => {
+      const pending = db.pendingEmailChange(auth.user.id, new Date().toISOString());
+      const pendingReset = db.pendingPasswordReset(auth.user.id, new Date().toISOString());
+      return { status: 200, body: { user: { ...publicUser(auth.user), pendingEmail: pending?.target_email || null, pendingEmailExpiresAt: pending?.expires_at || null, pendingResetExpiresAt: pendingReset?.expires_at || null } } };
+    },
     { auth: true },
   );
+
+  route('PUT', /^\/api\/me\/profile$/, ({ auth, body }) => {
+    const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
+    if (!displayName || displayName.length > 40) throw new HttpError(400, '昵称需要为 1 到 40 个字符', 'validation_error');
+    db.setDisplayName(auth.user.id, displayName);
+    return { status: 200, body: { displayName } };
+  }, { auth: true });
+
+  route('PUT', /^\/api\/me\/email$/, async ({ auth, body, req }) => {
+    const email = normalizeEmail(body.email);
+    if (email === String(auth.user.email || '').toLowerCase()) {
+      db.deletePendingEmailChange(auth.user.id);
+      return { status: 200, body: { pendingEmail: null, pendingEmailExpiresAt: null } };
+    }
+    const existing = db.findUserByEmail(email);
+    if (existing && existing.id !== auth.user.id) throw new HttpError(409, '这个邮箱已经注册过了', 'email_taken');
+    checkEmailRate(req.socket.remoteAddress ?? 'unknown');
+    const pending = await sendEmailChangeVerification(auth.user, email, { body, req });
+    return { status: 200, body: pending };
+  }, { auth: true });
+
+  route('POST', /^\/api\/me\/password-reset$/, async ({ auth, body, req }) => {
+    checkEmailRate(req.socket.remoteAddress ?? 'unknown');
+    const pending = await sendResetEmail(auth.user, { body, req });
+    return { status: 200, body: pending };
+  }, { auth: true });
+
+  route('DELETE', /^\/api\/me\/personal-data$/, ({ auth }) => {
+    for (const memory of db.listMemories(auth.user.id)) {
+      const removed = db.deleteMemory(auth.user.id, memory.id);
+      for (const item of removed?.media ?? []) removeMediaFile(config.dataDir, auth.user.id, mediaFileName(item.access_key, item.mime));
+    }
+    for (const journey of db.listJourneys(auth.user.id)) db.deleteJourney(auth.user.id, journey.id);
+    db.clearClientProfile(auth.user.id);
+    return { status: 204 };
+  }, { auth: true });
 
   route(
     'PUT',
@@ -1023,14 +1090,7 @@ export function createApp(config, options = {}) {
   route(
     'PUT',
     /^\/api\/me\/locale$/,
-    ({ auth, body }) => {
-      const locale = normalizeLocale(body.locale);
-      if (!locale) {
-        throw new HttpError(400, '语言仅支持 zh / en / de', 'validation_error');
-      }
-      db.setLocale(auth.user.id, locale);
-      return { status: 200, body: { locale } };
-    },
+    () => ({ status: 410, body: { code: 'client_storage_only', error: '界面语言已迁移到本机保存' } }),
     { auth: true },
   );
 
@@ -1230,19 +1290,33 @@ export function createApp(config, options = {}) {
       if (!Number.isInteger(journeyId)) {
         throw new HttpError(400, '行程编号不正确', 'validation_error');
       }
-      const journey = db.getJourney(auth.user.id, journeyId);
-      if (!journey) throw new HttpError(404, '行程不存在', 'not_found');
-      const memories = db.listMemories(auth.user.id, journeyId);
-      const media = memories.flatMap((item) => item.media ?? []);
-      const context = {
-        journeyName: journey.name,
-        destination: destinationsOf(journey),
-        departTime: journey.depart_time || '',
-        returnTime: journey.return_time || '',
-        photos: media.filter((item) => item.kind === 'image').length,
-        videos: media.filter((item) => item.kind === 'video').length,
-        notes: memories.map((item) => item.note).filter(Boolean),
-      };
+      let context;
+      if (body.context && typeof body.context === 'object') {
+        const supplied = body.context;
+        context = {
+          journeyName: optionalString(supplied.journeyName, '旅程名称', 80),
+          destination: optionalString(supplied.destination, '目的地', 500),
+          departTime: optionalString(supplied.departTime, '出发时间', 40),
+          returnTime: optionalString(supplied.returnTime, '返回时间', 40),
+          photos: Math.max(0, Math.min(10000, Number(supplied.photos) || 0)),
+          videos: Math.max(0, Math.min(10000, Number(supplied.videos) || 0)),
+          notes: Array.isArray(supplied.notes) ? supplied.notes.slice(0, 100).map((note) => optionalString(note, '回忆文字', 2000)).filter(Boolean) : [],
+        };
+      } else {
+        const journey = db.getJourney(auth.user.id, journeyId);
+        if (!journey) throw new HttpError(404, '行程不存在', 'not_found');
+        const memories = db.listMemories(auth.user.id, journeyId);
+        const media = memories.flatMap((item) => item.media ?? []);
+        context = {
+          journeyName: journey.name,
+          destination: destinationsOf(journey),
+          departTime: journey.depart_time || '',
+          returnTime: journey.return_time || '',
+          photos: media.filter((item) => item.kind === 'image').length,
+          videos: media.filter((item) => item.kind === 'video').length,
+          notes: memories.map((item) => item.note).filter(Boolean),
+        };
+      }
       const locale = localeForUser(auth.user, body, req);
       if (config.ai.mock) {
         state.metrics.aiCalls += 1;

@@ -201,7 +201,7 @@
       .map(
         (user) => `
         <tr>
-          <td class="user-name">${esc(user.username)}</td>
+          <td class="user-name">${esc(user.email)}</td>
           <td>${user.journeyCount}</td>
           <td>${fmtDateTime(user.lastSeenAt)}</td>
           <td>${fmtDateTime(user.createdAt)}</td>

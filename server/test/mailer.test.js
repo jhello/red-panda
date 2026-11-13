@@ -92,10 +92,11 @@ test('邮件模板支持 zh / en / de', async () => {
   assert.equal(en.subject, 'Activate your Red Panda account');
   assert.match(en.html, /lang="en"/);
 
-  const de = resetEmail({ link, email: 'you@example.com', minutes: 30, locale: 'de' });
+  const de = resetEmail({ link, email: 'you@example.com', hours: 24, locale: 'de' });
   assert.equal(de.subject, 'Setze dein Red Panda Passwort zurück');
   assert.match(de.html, /lang="de"/);
   assert.match(de.html, /href="https:\/\/red-panda\.local\/api\/auth\/verify\?token=abc"/);
+  assert.match(de.text, /24 Stunden/);
 
   // Unknown locales fall back to Chinese instead of failing.
   const fallback = verificationEmail({ link, email: 'you@example.com', hours: 24, locale: 'fr' });

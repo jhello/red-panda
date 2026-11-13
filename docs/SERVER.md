@@ -1,6 +1,6 @@
 # 服务端指南
 
-服务端是一个零依赖的 Node.js 程序，负责账号、旅程数据、AI 请求和服务看板。
+服务端是一个零依赖的 Node.js 程序，负责邮箱账户认证、邮件、AI 请求和服务看板。昵称、语言、常用出发地、旅程、回忆与媒体保存在客户端 IndexedDB。
 
 ## 环境要求
 
@@ -67,7 +67,8 @@ npm run dev        # node --watch，改代码自动重启
 | `RED_PANDA_ADMIN_TOKEN` | 自动生成 | 看板管理员令牌；不设则生成并保存到 `data/admin-token` |
 | `RED_PANDA_SESSION_DAYS` | `30` | 登录会话闲置有效天数；每次使用会自动续期，直到手动登出 |
 | `RED_PANDA_VERIFY_HOURS` | `24` | 注册验证链接有效小时数 |
-| `RED_PANDA_RESET_MINUTES` | `60` | 重置密码链接有效分钟数 |
+| `RED_PANDA_RESET_MINUTES` | `1440` | 重置密码链接有效分钟数（24 小时） |
+| `RED_PANDA_EMAIL_RATE_LIMIT` | `20` | 同一 IP 十分钟内可触发的注册 / 验证 / 重置邮件次数 |
 | `RED_PANDA_PUBLIC_URL` | 空 | 邮件链接使用的公开地址；留空自动使用局域网地址 |
 | `RED_PANDA_MAIL_MODE` | `log` | 邮件发送方式：`log` / `smtp` / `command` / `http` |
 | `RED_PANDA_MAIL_FROM` | `Red Panda <no-reply@red-panda.local>` | 发件人；留空时自动使用 SMTP 用户名 |
@@ -309,14 +310,13 @@ sudo firewall-cmd --reload
 | `sessions` | 会话令牌哈希与过期时间 |
 | `email_verifications` | 待使用的邮箱验证令牌 |
 | `password_resets` | 待使用的密码重置令牌 |
-| `journeys` | 旅程（名称、描述、所属用户） |
+| `journeys`、`memories`、`memory_media` | 仅供旧版本数据迁移使用；客户端迁移成功后会删除对应账户的旧副本，新数据不会写入这些表 |
 
-从旧版本升级时，已有账户会自动补上 `email = NULL`、`email_verified = 1`，
-并继续用原来的用户名登录；新账户使用邮箱登录。
+邮箱是唯一账户标识。升级时没有邮箱的旧账户会被删除；有邮箱账户的旧行程、回忆和个人偏好会在客户端登录后迁移到 IndexedDB，确认本地写入成功后清除服务端旧副本。
 
 AI 调用次数等运行指标保存在内存中，服务重启后归零，不写入数据库。
 
-> 删除 `data/` 会清空所有账号、旅程和管理员令牌。请先备份。
+> 删除 `data/` 会清空所有账号和管理员令牌（旅程与回忆保存在客户端，不受影响）。请先备份。
 
 ## 常见问题
 

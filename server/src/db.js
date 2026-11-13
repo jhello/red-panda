@@ -8,10 +8,8 @@ PRAGMA busy_timeout = 5000;
 
 CREATE TABLE IF NOT EXISTS users (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
-  username       TEXT NOT NULL,
-  username_lower TEXT NOT NULL UNIQUE,
-  email          TEXT,
-  email_lower    TEXT,
+  email          TEXT NOT NULL,
+  email_lower    TEXT NOT NULL UNIQUE,
   display_name   TEXT,
   password_hash  TEXT NOT NULL,
   email_verified INTEGER NOT NULL DEFAULT 0,
@@ -36,7 +34,9 @@ CREATE TABLE IF NOT EXISTS email_verifications (
   token_hash TEXT PRIMARY KEY,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL
+  expires_at TEXT NOT NULL,
+  target_email TEXT,
+  target_email_lower TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_email_verifications_user ON email_verifications(user_id);
 
@@ -88,9 +88,8 @@ CREATE INDEX IF NOT EXISTS idx_memory_media_user ON memory_media(user_id);
 `;
 
 /**
- * Bring databases created before email registration up to date.
- * Existing accounts have no email, so they are grandfathered as verified and
- * can still log in with their username.
+ * Bring older databases to email-only authentication and remove username-only
+ * accounts that cannot receive verification or recovery mail.
  */
 function migrate(db) {
   const columns = new Set(db.prepare('PRAGMA table_info(users)').all().map((row) => row.name));
@@ -105,11 +104,42 @@ function migrate(db) {
   for (const [name, ddl] of additions) {
     if (!columns.has(name)) db.exec(`ALTER TABLE users ADD COLUMN ${ddl}`);
   }
+  db.exec("UPDATE users SET email_lower = lower(trim(email)) WHERE email IS NOT NULL AND (email_lower IS NULL OR trim(email_lower) = '')");
+  // Username-only accounts have no recovery address. Remove them, including
+  // their attached records through the configured foreign-key cascades.
+  db.exec("DELETE FROM users WHERE email IS NULL OR trim(email) = '' OR email_lower IS NULL OR trim(email_lower) = ''");
+  if (columns.has('username')) {
+    db.exec('PRAGMA foreign_keys = OFF');
+    try {
+      db.exec(`BEGIN IMMEDIATE;
+        CREATE TABLE users_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          email TEXT NOT NULL,
+          email_lower TEXT NOT NULL UNIQUE,
+          display_name TEXT,
+          password_hash TEXT NOT NULL,
+          email_verified INTEGER NOT NULL DEFAULT 0,
+          locale TEXT NOT NULL DEFAULT '',
+          usual_origin TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL,
+          last_login_at TEXT,
+          last_seen_at TEXT
+        );
+        INSERT INTO users_new (id,email,email_lower,display_name,password_hash,email_verified,locale,usual_origin,created_at,last_login_at,last_seen_at)
+          SELECT id,email,email_lower,display_name,password_hash,email_verified,locale,usual_origin,created_at,last_login_at,last_seen_at FROM users;
+        DROP TABLE users;
+        ALTER TABLE users_new RENAME TO users;
+      COMMIT;`);
+    } catch (error) {
+      try { db.exec('ROLLBACK'); } catch { /* no active transaction */ }
+      throw error;
+    } finally {
+      db.exec('PRAGMA foreign_keys = ON');
+    }
+  }
   db.exec(
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email_lower) WHERE email_lower IS NOT NULL',
   );
-  db.exec("UPDATE users SET display_name = username WHERE display_name IS NULL OR display_name = ''");
-  db.exec('UPDATE users SET email_verified = 1 WHERE email IS NULL');
 
   // 结构化行程（目的地 / 出发时间 / 返回时间）是后加的，老库补齐列。
   const journeyColumns = new Set(
@@ -123,6 +153,10 @@ function migrate(db) {
   for (const [name, ddl] of journeyAdditions) {
     if (!journeyColumns.has(name)) db.exec(`ALTER TABLE journeys ADD COLUMN ${ddl}`);
   }
+  const verificationColumns = new Set(db.prepare('PRAGMA table_info(email_verifications)').all().map((row) => row.name));
+  if (!verificationColumns.has('target_email')) db.exec('ALTER TABLE email_verifications ADD COLUMN target_email TEXT');
+  if (!verificationColumns.has('target_email_lower')) db.exec('ALTER TABLE email_verifications ADD COLUMN target_email_lower TEXT');
+
   db.exec('CREATE INDEX IF NOT EXISTS idx_journeys_time ON journeys(user_id, depart_time ASC)');
 }
 
@@ -134,24 +168,26 @@ export function openDatabase(dbPath) {
   const statements = {
     insertUser: db.prepare(
       `INSERT INTO users
-        (username, username_lower, email, email_lower, display_name, password_hash, email_verified, locale, created_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (email, email_lower, display_name, password_hash, email_verified, locale, created_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     ),
-    userByName: db.prepare('SELECT * FROM users WHERE username_lower = ?'),
     userByEmail: db.prepare('SELECT * FROM users WHERE email_lower = ?'),
     userById: db.prepare('SELECT * FROM users WHERE id = ?'),
     touchLogin: db.prepare('UPDATE users SET last_login_at = ?, last_seen_at = ? WHERE id = ?'),
     touchSeen: db.prepare('UPDATE users SET last_seen_at = ? WHERE id = ?'),
     verifyEmail: db.prepare('UPDATE users SET email_verified = 1 WHERE id = ?'),
     updatePassword: db.prepare('UPDATE users SET password_hash = ? WHERE id = ?'),
-    updateLocale: db.prepare('UPDATE users SET locale = ? WHERE id = ?'),
-    updateUsualOrigin: db.prepare('UPDATE users SET usual_origin = ? WHERE id = ?'),
+    updateEmail: db.prepare('UPDATE users SET email = ?, email_lower = ?, email_verified = 1 WHERE id = ?'),
+    clearClientProfile: db.prepare("UPDATE users SET display_name = NULL, locale = '', usual_origin = '{}' WHERE id = ?"),
+    pendingEmailChange: db.prepare('SELECT target_email, expires_at FROM email_verifications WHERE user_id = ? AND target_email IS NOT NULL AND expires_at > ? ORDER BY created_at DESC LIMIT 1'),
+    pendingPasswordReset: db.prepare('SELECT expires_at FROM password_resets WHERE user_id = ? AND expires_at > ? ORDER BY created_at DESC LIMIT 1'),
+    deletePendingEmailChange: db.prepare('DELETE FROM email_verifications WHERE user_id = ? AND target_email IS NOT NULL'),
     insertSession: db.prepare(
       'INSERT INTO sessions (token_hash, user_id, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?)',
     ),
     sessionByHash: db.prepare(
       `SELECT s.token_hash, s.user_id, s.expires_at, s.last_seen_at,
-              u.username, u.email, u.display_name, u.email_verified, u.locale,
+              u.email, u.display_name, u.email_verified, u.locale,
               u.created_at AS user_created_at, u.usual_origin
        FROM sessions s JOIN users u ON u.id = s.user_id
        WHERE s.token_hash = ?`,
@@ -163,7 +199,7 @@ export function openDatabase(dbPath) {
     deleteExpired: db.prepare('DELETE FROM sessions WHERE expires_at <= ?'),
 
     insertVerification: db.prepare(
-      'INSERT INTO email_verifications (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)',
+      'INSERT INTO email_verifications (token_hash, user_id, created_at, expires_at, target_email, target_email_lower) VALUES (?, ?, ?, ?, ?, ?)',
     ),
     verificationByHash: db.prepare('SELECT * FROM email_verifications WHERE token_hash = ?'),
     deleteVerification: db.prepare('DELETE FROM email_verifications WHERE token_hash = ?'),
@@ -237,7 +273,7 @@ export function openDatabase(dbPath) {
     countJourneys: db.prepare('SELECT COUNT(*) AS n FROM journeys'),
     countSessions: db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE expires_at > ?'),
     listUsers: db.prepare(
-      `SELECT u.id, u.username, u.email, u.display_name, u.email_verified, u.locale,
+      `SELECT u.id, u.email, u.display_name, u.email_verified, u.locale,
               u.created_at, u.last_login_at, u.last_seen_at,
               (SELECT COUNT(*) FROM journeys j WHERE j.user_id = u.id) AS journey_count
        FROM users u
@@ -249,18 +285,15 @@ export function openDatabase(dbPath) {
   return {
     raw: db,
 
-    createUser({ email, passwordHash, displayName, locale, now }) {
+    createUser({ email, passwordHash, now }) {
       const lower = String(email).trim().toLowerCase();
-      const name = displayName || lower.split('@')[0] || lower;
       const result = statements.insertUser.run(
         lower,
         lower,
-        lower,
-        lower,
-        name,
+        null,
         passwordHash,
         0,
-        locale || '',
+        '',
         now,
         now,
       );
@@ -269,10 +302,6 @@ export function openDatabase(dbPath) {
 
     findUserByEmail(email) {
       return statements.userByEmail.get(String(email).toLowerCase());
-    },
-
-    findUserByUsername(username) {
-      return statements.userByName.get(String(username).toLowerCase());
     },
 
     findUserById(id) {
@@ -295,11 +324,25 @@ export function openDatabase(dbPath) {
       statements.updatePassword.run(passwordHash, userId);
     },
 
-    setLocale(userId, locale) {
-      statements.updateLocale.run(locale, userId);
+    setEmail(userId, email) {
+      const lower = email.toLowerCase();
+      statements.updateEmail.run(email, lower, userId);
     },
-    setUsualOrigin(userId, origin) {
-      statements.updateUsualOrigin.run(JSON.stringify(origin), userId);
+
+    clearClientProfile(userId) {
+      statements.clearClientProfile.run(userId);
+    },
+
+    pendingEmailChange(userId, now) {
+      return statements.pendingEmailChange.get(userId, now) || null;
+    },
+
+    pendingPasswordReset(userId, now) {
+      return statements.pendingPasswordReset.get(userId, now) || null;
+    },
+
+    deletePendingEmailChange(userId) {
+      statements.deletePendingEmailChange.run(userId);
     },
 
     createSession({ tokenHash, userId, now, expiresAt }) {
@@ -330,9 +373,9 @@ export function openDatabase(dbPath) {
       statements.deleteExpired.run(now);
     },
 
-    createEmailVerification({ tokenHash, userId, now, expiresAt }) {
+    createEmailVerification({ tokenHash, userId, now, expiresAt, targetEmail = null }) {
       statements.deleteVerificationsForUser.run(userId);
-      statements.insertVerification.run(tokenHash, userId, now, expiresAt);
+      statements.insertVerification.run(tokenHash, userId, now, expiresAt, targetEmail, targetEmail?.toLowerCase() || null);
     },
 
     consumeEmailVerification(tokenHash, now) {
@@ -346,6 +389,10 @@ export function openDatabase(dbPath) {
     createPasswordReset({ tokenHash, userId, now, expiresAt }) {
       statements.deleteResetsForUser.run(userId);
       statements.insertReset.run(tokenHash, userId, now, expiresAt);
+    },
+
+    deleteResetsForUser(userId) {
+      statements.deleteResetsForUser.run(userId);
     },
 
     consumePasswordReset(tokenHash, now) {
