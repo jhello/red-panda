@@ -2581,8 +2581,7 @@
     }
 
     app.innerHTML = `
-      <div class="screen auth-screen${active === 'login' ? ' auth-login-screen' : ''}">
-        ${active === 'login' ? '' : languageSwitcher()}
+      <div class="screen auth-screen auth-login-screen">
         <div class="auth-hero">
           <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
           <h1 class="auth-title">${t('brand.big')}</h1>
@@ -2651,7 +2650,7 @@
             </button>
           </p>
         </div>
-        ${active === 'login' ? authLanguageSwitcher() : ''}
+        ${authLanguageSwitcher()}
       </div>`;
 
     app.querySelectorAll('[data-tab]').forEach((button) => {
