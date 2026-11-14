@@ -631,8 +631,10 @@
         editItemSub: '改完直接点「确定」即可。',
         saveItem: '保存修改',
         create: '创建旅程',
-        save: '就这样',
+        save: '保存旅程',
+        saveDraft: '保存草稿',
         savedToast: '旅程已保存',
+        draftSavedToast: '草稿已保存',
       },
 
       journeys: {
@@ -1080,8 +1082,10 @@
         editItemSub: 'Make your changes, then confirm.',
         saveItem: 'Save changes',
         create: 'Create journey',
-        save: 'Save it',
+        save: 'Save journey',
+        saveDraft: 'Save draft',
         savedToast: 'Journey saved',
+        draftSavedToast: 'Draft saved',
       },
 
       journeys: {
@@ -1532,8 +1536,10 @@
         editItemSub: 'Änderungen übernehmen, dann bestätigen.',
         saveItem: 'Änderungen speichern',
         create: 'Reise erstellen',
-        save: 'Speichern',
+        save: 'Reise speichern',
+        saveDraft: 'Entwurf speichern',
         savedToast: 'Reise gespeichert',
+        draftSavedToast: 'Entwurf gespeichert',
       },
 
       journeys: {
@@ -3505,6 +3511,7 @@
 
   function renderNewJourney() {
     const plan = planState;
+    const isDraftEdit = Boolean(planState.draftId);
 
     if (plan.editingItem !== null && plan.items[plan.editingItem] == null) {
       plan.editingItem = null;
@@ -3629,6 +3636,10 @@
             </tbody>
           </table>
         </section>
+        <div class="row">
+          <button class="btn primary" type="button" data-action="plan-save">${t('plan.save')}</button>
+          <button class="btn ghost" type="button" data-action="plan-save-draft">${t('plan.saveDraft')}</button>
+        </div>
         ${plan.error ? `<p class="form-error">${esc(plan.error)}</p>` : ''}`;
     } else if (plan.locked) {
       body = `
@@ -3657,7 +3668,7 @@
 
     app.innerHTML = `
       <div class="screen">
-        ${topbar({
+        ${isDraftEdit ? '' : topbar({
           title: '',
           back: true,
           right: plan.items.length > 0
@@ -3725,6 +3736,7 @@
     });
     bindTimeField(itemDepart, itemDepartPeriod, 'departTime');
     bindTimeField(itemReturn, itemReturnPeriod, 'returnTime');
+    renderNavBar();
   }
 
   function localPlanTime(value) {
@@ -3797,6 +3809,14 @@
     renderNewJourney();
   }
 
+  /** Persist the current plan back to its draft without leaving the page. */
+  function savePlanAsDraft() {
+    const items = Array.isArray(planState.items) ? planState.items : [];
+    if (!items.length) return;
+    storeDraft();
+    toast(t('plan.draftSavedToast'));
+  }
+
   /** Save the extracted plan as a real journey in this device's IndexedDB. */
   async function savePlanAsJourney() {
     const items = Array.isArray(planState.items) ? planState.items : [];
@@ -3858,7 +3878,8 @@
    */
   function renderNavBar() {
     if (!navHost) return;
-    if (['database', 'settings'].includes(parseRoute().name)) {
+    const route = parseRoute();
+    if (['database', 'settings'].includes(route.name) || (route.name === 'new' && Boolean(planState.draftId))) {
       navHost.innerHTML = '';
       navHost.hidden = true;
     } else {
@@ -5276,6 +5297,9 @@
         break;
       case 'plan-save':
         savePlanAsJourney();
+        break;
+      case 'plan-save-draft':
+        savePlanAsDraft();
         break;
       case 'plan-draft': {
         const draft = loadDrafts().find((entry) => entry.id === target.dataset.draftId);
