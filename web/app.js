@@ -12,6 +12,7 @@
   const app = document.getElementById('app');
   const overlayHost = document.getElementById('app-overlay');
   const navHost = document.getElementById('app-nav');
+  const statusHost = document.getElementById('app-status');
   const toastEl = document.getElementById('toast');
 
   const state = {
@@ -24,6 +25,8 @@
     currentJourneyId: null,
     memoryJourneyId: null,
     authTab: 'login',
+    // null = unknown, true = reachable, false = offline.
+    online: null,
   };
 
   // All personal travel content lives in IndexedDB so Web, Android WebView and
@@ -484,6 +487,16 @@
         ai_invalid_json: 'AI 返回的内容格式不正确',
       },
 
+      offline: {
+        banner: '离线模式：正在使用本机数据，联网后自动恢复在线功能',
+        title: '当前离线',
+        detail: '连不上服务器，先用本机数据吧。联网后会自动恢复 AI、邮件和地点搜索。',
+        error: '当前连不上服务器，请检查网络后重试',
+        action: '重试连接',
+        retrying: '正在重连…',
+        online: '已重新连接',
+      },
+
       setup: {
         title: '连接你的服务器',
         sub: '在笔记本上启动服务端，然后填入它的局域网地址。',
@@ -817,6 +830,16 @@
         not_found: 'Not found',
         internal_error: 'Internal server error',
         ai_invalid_json: 'The AI returned an unexpected response',
+      },
+
+      offline: {
+        banner: 'Offline mode — using on-device data. Online features return automatically.',
+        title: 'You are offline',
+        detail: "Can't reach the server, so local data is all you get for now. AI, email and place search come back once you are online again.",
+        error: "Can't reach the server — check your connection and try again",
+        action: 'Retry connection',
+        retrying: 'Reconnecting…',
+        online: 'Back online',
       },
 
       setup: {
@@ -1157,6 +1180,17 @@
         not_found: 'Nicht gefunden',
         internal_error: 'Interner Serverfehler',
         ai_invalid_json: 'Die KI hat eine unerwartete Antwort zurückgegeben',
+      },
+
+      offline: {
+        banner: 'Offline-Modus – es werden lokale Daten verwendet. Online-Funktionen kommen automatisch zurück.',
+        title: 'Du bist offline',
+        detail:
+          'Der Server ist nicht erreichbar, vorerst gibt es nur lokale Daten. KI, E-Mail und Ortssuche sind wieder da, sobald du online bist.',
+        error: 'Server nicht erreichbar – bitte Netzwerk prüfen und erneut versuchen',
+        action: 'Verbindung erneut versuchen',
+        retrying: 'Verbindung wird wiederhergestellt…',
+        online: 'Wieder online',
       },
 
       setup: {
@@ -1713,6 +1747,12 @@
       if (local !== null) return local;
     }
     if (!state.server) throw new ApiError(t('api.noServer'), 0, 'no_server');
+    // The server is known to be unreachable: fail immediately instead of
+    // waiting for the network timeout, and keep retrying in the background.
+    if (state.online === false) {
+      scheduleReconnect();
+      throw new ApiError(t('offline.error'), 0, 'offline');
+    }
 
     const headers = { Accept: 'application/json' };
     if (auth && state.token) headers.Authorization = `Bearer ${state.token}`;
@@ -1728,19 +1768,25 @@
         signal: AbortSignal.timeout(timeout),
       });
     } catch (error) {
+      const timedOut = error.name === 'TimeoutError';
       if (state.ready) {
-        if (error.name === 'TimeoutError') {
+        if (timedOut) {
           toast(t('api.timeout'), 'error');
         } else if (Date.now() - lastNetworkToast > 4000) {
           lastNetworkToast = Date.now();
           toast(t('api.networkToast'), 'error');
         }
       }
-      if (error.name === 'TimeoutError') {
+      // The server did not answer: switch to offline mode and keep retrying.
+      setOnline(false);
+      scheduleReconnect();
+      if (timedOut) {
         throw new ApiError(t('api.timeout'), 0, 'timeout');
       }
       throw new ApiError(t('api.network'), 0, 'network');
     }
+    // Any answer means the server is reachable, even if it reports an error.
+    if (state.online !== true) setOnline(true);
 
     const text = await response.text();
     let data = null;
@@ -1912,6 +1958,103 @@
     return data;
   }
 
+  // ---- connection state ----------------------------------------------------
+  //
+  // The app is offline-first: every personal feature reads and writes the
+  // device's IndexedDB, so the UI must never wait for the network. The server
+  // only adds online features (AI, email, place search), and those come back
+  // automatically once the connection is restored.
+  //
+  // The state machine itself lives in connection.js so it can be tested.
+
+  const connection = RedPandaConnection.createConnectionManager({
+    getServer: () => state.server,
+    onStatus: (alive, previous) => {
+      state.online = alive;
+      renderConnectionBanner();
+      // Only announce a real offline -> online recovery, not the first probe.
+      if (alive && previous === false) toast(t('offline.online'), 'info');
+    },
+    onReconnect: async () => {
+      await syncSession();
+      render();
+    },
+  });
+
+  /** Record the connection state and refresh the offline banner. */
+  function setOnline(online) {
+    const previous = state.online;
+    connection.setStatus(online);
+    state.online = connection.online;
+    return previous !== state.online;
+  }
+
+  /** Manual "retry" from the offline banner. */
+  async function retryServer() {
+    if (!state.server) return;
+    if (statusHost) statusHost.innerHTML = `<span>${esc(t('offline.retrying'))}</span>`;
+    const alive = await connection.retry();
+    if (alive) {
+      render();
+      return;
+    }
+    toast(t('offline.error'), 'error');
+    renderConnectionBanner();
+  }
+
+  /** Poll the server until it answers again, then bring online features back. */
+  function scheduleReconnect() {
+    connection.schedule();
+  }
+
+  /**
+   * Guard for online-only actions. Returns false (and tells the user) when the
+   * server cannot be reached, so buttons never spin for the whole timeout.
+   */
+  async function ensureServer({ timeout = 3000 } = {}) {
+    if (!state.server) {
+      toast(t('api.noServer'), 'error');
+      return false;
+    }
+    if (state.online === true) return true;
+    if (state.online === false) {
+      toast(t('offline.error'), 'error');
+      scheduleReconnect();
+      return false;
+    }
+    const alive = await connection.ensure(timeout);
+    state.online = connection.online;
+    if (!alive) {
+      toast(t('offline.error'), 'error');
+      scheduleReconnect();
+      return false;
+    }
+    return true;
+  }
+
+  /** Pull the account state from the server. Safe to call while offline. */
+  async function syncSession() {
+    if (!state.server || !state.token) return;
+    try {
+      const data = await api('/api/me', { timeout: 8000 });
+      setOnline(true);
+      state.user = await hydrateClientProfile(data.user);
+      cacheUser(state.user);
+      render();
+    } catch (error) {
+      if (error.status === 401) {
+        clearToken();
+        render();
+        return;
+      }
+      // Offline or server error: keep the cached session and local data.
+      if (error.code === 'network' || error.code === 'timeout') {
+        setOnline(false);
+        scheduleReconnect();
+      }
+    }
+  }
+
   // ---- shared markup ------------------------------------------------------
 
   const brand = `
@@ -2059,6 +2202,8 @@
     renderNavBar();
     // 草稿浮层浮在页面之上，每次重绘都要跟着刷新（语言切换、页面切换等）。
     renderDraftOverlay();
+    // 离线提示条独立于页面内容，重新渲染时保持显示状态。
+    renderConnectionBanner();
   }
 
   function renderSetup() {
@@ -2241,6 +2386,11 @@
       const button = form.querySelector('button[type="submit"]');
       setBusy(button, true, active === 'login' ? t('auth.busyLogin') : t('auth.busyRegister'));
       try {
+        // 登录与注册都要连服务器，离线时直接提示，不要干等网络超时。
+        if (!(await ensureServer())) {
+          setBusy(button, false);
+          return;
+        }
         if (active === 'register') {
           const data = await api('/api/auth/register', {
             method: 'POST',
@@ -2319,6 +2469,7 @@
       const button = form.querySelector('button[type="submit"]');
       setBusy(button, true, t('pending.sending'));
       try {
+        if (!(await ensureServer())) { setBusy(button, false); return; }
         const data = await api('/api/auth/resend-verification', {
           method: 'POST',
           auth: false,
@@ -2373,6 +2524,7 @@
       const button = form.querySelector('button[type="submit"]');
       setBusy(button, true, t('pending.sending'));
       try {
+        if (!(await ensureServer())) { setBusy(button, false); return; }
         const data = await api('/api/auth/forgot-password', {
           method: 'POST',
           auth: false,
@@ -3258,6 +3410,13 @@
   async function runPlan(text) {
     const prompt = String(text ?? '').trim();
     if (!prompt) return;
+    // AI needs the server; check first so the button does not spin for 90s.
+    if (!(await ensureServer())) {
+      planState.busy = false;
+      planState.error = t('offline.error');
+      renderNewJourney();
+      return;
+    }
     planState.busy = true;
     planState.error = '';
     renderNewJourney();
@@ -3318,6 +3477,7 @@
     const idle = button.textContent;
     button.textContent = t('ai.busy');
     try {
+      if (!(await ensureServer())) return;
       const data = await api('/api/ai/journey-description', {
         method: 'POST',
         body: { name: String(name).trim() },
@@ -3346,6 +3506,23 @@
     navHost.innerHTML = show ? navBar() : '';
     // 导航栏是重建的，重新贴一次倒计时状态。
     applyCooldownButton();
+  }
+
+  /**
+   * 离线提示条：显示在所有页面顶部，说明本机数据可用、在线功能稍后恢复。
+   * 元素独立于 #app，重新渲染页面时不会被清掉。
+   */
+  function renderConnectionBanner() {
+    if (!statusHost) return;
+    const offline = state.online === false;
+    statusHost.hidden = !offline;
+    if (!offline) {
+      statusHost.innerHTML = '';
+      return;
+    }
+    statusHost.innerHTML = `
+      <span>${esc(t('offline.banner'))}</span>
+      <button type="button" data-action="retry-server">${esc(t('offline.action'))}</button>`;
   }
 
   function navBar() {
@@ -3727,6 +3904,7 @@
       const journey = (await storeAll('journeys')).find(item=>String(item.id)===String(journeyId));
       const memories = (await storeAll('memories')).filter(item=>String(item.journeyId)===String(journeyId));
       const media = memories.flatMap(item=>item.media||[]);
+      if (!(await ensureServer())) return;
       const data = await api('/api/ai/memory-recap', {
         method: 'POST',
         body: { journeyId: Number(journeyId), context: { journeyName:journey?.name||'', destination:journeyDestinations(journey||{}), departTime:journeyRange(journey||{}).depart||'', returnTime:journeyRange(journey||{}).ret||'', photos:media.filter(x=>x.kind==='image').length, videos:media.filter(x=>x.kind==='video').length, notes:memories.map(x=>x.note).filter(Boolean) } },
@@ -4086,6 +4264,7 @@
       if (!email) { showError('email-error', getLocale()==='zh'?'请输入新邮箱地址':'Enter a new email address'); return; }
       const button = emailForm.querySelector('button[type="submit"]'); setBusy(button, true, t('busy.sending'));
       try {
+        if (!(await ensureServer())) return;
         const result = await api('/api/me/email', { method: 'PUT', body: { email, locale: getLocale() } });
         state.user = { ...state.user, pendingEmail: result.pendingEmail || null, pendingEmailExpiresAt: result.pendingEmailExpiresAt || null };
         cacheUser(state.user); emailForm.reset();
@@ -4102,6 +4281,7 @@
       const scrollY = window.scrollY;
       setBusy(resendEmailButton, true, t('pending.sending'));
       try {
+        if (!(await ensureServer())) return;
         const result = await api('/api/me/email', { method: 'PUT', body: { email, locale: getLocale() } });
         state.user = { ...state.user, pendingEmail: result.pendingEmail || null, pendingEmailExpiresAt: result.pendingEmailExpiresAt || null };
         cacheUser(state.user);
@@ -4283,6 +4463,7 @@
       setBusy(button, true, t('busy.saving'));
       try {
         const context = resolvedPlace ? `\n已选地点的结构化地址信息：${originAddressText(resolvedPlace)}` : '';
+        if (!(await ensureServer())) { setBusy(button, false); return; }
         const parsed = await api('/api/me/usual-origin/parse', { method: 'POST', body: { text: `${rawText}${context}` } });
         const origin = Object.fromEntries(originFields.map((field) => [field, parsed.origin?.[field] || resolvedPlace?.[field] || '']));
         await saveOrigin(origin, editingIndex);
@@ -4391,6 +4572,7 @@
         const scrollY = window.scrollY;
         setBusy(resetPasswordButton, true, t('forgot.sending'));
         try {
+          if (!(await ensureServer())) { setBusy(button, false); return; }
           const result = await api('/api/me/password-reset', {
             method: 'POST',
             body: { locale: getLocale() },
@@ -4453,6 +4635,9 @@
     const target = event.target.closest('[data-action]');
     if (!target) return;
     switch (target.dataset.action) {
+      case 'retry-server':
+        retryServer();
+        break;
       case 'backup-export':
         exportBackup().catch(error=>{backupStatus(`${getLocale()==='zh'?'导出失败':'Export failed'}: ${error.message}`,null,'error');toast(error.message,'error');});
         break;
@@ -4650,7 +4835,23 @@
   };
 
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible' || !state.token || !state.server) return;
+    if (document.visibilityState !== 'visible' || !state.server) return;
+    // Coming back to the foreground is a good moment to check the server:
+    // the network may have changed while the app was in the background.
+    if (state.online !== true) {
+      connection.retry().then(async (alive) => {
+        if (!alive) {
+          setOnline(false);
+          scheduleReconnect();
+          return;
+        }
+        setOnline(true);
+        await syncSession();
+        render();
+      });
+      return;
+    }
+    if (!state.token) return;
     refreshAccountSettings().catch(() => {});
   });
 
@@ -4694,33 +4895,32 @@
   // ---- boot ---------------------------------------------------------------
 
   async function init() {
-    state.ready = false;
     state.server = currentServer();
     state.token = localStorage.getItem(STORAGE.token) || '';
     state.user = state.token ? readCachedUser() : null;
 
-    if (state.token && state.server) {
-      try {
-        const data = await api('/api/me');
-        state.user = data.user;
-        state.user = await hydrateClientProfile(data.user);
-        cacheUser(state.user);
-      } catch (error) {
-        if (error.status === 401) {
-          clearToken();
-        }
-        // Network/server errors keep the cached user and token, so the app
-        // opens on the same screen it was left on instead of logging out.
-      }
-    }
-
+    // The profile lives in IndexedDB, so it is available without the server.
     try {
-      if(state.user) state.user=await hydrateClientProfile(state.user);
+      if (state.user) state.user = await hydrateClientProfile(state.user);
     } catch { /* IndexedDB can be unavailable in restricted browser modes. */ }
 
-
+    // Draw the first screen from local data right away. Waiting for the
+    // server here is what used to leave the app on a blank screen offline.
     state.ready = true;
     render();
+
+    // Then talk to the server in the background and layer the online
+    // features on top once it answers.
+    if (state.server) {
+      connection.start();
+      const alive = await connection.probe(4000);
+      setOnline(alive);
+      if (alive) {
+        await syncSession();
+      } else {
+        scheduleReconnect();
+      }
+    }
   }
 
   applyDocumentLocale();

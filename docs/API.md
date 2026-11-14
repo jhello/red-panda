@@ -41,7 +41,7 @@ application/json; charset=utf-8`），`204` 响应无正文。
 
 ### `GET /api/health`
 
-无需认证。
+无需认证。客户端用它判断服务端是否可用：返回 `200` 且 `ok` 为 `true` 才算连通，否则视为离线并按指数退避重试。
 
 ```json
 {

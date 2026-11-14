@@ -527,6 +527,38 @@ img.seal {
   font-size: 13px;
 }
 
+/* 离线提示条：固定在顶部，告诉用户在线功能暂时不可用 */
+.app-status {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  padding: 8px 16px calc(8px + env(safe-area-inset-top));
+  background: rgba(168, 58, 44, 0.95);
+  color: #fff6ec;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+  box-shadow: 0 2px 12px rgba(32, 38, 40, 0.18);
+}
+
+.app-status[hidden] {
+  display: none;
+}
+
+.app-status button {
+  margin-left: 10px;
+  padding: 3px 10px;
+  border: 1px solid rgba(255, 246, 236, 0.7);
+  border-radius: 999px;
+  background: transparent;
+  color: #fff6ec;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 /* 草稿浮在页面之上，不再有薄纱遮挡；卡片自身用磨砂半透明 */
 /* 浮层宿主：草稿列表浮在任意页面之上（在底部导航栏之下） */
 .app-overlay {
