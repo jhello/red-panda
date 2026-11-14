@@ -1081,8 +1081,8 @@ img.seal {
 /* 腾讯地图选点（仿微信发送位置） */
 .origin-picker { position: fixed; inset: 0; z-index: 1200; display: flex; flex-direction: column; background: var(--bg, #f7f2e8); }
 .origin-picker[hidden] { display: none; }
-.origin-picker-head { position: absolute; top: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; padding: calc(10px + env(safe-area-inset-top)) 12px 10px; background: linear-gradient(to bottom, rgba(255,255,255,0.96), rgba(255,255,255,0.72) 70%, rgba(255,255,255,0)); pointer-events: none; }
-.origin-picker-head .btn { pointer-events: auto; min-width: 60px; padding: 7px 14px; font-size: 15px; border-radius: 8px; }
+.origin-picker-head { position: absolute; top: 0; left: 0; right: 0; z-index: 200; display: flex; align-items: center; justify-content: space-between; padding: calc(10px + env(safe-area-inset-top)) 12px 10px; background: linear-gradient(to bottom, rgba(255,255,255,0.96), rgba(255,255,255,0.72) 70%, rgba(255,255,255,0)); pointer-events: none; }
+.origin-picker-head .btn { pointer-events: auto; min-width: 60px; padding: 7px 14px; font-size: 15px; border-radius: 8px; position: relative; z-index: 201; }
 .origin-picker-head .btn.ghost { background: rgba(255,255,255,0.92); border: 1px solid var(--line); color: var(--ink); }
 .origin-picker-head .btn.primary { background: #07c160; color: #fff; border: none; }
 .origin-picker-head .btn.primary:disabled { opacity: 0.45; }
@@ -1092,7 +1092,7 @@ img.seal {
 .origin-picker-center-pin { position: absolute; left: 50%; top: 50%; width: 28px; height: 38px; margin-left: -14px; margin-top: -38px; z-index: 10; pointer-events: none; }
 .origin-picker-center-pin::before { content: ""; position: absolute; left: 4px; top: 0; width: 20px; height: 20px; background: #22b573; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.25); box-sizing: border-box; }
 .origin-picker-center-pin::after { content: ""; position: absolute; left: 12px; top: 18px; width: 4px; height: 20px; background: #22b573; border-radius: 2px; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
-.origin-picker-locate { position: absolute; right: 12px; bottom: 16px; z-index: 20; width: 40px; height: 40px; border: none; border-radius: 50%; background: #fff; color: #333; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.18); cursor: pointer; padding: 0; }
+.origin-picker-locate { position: absolute; right: 12px; bottom: 16px; z-index: 200; width: 44px; height: 44px; border: none; border-radius: 50%; background: #fff; color: #333; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.18); cursor: pointer; padding: 0; pointer-events: auto; }
 .origin-picker-locate svg { width: 22px; height: 22px; }
 .origin-picker-drag { flex: 0 0 18px; display: flex; align-items: center; justify-content: center; background: var(--card, #fff); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); cursor: ns-resize; touch-action: none; z-index: 5; }
 .origin-picker-drag span { width: 36px; height: 4px; border-radius: 2px; background: var(--line-strong, #ccc); }
