@@ -2798,8 +2798,7 @@
   function renderPending(query = {}) {
     const email = query.email || '';
     app.innerHTML = `
-      <div class="screen auth-screen">
-        ${languageSwitcher()}
+      <div class="screen auth-screen auth-login-screen">
         <div class="auth-hero">
           <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
           <h1 class="auth-title">${t('brand.big')}</h1>
@@ -2818,11 +2817,12 @@
               <input name="email" type="email" value="${esc(email)}" inputmode="email"
                 maxlength="254" placeholder="you@example.com" autocapitalize="off" spellcheck="false" required />
             </label>
+            <button class="btn primary block" type="button" data-action="login">${t('pending.backLogin')}</button>
             <button class="btn ghost block" type="submit">${t('pending.resend')}</button>
           </form>
-          <button class="btn primary block" data-action="login">${t('pending.backLogin')}</button>
           <p class="hint">${t('pending.hint')}</p>
         </div>
+        ${authLanguageSwitcher()}
       </div>`;
 
     const form = document.getElementById('resend-form');
