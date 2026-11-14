@@ -115,7 +115,7 @@ application/json; charset=utf-8`），`204` 响应无正文。
 }
 ```
 
-昵称、界面语言和常用出发地保存在客户端 IndexedDB，服务端不再返回这些字段。
+昵称、界面语言和常用地址保存在客户端 IndexedDB，服务端不再返回这些字段।
 
 邮箱未验证时返回 `403`（`email_not_verified`），此时可以调用重发接口。
 
@@ -218,7 +218,7 @@ application/json; charset=utf-8`），`204` 响应无正文。
 
 ### `PUT /api/me/profile`、`PUT /api/me/locale`、`PUT /api/me/usual-origin`
 
-这些接口已删除，返回 `404`。昵称、界面语言和常用出发地保存在客户端
+这些接口已删除，返回 `404`。昵称、界面语言和常用地址保存在客户端
 IndexedDB，由客户端本地读写。
 
 ### `POST /api/me/usual-origin/parse`
@@ -246,7 +246,7 @@ IndexedDB，由客户端本地读写。
 
 ## 个人数据
 
-旅程、回忆、照片和视频以及账户资料（昵称、界面语言、常用出发地）全部保存在
+旅程、回忆、照片和视频以及账户资料（昵称、界面语言、常用地址）全部保存在
 客户端 IndexedDB，服务端不再保存这些数据，也不提供相关读写接口。
 
 ### `POST /api/ai/memory-recap`

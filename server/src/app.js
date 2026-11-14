@@ -864,7 +864,7 @@ export function createApp(config, options = {}) {
     const text = typeof body.text === 'string' ? body.text.trim().slice(0, 1000) : '';
     if (!text) throw new HttpError(400, '请输入地点描述', 'validation_error');
     const result = await chat(config, [
-      { role: 'system', content: '将用户给出的常用出发地描述解析为 JSON 对象。只返回JSON，键名必须为name,country,province,city,district,township,street,streetNumber；无法确定的值为空字符串。name 用适合显示的简短地点名。' },
+      { role: 'system', content: '将用户给出的常用地址描述解析为 JSON 对象。只返回JSON，键名必须为name,country,province,city,district,township,street,streetNumber；无法确定的值为空字符串。name 用适合显示的简短地点名。' },
       { role: 'user', content: text },
     ], { maxTokens: 500, temperature: 0 });
     let origin;

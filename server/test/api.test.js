@@ -418,7 +418,7 @@ test('界面语言保存在客户端且邮件语言按请求选择', async () =>
   assert.ok(chineseMessage.text.includes('你好，'));
 });
 
-test('常用出发地只保存在客户端，地点解析仍可用', async () => {
+test('常用地址只保存在客户端，地点解析仍可用', async () => {
   const saved = await request('/api/me/usual-origin', { method: 'PUT', token, body: { origins: [{ name: '家', country: '中国' }] } });
   assert.equal(saved.status, 404);
   const current = await request('/api/me', { token });
