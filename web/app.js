@@ -5308,6 +5308,8 @@
   navHost?.addEventListener('click', handleAction);
   // 离线提示条在 #app 之外，它的「重试」按钮也要能触发动作。
   statusHost?.addEventListener('click', handleAction);
+  // 草稿浮层在 #app 之外，列表里的打开 / 展开 / 删除都要能触发动作。
+  overlayHost?.addEventListener('click', handleAction);
 
   /**
    * 点空白处收起草稿浮层：展开的草稿先收回列表，否则收起整个浮层。
