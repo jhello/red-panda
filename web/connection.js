@@ -11,6 +11,9 @@
 
   const MIN_DELAY_MS = 4000;
   const MAX_DELAY_MS = 30000;
+  // 超过这个时间没确认过服务器状态，就重新探测一次，
+  // 免得服务器中途挂掉时在线功能干等几十秒。
+  const STALE_MS = 8000;
 
   /**
    * @param {object} options
@@ -25,6 +28,7 @@
       onStatus = () => {},
       onReconnect = () => {},
       fetch: fetchImpl = typeof fetch === 'function' ? fetch.bind(global) : null,
+      now = () => Date.now(),
     } = options;
 
     let online = null; // null = 未知，true = 在线，false = 离线
@@ -32,11 +36,13 @@
     let delay = MIN_DELAY_MS;
     let probing = false;
     let stopped = false;
+    let lastCheck = 0; // 上次探测的时间戳
 
     /** 探测服务器是否活着；永远不抛异常。 */
     async function probe(timeout = 4000) {
       const server = getServer();
       if (!server || !fetchImpl) return false;
+      lastCheck = now();
       try {
         const response = await fetchImpl(`${server}/api/health`, {
           headers: { Accept: 'application/json' },
@@ -54,7 +60,11 @@
     function setStatus(alive) {
       const previous = online;
       online = alive;
-      if (alive) delay = MIN_DELAY_MS;
+      // 变成在线说明刚探测成功，短时间内不用再探。
+      if (alive) {
+        delay = MIN_DELAY_MS;
+        lastCheck = now();
+      }
       if (previous !== alive) onStatus(alive, previous);
       return previous !== alive;
     }
@@ -94,7 +104,8 @@
 
     /** 在线功能的前置检查：连不上就别白等网络超时。 */
     async function ensure(timeout = 3000) {
-      if (online === true) return true;
+      // 刚确认过在线就直接放行；太久没确认就重新探测。
+      if (online === true && now() - lastCheck < STALE_MS) return true;
       if (online === false) {
         schedule();
         return false;
@@ -137,7 +148,7 @@
     };
   }
 
-  const api = { createConnectionManager, MIN_DELAY_MS, MAX_DELAY_MS };
+  const api = { createConnectionManager, MIN_DELAY_MS, MAX_DELAY_MS, STALE_MS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   global.RedPandaConnection = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

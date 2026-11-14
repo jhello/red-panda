@@ -488,11 +488,11 @@
       },
 
       offline: {
-        banner: '离线模式：正在使用本机数据，联网后自动恢复在线功能',
+        banner: '离线模式：服务或网络不可用',
         title: '当前离线',
         detail: '连不上服务器，先用本机数据吧。联网后会自动恢复 AI、邮件和地点搜索。',
         error: '当前连不上服务器，请检查网络后重试',
-        action: '重试连接',
+        action: '重试',
         retrying: '正在重连…',
         online: '已重新连接',
       },
@@ -833,11 +833,11 @@
       },
 
       offline: {
-        banner: 'Offline mode — using on-device data. Online features return automatically.',
+        banner: 'Offline mode: server or network unavailable',
         title: 'You are offline',
         detail: "Can't reach the server, so local data is all you get for now. AI, email and place search come back once you are online again.",
         error: "Can't reach the server — check your connection and try again",
-        action: 'Retry connection',
+        action: 'Retry',
         retrying: 'Reconnecting…',
         online: 'Back online',
       },
@@ -1183,12 +1183,12 @@
       },
 
       offline: {
-        banner: 'Offline-Modus – es werden lokale Daten verwendet. Online-Funktionen kommen automatisch zurück.',
+        banner: 'Offline-Modus: Server oder Netzwerk nicht erreichbar',
         title: 'Du bist offline',
         detail:
           'Der Server ist nicht erreichbar, vorerst gibt es nur lokale Daten. KI, E-Mail und Ortssuche sind wieder da, sobald du online bist.',
         error: 'Server nicht erreichbar – bitte Netzwerk prüfen und erneut versuchen',
-        action: 'Verbindung erneut versuchen',
+        action: 'Erneut',
         retrying: 'Verbindung wird wiederhergestellt…',
         online: 'Wieder online',
       },
@@ -1992,7 +1992,9 @@
   /** Manual "retry" from the offline banner. */
   async function retryServer() {
     if (!state.server) return;
-    if (statusHost) statusHost.innerHTML = `<span>${esc(t('offline.retrying'))}</span>`;
+    if (statusHost) {
+      statusHost.innerHTML = `<span class="app-status-text">${esc(t('offline.retrying'))}</span>`;
+    }
     const alive = await connection.retry();
     if (alive) {
       render();
@@ -2978,8 +2980,11 @@
     const nav = document.querySelector('.nav-bar');
     if (!layer || !nav) return;
     const navRect = nav.getBoundingClientRect();
+    // 离线提示条贴在导航栏上边，草稿浮层要再往上让一让。
+    const banner = document.getElementById('app-status');
+    const bannerHeight = banner && !banner.hidden ? banner.getBoundingClientRect().height : 0;
     layer.style.top = 'auto';
-    layer.style.bottom = `${Math.round(window.innerHeight - navRect.top + 10)}px`;
+    layer.style.bottom = `${Math.round(window.innerHeight - navRect.top + 10 + bannerHeight)}px`;
   }
 
   function refreshDraftList() {
@@ -3499,17 +3504,29 @@
    */
   function renderNavBar() {
     if (!navHost) return;
-    if (['database', 'settings'].includes(parseRoute().name)) { navHost.innerHTML=''; navHost.hidden = true; return; }
-    // 只要已登录就常驻显示：任何页面（含等待服务器时）都不会缺失。
-    const show = Boolean(state.user);
-    navHost.hidden = !show;
-    navHost.innerHTML = show ? navBar() : '';
-    // 导航栏是重建的，重新贴一次倒计时状态。
-    applyCooldownButton();
+    if (['database', 'settings'].includes(parseRoute().name)) {
+      navHost.innerHTML = '';
+      navHost.hidden = true;
+    } else {
+      // 只要已登录就常驻显示：任何页面（含等待服务器时）都不会缺失。
+      const show = Boolean(state.user);
+      navHost.hidden = !show;
+      navHost.innerHTML = show ? navBar() : '';
+      // 导航栏是重建的，重新贴一次倒计时状态。
+      applyCooldownButton();
+    }
+    updateNavHeight();
+  }
+
+  /** 实测底部导航栏高度，离线提示条要正好贴在它上边。 */
+  function updateNavHeight() {
+    const bar = navHost?.querySelector('.nav-bar');
+    const height = bar ? Math.round(bar.getBoundingClientRect().height) : 0;
+    document.documentElement.style.setProperty('--nav-h', `${height}px`);
   }
 
   /**
-   * 离线提示条：显示在所有页面顶部，说明本机数据可用、在线功能稍后恢复。
+   * 离线提示条：贴在底部导航栏上边，缩成一行，说明本机数据可用、在线功能稍后恢复。
    * 元素独立于 #app，重新渲染页面时不会被清掉。
    */
   function renderConnectionBanner() {
@@ -3518,11 +3535,17 @@
     statusHost.hidden = !offline;
     if (!offline) {
       statusHost.innerHTML = '';
+      document.documentElement.style.setProperty('--offline-h', '0px');
       return;
     }
     statusHost.innerHTML = `
-      <span>${esc(t('offline.banner'))}</span>
+      <span class="app-status-text">${esc(t('offline.banner'))}</span>
       <button type="button" data-action="retry-server">${esc(t('offline.action'))}</button>`;
+    // 量出实际高度，让页面底部和浮层给它让位。
+    const height = Math.round(statusHost.getBoundingClientRect().height);
+    document.documentElement.style.setProperty('--offline-h', `${height}px`);
+    // 草稿浮层是 JS 定位的，横幅出现后要重新让位。
+    positionDraftLayer();
   }
 
   function navBar() {
@@ -4807,6 +4830,8 @@
     event.target.value='';
   });
   navHost?.addEventListener('click', handleAction);
+  // 离线提示条在 #app 之外，它的「重试」按钮也要能触发动作。
+  statusHost?.addEventListener('click', handleAction);
 
   /**
    * 点空白处收起草稿浮层：展开的草稿先收回列表，否则收起整个浮层。
@@ -4856,7 +4881,10 @@
   });
 
   window.addEventListener('hashchange', render);
-  window.addEventListener('resize', positionDraftLayer);
+  window.addEventListener('resize', () => {
+    positionDraftLayer();
+    updateNavHeight();
+  });
 
   /**
    * 系统返回：

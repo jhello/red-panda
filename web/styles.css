@@ -16,6 +16,10 @@
   --sans: "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif;
   --serif: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", Georgia, serif;
+  /* 底部导航栏高度（JS 实测），离线提示条就贴在它上边 */
+  --nav-h: 84px;
+  /* 离线提示条的高度，页面和浮层据此让位 */
+  --offline-h: 0px;
 }
 
 *,
@@ -527,35 +531,45 @@ img.seal {
   font-size: 13px;
 }
 
-/* 离线提示条：固定在顶部，告诉用户在线功能暂时不可用 */
+/* 离线提示条：紧贴底部导航栏上边，缩成一行，不遮挡页面内容 */
 .app-status {
   position: fixed;
-  top: 0;
   left: 0;
   right: 0;
-  z-index: 60;
-  padding: 8px 16px calc(8px + env(safe-area-inset-top));
+  bottom: var(--nav-h, 84px);
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 5px 14px;
   background: rgba(168, 58, 44, 0.95);
   color: #fff6ec;
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 12px;
+  line-height: 1.3;
   text-align: center;
-  box-shadow: 0 2px 12px rgba(32, 38, 40, 0.18);
+  box-shadow: 0 -2px 12px rgba(32, 38, 40, 0.16);
 }
 
 .app-status[hidden] {
   display: none;
 }
 
+.app-status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .app-status button {
-  margin-left: 10px;
-  padding: 3px 10px;
+  flex: none;
+  padding: 2px 10px;
   border: 1px solid rgba(255, 246, 236, 0.7);
   border-radius: 999px;
   background: transparent;
   color: #fff6ec;
   font: inherit;
-  font-size: 12px;
   cursor: pointer;
 }
 
@@ -570,7 +584,7 @@ img.seal {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 84px;
+  bottom: calc(84px + var(--offline-h, 0px));
   z-index: 35;
   display: flex;
   flex-direction: column;
@@ -1294,7 +1308,7 @@ img.seal {
 
 /* 带悬浮导航栏的页面底部留出空间 */
 .page.has-nav {
-  padding-bottom: calc(104px + env(safe-area-inset-bottom));
+  padding-bottom: calc(104px + env(safe-area-inset-bottom) + var(--offline-h, 0px));
 }
 
 /* toast 抬到导航栏之上 */

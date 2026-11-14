@@ -26,7 +26,7 @@ function loadModule() {
   return module.exports;
 }
 
-const { createConnectionManager, MIN_DELAY_MS, MAX_DELAY_MS } = loadModule();
+const { createConnectionManager, MIN_DELAY_MS, MAX_DELAY_MS, STALE_MS } = loadModule();
 
 function jsonResponse(body, ok = true) {
   return {
@@ -138,6 +138,27 @@ test('已在线时在线功能直接放行', async () => {
   manager.setStatus(true);
   assert.equal(await manager.ensure(), true);
   assert.equal(probes, 0);
+});
+
+test('很久没确认过状态时会重新探测，避免服务器中途挂掉还在干等', async () => {
+  let probes = 0;
+  let clock = 1_000_000;
+  const manager = createConnectionManager({
+    getServer: () => 'http://server.test',
+    fetch: async () => {
+      probes += 1;
+      return jsonResponse({ ok: true });
+    },
+    now: () => clock,
+  });
+  manager.setStatus(true);
+  // 刚确认过：直接放行。
+  assert.equal(await manager.ensure(), true);
+  assert.equal(probes, 0);
+  // 时间过去、状态过期：重新探测一次。
+  clock += STALE_MS + 1;
+  assert.equal(await manager.ensure(), true);
+  assert.equal(probes, 1);
 });
 
 test('重新连接成功后会回调，把在线功能带回来', async () => {
