@@ -691,7 +691,13 @@ img.seal {
 }
 
 .draft-preview {
+  display: block;
+  width: 100%;
   padding: 16px 20px 14px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
 }
 
 .draft-preview-text {

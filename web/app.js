@@ -3072,7 +3072,7 @@
       const items = Array.isArray(draft.items) ? draft.items : [];
       return `
         <div class="draft-expanded" data-draft-id="${esc(draft.id)}">
-          <div class="draft-preview">
+          <button class="draft-preview" type="button" data-action="plan-draft" data-draft-id="${esc(draft.id)}">
             <p class="draft-preview-text">${esc(draft.text || '')}</p>
             ${
               items.length
@@ -3085,7 +3085,7 @@
                     .join('')}</ul>`
                 : `<p class="draft-preview-empty">${t('draft.previewEmpty')}</p>`
             }
-          </div>
+          </button>
           <button class="draft-delete" type="button" data-action="plan-draft-delete" data-draft-id="${esc(draft.id)}">
             ${t('draft.delete')}
           </button>
