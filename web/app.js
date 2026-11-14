@@ -4725,6 +4725,8 @@
     });
 
     let tmap = null, tmapReady = null, pickerMapRatio = 0.55, myLocationMarker = null, currentPos = null;
+    const MAP_RATIO_MIN = 0.3; // 列表最多 70%
+    const MAP_RATIO_MAX = 0.6; // 列表最少 40%
     async function ensureTencentMap() {
       if (window.TMap) return window.TMap;
       if (tmapReady) return tmapReady;
@@ -4758,9 +4760,10 @@
 
     function applyPickerRatio() {
       if (!pickerBody || !mapWrap || !listPanel) return;
+      pickerMapRatio = Math.max(MAP_RATIO_MIN, Math.min(MAP_RATIO_MAX, pickerMapRatio));
       const h = pickerBody.clientHeight || 400;
       const dragH = dragEl ? dragEl.offsetHeight : 18;
-      const mapH = Math.max(140, Math.min(h - 160 - dragH, Math.round((h - dragH) * pickerMapRatio)));
+      const mapH = Math.max(100, Math.min(h - 100 - dragH, Math.round((h - dragH) * pickerMapRatio)));
       mapWrap.style.height = mapH + 'px';
       listPanel.style.height = (h - mapH - dragH) + 'px';
       if (tmap && typeof tmap.resize === 'function') setTimeout(() => { try { tmap.resize(); } catch {} }, 0);
@@ -4771,13 +4774,60 @@
       const onMove = (ev) => {
         const h = pickerBody.clientHeight || 400;
         const dy = ev.clientY - startY;
-        pickerMapRatio = Math.max(0.2, Math.min(0.8, startRatio + dy / h));
+        pickerMapRatio = Math.max(MAP_RATIO_MIN, Math.min(MAP_RATIO_MAX, startRatio + dy / h));
         applyPickerRatio();
       };
       const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
     });
+
+    // 列表上划：分界线上移，列表最多占 70%；列表下划且已到顶：分界线下移，列表最少占 40%
+    let listGesture = null;
+    const onListTouchStart = (e) => {
+      if (!poisEl || e.touches.length !== 1) return;
+      listGesture = { y: e.touches[0].clientY, startRatio: pickerMapRatio, mode: null, atTopOnStart: poisEl.scrollTop <= 0 };
+    };
+    const onListTouchMove = (e) => {
+      if (!listGesture || e.touches.length !== 1) return;
+      const y = e.touches[0].clientY;
+      const dy = y - listGesture.y;
+      const h = pickerBody?.clientHeight || 400;
+      // 上划（dy < 0）=> 扩大列表（减小地图比例）
+      if (dy < -6) {
+        if (listGesture.mode === 'scrollDown') return;
+        if (pickerMapRatio > MAP_RATIO_MIN || listGesture.mode === 'expand') {
+          listGesture.mode = 'expand';
+          pickerMapRatio = Math.max(MAP_RATIO_MIN, listGesture.startRatio + dy / h);
+          applyPickerRatio();
+          if (e.cancelable) e.preventDefault();
+          return;
+        }
+      }
+      // 下划（dy > 0）且列表在顶部 => 缩小列表（增大地图比例）
+      if (dy > 6) {
+        if (listGesture.mode === 'expand') {
+          // 允许从展开手势回拉
+          pickerMapRatio = Math.min(MAP_RATIO_MAX, listGesture.startRatio + dy / h);
+          applyPickerRatio();
+          if (e.cancelable) e.preventDefault();
+          return;
+        }
+        if (poisEl.scrollTop <= 0 && (pickerMapRatio < MAP_RATIO_MAX || listGesture.mode === 'shrink')) {
+          listGesture.mode = 'shrink';
+          pickerMapRatio = Math.min(MAP_RATIO_MAX, listGesture.startRatio + dy / h);
+          applyPickerRatio();
+          if (e.cancelable) e.preventDefault();
+          return;
+        }
+        if (listGesture.mode !== 'expand') listGesture.mode = 'scrollDown';
+      }
+    };
+    const onListTouchEnd = () => { listGesture = null; };
+    poisEl?.addEventListener('touchstart', onListTouchStart, { passive: true });
+    poisEl?.addEventListener('touchmove', onListTouchMove, { passive: false });
+    poisEl?.addEventListener('touchend', onListTouchEnd, { passive: true });
+    poisEl?.addEventListener('touchcancel', onListTouchEnd, { passive: true });
 
     function setMyLocation(lat, lng) {
       if (!tmap || !window.TMap || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
