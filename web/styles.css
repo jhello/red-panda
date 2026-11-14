@@ -936,7 +936,7 @@ img.seal {
 }
 
 .auth-hero .seal-lg {
-  margin-bottom: 12px;
+  margin-bottom: 4px;
 }
 
 .auth-title {
@@ -958,7 +958,7 @@ img.seal {
 }
 
 .auth-tag {
-  margin: 10px 0 0;
+  margin: 2px 0 0;
   color: var(--muted);
   font-size: 13px;
   letter-spacing: 0.06em;
