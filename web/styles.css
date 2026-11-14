@@ -919,6 +919,8 @@ img.seal {
   justify-content: center;
   gap: 22px;
   padding: max(30px, env(safe-area-inset-top)) 24px calc(28px + env(safe-area-inset-bottom));
+  /* 与系统通知栏（#f7f2e8）保持一致，盖住 body 的渐变纹理 */
+  background: var(--paper);
 }
 
 .auth-login-screen{justify-content:space-between;gap:14px}
