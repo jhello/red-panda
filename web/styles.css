@@ -1089,9 +1089,9 @@ img.seal {
 .origin-picker-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .origin-picker-map-wrap { position: relative; width: 100%; height: 55%; min-height: 140px; background: #e8e4db; }
 .origin-picker-map { position: absolute; inset: 0; }
-.origin-picker-center-pin { position: absolute; left: 50%; top: 50%; width: 28px; height: 40px; margin-left: -14px; margin-top: -40px; z-index: 10; pointer-events: none; }
+.origin-picker-center-pin { position: absolute; left: 50%; top: 50%; width: 28px; height: 38px; margin-left: -14px; margin-top: -38px; z-index: 10; pointer-events: none; }
 .origin-picker-center-pin::before { content: ""; position: absolute; left: 4px; top: 0; width: 20px; height: 20px; background: #22b573; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.25); box-sizing: border-box; }
-.origin-picker-center-pin::after { content: ""; position: absolute; left: 12px; top: 18px; width: 4px; height: 16px; background: #22b573; border-radius: 2px; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
+.origin-picker-center-pin::after { content: ""; position: absolute; left: 12px; top: 18px; width: 4px; height: 20px; background: #22b573; border-radius: 2px; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
 .origin-picker-locate { position: absolute; right: 12px; bottom: 16px; z-index: 20; width: 40px; height: 40px; border: none; border-radius: 50%; background: #fff; color: #333; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.18); cursor: pointer; padding: 0; }
 .origin-picker-locate svg { width: 22px; height: 22px; }
 .origin-picker-drag { flex: 0 0 18px; display: flex; align-items: center; justify-content: center; background: var(--card, #fff); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); cursor: ns-resize; touch-action: none; z-index: 5; }
