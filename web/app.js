@@ -2565,30 +2565,8 @@
     });
   }
 
-  function renderAuth(tab = 'login') {
-    state.authTab = tab === 'register' ? 'register' : 'login';
-    const active = state.authTab;
-    const route = parseRoute();
-    let notice = '';
-    if (active === 'login') {
-      if (route.query.verified === '1') {
-        notice = `<p class="form-ok">${t('auth.noticeVerified')}</p>`;
-      } else if (route.query.verify === 'invalid') {
-        notice = `<p class="form-error">${t('auth.noticeInvalidLink')}</p>`;
-      } else if (route.query.reset === '1') {
-        notice = `<p class="form-ok">${t('auth.noticeResetDone')}</p>`;
-      }
-    }
-
-    app.innerHTML = `
-      <div class="screen auth-screen auth-login-screen">
-        <div class="auth-hero">
-          <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
-          <h1 class="auth-title">${t('brand.big')}</h1>
-          <p class="auth-tag">${t('auth.tagline')}</p>
-        </div>
-
-        <div class="card auth-card">
+  function authCardHTML(active, notice = '') {
+    return `
           <div class="tabs" role="tablist">
             <button class="tab ${active === 'login' ? 'active' : ''}" data-tab="login" role="tab">${t('auth.tabLogin')}</button>
             <button class="tab ${active === 'register' ? 'active' : ''}" data-tab="register" role="tab">${t('auth.tabRegister')}</button>
@@ -2648,26 +2626,39 @@
             <button class="link" data-tab-switch="${active === 'login' ? 'register' : 'login'}">
               ${active === 'login' ? t('auth.registerLink') : t('auth.loginLink')}
             </button>
-          </p>
-        </div>
-        ${authLanguageSwitcher()}
-      </div>`;
+          </p>`;
+  }
 
-    app.querySelectorAll('[data-tab]').forEach((button) => {
+  function bindAuthCard() {
+    const switchTab = (tab) => {
+      const screen = app.querySelector('.screen.auth-screen');
+      const card = screen?.querySelector('.auth-card');
+      if (!screen || !card) {
+        navigate(tab === 'register' ? '#/register' : '#/login');
+        return;
+      }
+      const form = card.querySelector('#auth-form');
+      const email = form?.email?.value || '';
+      state.authTab = tab;
+      replaceHash(tab === 'register' ? '#/register' : '#/login');
+      card.innerHTML = authCardHTML(tab);
+      const newForm = card.querySelector('#auth-form');
+      if (newForm?.email) newForm.email.value = email;
+      bindAuthCard();
+    };
+
+    app.querySelectorAll('.auth-card [data-tab], .auth-card [data-tab-switch]').forEach((button) => {
       button.addEventListener('click', () => {
-        navigate(button.dataset.tab === 'register' ? '#/register' : '#/login');
-      });
-    });
-    app.querySelectorAll('[data-tab-switch]').forEach((button) => {
-      button.addEventListener('click', () => {
-        navigate(button.dataset.tabSwitch === 'register' ? '#/register' : '#/login');
+        const tab = (button.dataset.tab || button.dataset.tabSwitch) === 'register' ? 'register' : 'login';
+        switchTab(tab);
       });
     });
 
     const form = document.getElementById('auth-form');
+    if (!form) return;
     const passwordInput = form.querySelector('input[name="password"]');
     const passwordToggle = form.querySelector('[data-toggle-password]');
-    if (passwordToggle) {
+    if (passwordToggle && passwordInput) {
       passwordToggle.addEventListener('click', () => {
         const show = passwordInput.type === 'password';
         passwordInput.type = show ? 'text' : 'password';
@@ -2682,23 +2673,24 @@
       hideError('auth-error');
       const email = form.email.value.trim();
       const password = form.password.value;
+      const current = state.authTab === 'register' ? 'register' : 'login';
       if (!email) return showError('auth-error', t('auth.errEmail'));
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showError('auth-error', t('auth.errEmailInvalid'));
       if (!password) return showError('auth-error', t('auth.errPassword'));
-      if (active === 'register') {
+      if (current === 'register') {
         if (password.length < 8) return showError('auth-error', t('auth.errPasswordLength'));
         if (password !== form.confirm.value) return showError('auth-error', t('auth.errConfirm'));
       }
 
       const button = form.querySelector('button[type="submit"]');
-      setBusy(button, true, active === 'login' ? t('auth.busyLogin') : t('auth.busyRegister'));
+      setBusy(button, true, current === 'login' ? t('auth.busyLogin') : t('auth.busyRegister'));
       try {
         // 登录与注册都要连服务器，离线时直接提示，不要干等网络超时。
         if (!(await ensureServer())) {
           setBusy(button, false);
           return;
         }
-        if (active === 'register') {
+        if (current === 'register') {
           const data = await api('/api/auth/register', {
             method: 'POST',
             auth: false,
@@ -2718,7 +2710,7 @@
         state.user = await hydrateClientProfile(data.user);
         localStorage.setItem(STORAGE.token, data.token);
         cacheUser(state.user);
-           toast(t('auth.welcome'));
+        toast(t('auth.welcome'));
         // 登录后回到默认的行程页，并且不留下多余的历史记录。
         historyDepth = 0;
         history.replaceState(null, '', '#/');
@@ -2733,6 +2725,36 @@
         setBusy(button, false);
       }
     });
+  }
+
+  function renderAuth(tab = 'login') {
+    state.authTab = tab === 'register' ? 'register' : 'login';
+    const active = state.authTab;
+    const route = parseRoute();
+    let notice = '';
+    if (active === 'login') {
+      if (route.query.verified === '1') {
+        notice = `<p class="form-ok">${t('auth.noticeVerified')}</p>`;
+      } else if (route.query.verify === 'invalid') {
+        notice = `<p class="form-error">${t('auth.noticeInvalidLink')}</p>`;
+      } else if (route.query.reset === '1') {
+        notice = `<p class="form-ok">${t('auth.noticeResetDone')}</p>`;
+      }
+    }
+
+    app.innerHTML = `
+      <div class="screen auth-screen auth-login-screen">
+        <div class="auth-hero">
+          <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
+          <h1 class="auth-title">${t('brand.big')}</h1>
+          <p class="auth-tag">${t('auth.tagline')}</p>
+        </div>
+
+        <div class="card auth-card">${authCardHTML(active, notice)}</div>
+        ${authLanguageSwitcher()}
+      </div>`;
+
+    bindAuthCard();
   }
 
   function renderPending(query = {}) {
