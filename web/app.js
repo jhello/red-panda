@@ -4839,12 +4839,19 @@
       if (zoom) tmap.setZoom(zoom);
       setTimeout(() => { suppressMove = false; fetchNearby(lat, lng); }, 0);
     }
-    function locateCurrent() {
+    function locateCurrent(moveToKnown = false) {
+      if (moveToKnown && currentPos) {
+        locateTo(currentPos.lat, currentPos.lng, 17);
+      }
       if (!navigator.geolocation) { const c = tmap?.getCenter(); if (c) fetchNearby(c.getLat(), c.getLng()); return; }
       navigator.geolocation.getCurrentPosition((pos) => {
         setMyLocation(pos.coords.latitude, pos.coords.longitude);
         locateTo(pos.coords.latitude, pos.coords.longitude, 17);
-      }, () => { const c = tmap?.getCenter(); if (c) fetchNearby(c.getLat(), c.getLng()); }, { enableHighAccuracy: true, timeout: 8000 });
+      }, () => {
+        if (!moveToKnown || !currentPos) {
+          const c = tmap?.getCenter(); if (c) fetchNearby(c.getLat(), c.getLng());
+        }
+      }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 });
     }
 
     async function openPicker() {
@@ -4876,7 +4883,7 @@
     function closePicker() { if (picker) picker.hidden = true; if (searchResults) searchResults.hidden = true; }
     document.getElementById('origin-add')?.addEventListener('click', openPicker);
     document.getElementById('origin-picker-back')?.addEventListener('click', closePicker);
-    locateBtn?.addEventListener('click', locateCurrent);
+    locateBtn?.addEventListener('click', () => locateCurrent(true));
     confirmBtn?.addEventListener('click', async () => {
       if (!selectedPoi) return;
       const origin = { name: selectedPoi.name || '', address: selectedPoi.address || '', lat: selectedPoi.lat, lng: selectedPoi.lng, province: selectedPoi.province || '', city: selectedPoi.city || '', district: selectedPoi.district || '' };
