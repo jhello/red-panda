@@ -5,6 +5,9 @@ import android.app.AlertDialog;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.content.Intent;
+import android.content.ClipboardManager;
+import android.content.ClipData;
+import android.content.Context;
 import android.database.Cursor;
 import android.provider.OpenableColumns;
 import android.util.Base64;
@@ -131,6 +134,7 @@ public class MainActivity extends Activity {
             }
         });
         webView.addJavascriptInterface(new BackupBridge(), "AndroidBackup");
+        webView.addJavascriptInterface(new ClipboardBridge(), "AndroidClipboard");
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -171,6 +175,18 @@ public class MainActivity extends Activity {
                     pendingBackupBase64 = null;
                     reportBackupSave(false, error.getMessage());
                 }
+            });
+        }
+    }
+
+    private class ClipboardBridge {
+        @JavascriptInterface
+        public void copyToClipboard(String text) {
+            runOnUiThread(() -> {
+                if (text == null) return;
+                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (clipboard == null) return;
+                clipboard.setPrimaryClip(ClipData.newPlainText("Red Panda", text));
             });
         }
     }

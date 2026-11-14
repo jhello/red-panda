@@ -1899,6 +1899,35 @@
     toast._timer = setTimeout(() => toastEl.classList.remove('show'), 2800);
   }
 
+  function copyText(text) {
+    if (!text) return;
+    if (window.AndroidClipboard && typeof window.AndroidClipboard.copyToClipboard === 'function') {
+      try { window.AndroidClipboard.copyToClipboard(text); return; } catch (error) {}
+    }
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function' && window.isSecureContext) {
+      navigator.clipboard.writeText(text).catch(() => fallbackCopyText(text));
+      return;
+    }
+    fallbackCopyText(text);
+  }
+
+  function fallbackCopyText(text) {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.top = '0';
+      textarea.style.left = '0';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    } catch (error) {}
+  }
+
   function showError(id, message) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -4634,7 +4663,7 @@
     const emailChangedNotice = section === 'account-security' && route.query.emailChanged === '1';
     app.innerHTML = `
       <div class="screen settings-screen">
-        <main class="page settings-page settings-detail${section === 'account-security' ? ' account-security-page' : ''}">
+        <main class="page settings-page settings-detail${section === 'account-security' ? ' account-security-page' : ''}${section === 'about' ? ' about-page' : ''}">
           ${emailChangedNotice ? `<div class="email-updated-banner" role="status"><strong>${t('settings.emailUpdated')}</strong><span>${t('settings.emailUpdatedShort')}</span></div>` : ''}
           ${section === 'account-security' ? `<div class="account-refresh-status" id="account-refresh-status" role="status" hidden></div>` : ''}
           ${panel('language', `<section class="card panel"><div class="lang-panel">${languageSwitcher()}</div></section>`)}
@@ -4667,7 +4696,7 @@
           ${publicView ? `<section class="card panel"><p class="panel-sub">${t('settings.publicSub')}</p><button class="btn primary block" data-action="login">${t('settings.goLogin')}</button></section>` : ''}
           ${panel('account-security', `<section class="account-settings-group account-profile-group"><h2 class="settings-group-heading">${t('settings.accountInfo')}</h2><div class="current-email-block"><span class="account-field-title">${t('settings.email')}</span><strong>${esc(state.user.email || '—')}</strong></div><form id="email-form" class="account-edit-form" novalidate><label class="account-edit-field"><span>${t('settings.newEmail')}</span><input name="email" type="email" maxlength="254" inputmode="email" autocomplete="email" placeholder="${t('settings.newEmailPlaceholder')}" required /></label><p class="form-error" id="email-error" hidden></p><button class="btn primary account-action" type="submit">${t('settings.sendVerificationEmail')}</button></form><div id="pending-email-status" class="pending-email-status" ${pendingEmailActive?'':'hidden'}><button class="status-close-btn" type="button" data-dismiss-status="pending-email-status" aria-label="${t('settings.close')}">×</button><strong>${t('settings.verificationSentTo')} ${esc(pendingEmailActive ? state.user.pendingEmail : '')}</strong><p>${t('settings.verificationHint', { date: pendingEmailActive ? fmtDate(state.user.pendingEmailExpiresAt) : '' })}</p><small>${t('settings.verificationNote')}</small><p>${t('pending.resendHint')}</p><button class="btn ghost block account-action" id="resend-email-btn" type="button">${t('pending.resend')}</button></div></section><section class="account-settings-group"><h2 class="settings-group-heading">${t('settings.passwordTitle')}</h2><p class="panel-sub">${t('settings.passwordSub')}</p><form id="password-form" class="form compact" novalidate><label class="field"><span>${t('settings.currentPassword')}</span><input name="currentPassword" type="password" maxlength="128" autocomplete="current-password" placeholder="${t('settings.currentPlaceholder')}" required /></label><label class="field"><span>${t('reset.newPasswordLabel')}</span><input name="newPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" placeholder="${t('auth.passwordPlaceholderRegister')}" required /></label><label class="field"><span>${t('reset.confirmLabel')}</span><input name="confirm" type="password" maxlength="128" autocomplete="new-password" placeholder="${t('auth.confirmPlaceholder')}" required /></label><p class="form-error" id="password-error" hidden></p><p class="form-ok" id="password-ok" hidden></p><button class="btn primary block account-action" type="submit">${t('settings.updatePassword')}</button></form></section><section class="account-settings-group"><h2 class="settings-group-heading">${t('settings.resetPassword')}</h2><p class="panel-sub">${t('settings.resetPasswordSub')}</p><div id="pending-reset-status" class="pending-email-status pending-reset-status" ${pendingResetActive?'':'hidden'}><button class="status-close-btn" type="button" data-dismiss-status="pending-reset-status" aria-label="${t('settings.close')}">×</button><strong>${t('forgot.sentTo',{email:state.user.email || ''})}</strong><p>${t('forgot.expires',{date:fmtDate(state.user.pendingResetExpiresAt)})}</p><small>${t('forgot.notReceived')}</small><button class="btn ghost block account-action" id="resend-reset-btn" type="button">${t('forgot.resend')}</button></div><button class="btn ghost block account-action" id="reset-password-btn" type="button">${t('forgot.submit')}</button></section><section class="account-settings-group account-logout-group"><button class="btn account-logout block" data-action="logout">${t('home.logout')}</button></section>`) }
           ${panel('data', `<section class="card panel"><p class="panel-sub">${t('settings.dataSub')}</p><button class="btn ghost block" data-action="database-open">${t('settings.openDatabase')}</button></section>`)}
-          ${panel('about', `<section class="card panel about-panel"><img class="about-icon" src="logo.png" alt="${esc(t('settings.aboutTitle'))}" /><h2 class="about-name">小熊猫 · Red Panda</h2><p class="about-tagline">出门带只小熊猫</p><p class="about-meta">v${esc(window.REDPANDA_CONFIG?.version || '1.0.0')}</p><a class="about-email" href="mailto:jianghang2020@gmail.com">jianghang2020@gmail.com</a></section>`)}
+          ${panel('about', `<section class="card panel about-panel"><img class="about-icon" src="logo.png" alt="${esc(t('settings.aboutTitle'))}" /><h2 class="about-name">小熊猫 · Red Panda</h2><p class="about-tagline">出门带只小熊猫</p><p class="about-meta">v${esc(window.REDPANDA_CONFIG?.version || '1.0.0')}</p><div class="about-links"><div class="about-link-row"><span class="about-link-label">项目主页</span><a class="about-link-value about-link-open" href="https://github.com/jhello/red-panda" target="_blank" rel="noopener noreferrer">https://github.com/jhello/red-panda</a></div><div class="about-link-row"><span class="about-link-label">联系作者</span><button class="about-link-value about-link-copy" type="button" data-action="copy-text" data-value="jianghang2020@gmail.com">jianghang2020@gmail.com</button></div></div></section>`)}
         </main>
       </div>`;
 
@@ -5203,6 +5232,12 @@
       case 'settings':
         navigate('#/settings');
         break;
+      case 'copy-text': {
+        const value = target.dataset.value || target.textContent.trim();
+        copyText(value);
+        toast('已复制到剪贴板');
+        break;
+      }
       case 'me':
         navigateTab('#/me');
         break;

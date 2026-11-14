@@ -2134,7 +2134,7 @@ input#plan-input::placeholder {
 .footprint-pin{position:absolute;color:var(--seal);font-size:24px;text-shadow:0 1px white}
 .pin-0{left:22%;top:37%}.pin-1{left:50%;top:35%}.pin-2{left:70%;top:45%}.pin-3{left:38%;top:58%}.pin-4{left:83%;top:32%}.pin-5{left:62%;top:61%}
 .settings-screen{background:var(--paper)}
-.settings-page{padding-top:calc(12px + env(safe-area-inset-top))}.settings-detail .card{background:var(--card);border-color:var(--line)}
+.settings-page{padding-top:calc(12px + env(safe-area-inset-top))}.settings-detail .card{background:var(--card);border-color:var(--line)}.settings-page.about-page{display:flex;flex-direction:column;justify-content:center;align-items:stretch;padding:0}
 .settings-group{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--shadow-soft)}
 .system-row{width:100%;min-height:62px;padding:0 18px;border:0;border-bottom:1px solid var(--line);background:var(--card);display:flex;align-items:center;gap:16px;text-align:left;color:var(--ink);font-size:15px}
 .system-row:last-child{border-bottom:0}.system-icon{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--paper-deep);color:var(--seal);font-size:17px}
@@ -2264,11 +2264,38 @@ input#plan-input::placeholder {
   font-size: 13px;
   color: var(--muted, #6b6b6b);
 }
-.about-email {
+.about-links {
+  margin-top: 14px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.about-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--paper, #f7f2e8);
+}
+.about-link-label {
+  font-size: 13px;
+  color: var(--muted, #6b6b6b);
+  flex: 0 0 auto;
+}
+.about-link-value {
   font-size: 13px;
   color: var(--accent, #b97042);
   text-decoration: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  word-break: break-all;
+  text-align: right;
 }
-.about-email:hover {
+.about-link-value:hover {
   text-decoration: underline;
 }
