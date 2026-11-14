@@ -2150,7 +2150,7 @@
   }
   async function refreshDatabaseStats(){databaseSnapshotCache=await databaseSnapshot();drawDatabaseSummary(databaseSnapshotCache);drawDatabaseTypes();}
   async function renderDatabase(){
-    app.innerHTML=`<div class="screen"><main class="page database-page">
+    app.innerHTML=`<div class="screen settings-screen"><main class="page database-page">
       <div id="database-summary" class="database-summary"><div class="skeleton-block"></div></div>
       <div class="database-actions"><button class="btn ghost" data-action="backup-export">${t('backup.exportData')}</button><label class="btn ghost" for="backup-file">${t('backup.chooseFile')}</label><input id="backup-file" type="file" accept=".rpd,.json,application/json,application/gzip" hidden /></div>
       <div id="database-status" class="backup-status" role="status" aria-live="polite"></div>
