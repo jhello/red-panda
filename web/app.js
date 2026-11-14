@@ -4835,23 +4835,32 @@
       if (!tmap || !window.TMap) return;
       const c = new TMap.LatLng(lat, lng);
       suppressMove = true;
-      tmap.setCenter(c);
-      if (zoom) tmap.setZoom(zoom);
+      try {
+        tmap.setCenter(c);
+        if (zoom) tmap.setZoom(zoom);
+      } catch {}
       setTimeout(() => { suppressMove = false; fetchNearby(lat, lng); }, 0);
     }
+    let locating = false;
     function locateCurrent(moveToKnown = false) {
+      if (!tmap) return;
       if (moveToKnown && currentPos) {
         locateTo(currentPos.lat, currentPos.lng, 17);
+        return;
       }
-      if (!navigator.geolocation) { const c = tmap?.getCenter(); if (c) fetchNearby(c.getLat(), c.getLng()); return; }
+      if (!navigator.geolocation) { toast('当前环境不支持定位', 'error'); return; }
+      if (locating) return;
+      locating = true;
+      toast('正在定位…');
       navigator.geolocation.getCurrentPosition((pos) => {
+        locating = false;
         setMyLocation(pos.coords.latitude, pos.coords.longitude);
         locateTo(pos.coords.latitude, pos.coords.longitude, 17);
-      }, () => {
-        if (!moveToKnown || !currentPos) {
-          const c = tmap?.getCenter(); if (c) fetchNearby(c.getLat(), c.getLng());
-        }
-      }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 });
+      }, (err) => {
+        locating = false;
+        if (currentPos) { locateTo(currentPos.lat, currentPos.lng, 17); }
+        else { toast('无法获取当前位置，请检查定位权限', 'error'); }
+      }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 });
     }
 
     async function openPicker() {
