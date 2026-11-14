@@ -587,9 +587,6 @@ img.seal {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
-  background: rgba(247, 242, 232, 0.01);
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
   animation: draft-veil-in 0.28s ease both;
 }
 
@@ -625,27 +622,14 @@ img.seal {
 }
 
 .draft-row {
-  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 4px 6px 4px 16px;
   border: 1px dashed rgba(168, 58, 44, 0.4);
   border-radius: 999px;
-  background: transparent;
-  overflow: hidden;
+  background: rgba(255, 253, 248, 0.84);
   box-shadow: var(--shadow-soft);
-}
-
-.draft-row::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: rgba(255, 253, 248, 0.66);
-  -webkit-backdrop-filter: blur(60px) saturate(1.15);
-  backdrop-filter: blur(60px) saturate(1.15);
-  z-index: -1;
 }
 
 .draft-open {
@@ -686,25 +670,13 @@ img.seal {
 
 /* 展开后的圆角矩形：轮廓与标题一致用虚线，上半预览，下半删除 */
 .draft-expanded {
-  position: relative;
   display: grid;
   overflow: hidden;
   border: 1px dashed rgba(168, 58, 44, 0.42);
   border-radius: 20px;
-  background: transparent;
+  background: rgba(255, 253, 248, 0.88);
   box-shadow: var(--shadow);
   animation: draft-expand 0.32s cubic-bezier(0.22, 0.61, 0.36, 1) both;
-}
-
-.draft-expanded::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: rgba(255, 253, 248, 0.72);
-  -webkit-backdrop-filter: blur(60px) saturate(1.15);
-  backdrop-filter: blur(60px) saturate(1.15);
-  z-index: -1;
 }
 
 @keyframes draft-expand {
