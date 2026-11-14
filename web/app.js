@@ -3636,7 +3636,7 @@
             </tbody>
           </table>
         </section>
-        <div class="row">
+        <div class="row plan-actions">
           <button class="btn primary" type="button" data-action="plan-save">${t('plan.save')}</button>
           <button class="btn ghost" type="button" data-action="plan-save-draft">${t('plan.saveDraft')}</button>
         </div>

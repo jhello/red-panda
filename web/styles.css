@@ -1532,6 +1532,10 @@ input#plan-input::placeholder {
   font-weight: 600;
 }
 
+.plan-actions {
+  margin-top: 24px;
+}
+
 .plan-row {
   cursor: pointer;
 }
