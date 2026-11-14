@@ -102,12 +102,6 @@ code {
   min-height: inherit;
   display: flex;
   flex-direction: column;
-  animation: screen-in 0.35s ease both;
-}
-
-/* 切换语言时只替换页面文案，不重播入场动画，避免整页闪一下。 */
-html.is-locale-switching .screen {
-  animation: none;
 }
 
 /* ---- language switch ---------------------------------------------------- */
@@ -222,17 +216,6 @@ html.is-locale-switching .screen {
   align-items: center;
   justify-content: center;
   padding: 32px 24px calc(32px + env(safe-area-inset-bottom));
-}
-
-@keyframes screen-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
 }
 
 /* ---- brand -------------------------------------------------------------- */
