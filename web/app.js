@@ -4560,8 +4560,16 @@
       return;
     }
     if (!publicView && !section) {
-      const entries = [['language',t('settings.languageTitle'),'🌐'],['account-security',t('settings.accountSecurity'),'person'],['origin',t('settings.originTitle'),'⌖'],['data',t('settings.dataBackup'),'▤'],['about',t('settings.aboutTitle'),'ⓘ']];
-      app.innerHTML = `<div class="screen settings-screen">${topbar({ title: t('settings.title'), back: true, backAction: 'me' })}<main class="page settings-page"><div class="settings-group">${entries.map(([id,label,icon])=>`<button class="system-row" data-action="settings-section" data-section="${id}"><span class="system-icon">${icon === '🌐' ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>' : icon === 'person' ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c.6-4 3.2-6 7.5-6s6.9 2 7.5 6"/></svg>' : icon}</span><span>${label}</span><b>›</b></button>`).join('')}</div></main></div>`;
+      const entries = [['language',t('settings.languageTitle'),'globe'],['account-security',t('settings.accountSecurity'),'person'],['origin',t('settings.originTitle'),'origin'],['data',t('settings.dataBackup'),'data'],['about',t('settings.aboutTitle'),'about']];
+      const iconSvg = (icon) => {
+        if (icon === 'globe') return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>';
+        if (icon === 'person') return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c.6-4 3.2-6 7.5-6s6.9 2 7.5 6"/></svg>';
+        if (icon === 'origin') return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></svg>';
+        if (icon === 'data') return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>';
+        if (icon === 'about') return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 10v6M12 7h.01"/></svg>';
+        return icon;
+      };
+      app.innerHTML = `<div class="screen settings-screen">${topbar({ title: t('settings.title'), back: true, backAction: 'me' })}<main class="page settings-page"><div class="settings-group">${entries.map(([id,label,icon])=>`<button class="system-row" data-action="settings-section" data-section="${id}"><span class="system-icon">${iconSvg(icon)}</span><span>${label}</span><b>›</b></button>`).join('')}</div></main></div>`;
       return;
     }
     const sectionTitles = {
