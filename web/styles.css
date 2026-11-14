@@ -923,6 +923,10 @@ img.seal {
 
 .auth-login-screen{justify-content:space-between;gap:14px}
 .auth-language-switch{position:static;margin:0 auto;flex-shrink:0}
+/* 图标+名字+标语整体下移，竖直居中于「屏幕上边缘 与 中间主功能块」之间；
+   语言滑块保持贴底，卡片位置基本不变。三个 auto 外边距让剩余空间三等分。 */
+.auth-login-screen .auth-hero{margin-top:auto;margin-bottom:auto}
+.auth-login-screen .auth-language-switch{margin-top:auto}
 
 .auth-hero {
   display: grid;

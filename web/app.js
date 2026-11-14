@@ -2802,6 +2802,7 @@
         <div class="auth-hero">
           <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
           <h1 class="auth-title">${t('brand.big')}</h1>
+          <p class="auth-tag">${t('auth.tagline')}</p>
         </div>
 
         <div class="card auth-card">
