@@ -4896,19 +4896,28 @@
 
     function closePicker() { if (picker) picker.hidden = true; if (searchResults) searchResults.hidden = true; }
     document.getElementById('origin-add')?.addEventListener('click', openPicker);
-    picker?.addEventListener('click', async (e) => {
-      if (e.target.closest('#origin-picker-back')) { closePicker(); return; }
-      if (e.target.closest('#origin-picker-locate')) { locateCurrent(true); return; }
-      if (e.target.closest('#origin-picker-confirm')) {
-        if (!selectedPoi) { toast('请先选择一个地址'); return; }
-        const origin = { name: selectedPoi.name || '', address: selectedPoi.address || '', lat: selectedPoi.lat, lng: selectedPoi.lng, province: selectedPoi.province || '', city: selectedPoi.city || '', district: selectedPoi.district || '' };
-        try {
-          await saveOrigins([...currentOrigins(), origin]);
-          toast(t('settings.originSaved') || '常用地址已保存');
-          closePicker();
-        } catch (err) { toast(err.message, 'error'); }
-      }
-    });
+    async function confirmPick() {
+      if (!selectedPoi) { toast('请先选择一个地址'); return; }
+      const origin = { name: selectedPoi.name || '', address: selectedPoi.address || '', lat: selectedPoi.lat, lng: selectedPoi.lng, province: selectedPoi.province || '', city: selectedPoi.city || '', district: selectedPoi.district || '' };
+      try {
+        await saveOrigins([...currentOrigins(), origin]);
+        toast(t('settings.originSaved') || '常用地址已保存');
+        closePicker();
+      } catch (err) { toast(err.message, 'error'); }
+    }
+    const handlePickerAction = (e) => {
+      if (e.target.closest('#origin-picker-back')) { e.preventDefault(); e.stopPropagation(); closePicker(); return true; }
+      if (e.target.closest('#origin-picker-locate')) { e.preventDefault(); e.stopPropagation(); locateCurrent(true); return true; }
+      if (e.target.closest('#origin-picker-confirm')) { e.preventDefault(); e.stopPropagation(); confirmPick(); return true; }
+    };
+    picker?.addEventListener('click', handlePickerAction);
+    picker?.addEventListener('pointerup', handlePickerAction);
+    document.addEventListener('click', (e) => {
+      if (picker && !picker.hidden && e.target.closest('#origin-picker-back, #origin-picker-locate, #origin-picker-confirm')) handlePickerAction(e);
+    }, true);
+    document.addEventListener('touchend', (e) => {
+      if (picker && !picker.hidden && e.target.closest('#origin-picker-back, #origin-picker-locate, #origin-picker-confirm')) handlePickerAction(e);
+    }, { capture: true, passive: false });
 
     searchInput?.addEventListener('input', () => {
       const q = (searchInput.value || '').trim();
