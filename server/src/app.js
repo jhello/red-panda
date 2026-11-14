@@ -860,6 +860,119 @@ export function createApp(config, options = {}) {
     { auth: true },
   );
 
+  function requireTencentKey() {
+    const key = config.tencentMap?.key || '';
+    if (!key) throw new HttpError(503, '未配置腾讯地图 Key（TENCENT_MAP_KEY）', 'tencent_map_not_configured');
+    return key;
+  }
+  async function tencentGet(path, params) {
+    const key = requireTencentKey();
+    const url = new URL(`https://apis.map.qq.com${path}`);
+    url.searchParams.set('key', key);
+    for (const [k, v] of Object.entries(params || {})) {
+      if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
+    }
+    let response;
+    try { response = await fetch(url, { signal: AbortSignal.timeout(20_000) }); }
+    catch { throw new HttpError(502, '腾讯地图服务暂时不可用，请稍后重试。', 'place_search_unavailable'); }
+    let data;
+    try { data = await response.json(); } catch { data = null; }
+    if (!response.ok || !data || (data.status !== 0 && data.status !== undefined)) {
+      const msg = data?.message || '地点服务暂时不可用，请稍后重试。';
+      throw new HttpError(502, msg, 'place_search_unavailable');
+    }
+    return data;
+  }
+  const normalizePoi = (poi = {}) => {
+    const loc = poi.location || {};
+    const ad = poi.ad_info || {};
+    return {
+      id: poi.id || '',
+      name: poi.title || poi.name || '',
+      address: poi.address || [ad.province, ad.city, ad.district].filter(Boolean).join('') || '',
+      lat: Number(loc.lat),
+      lng: Number(loc.lng),
+      distance: poi._distance ?? poi.distance ?? null,
+      province: ad.province || '',
+      city: ad.city || '',
+      district: ad.district || '',
+      category: poi.category || '',
+    };
+  };
+
+  route('POST', /^\/api\/me\/usual-origin\/nearby$/, async ({ body }) => {
+    const lat = Number(body.lat);
+    const lng = Number(body.lng ?? body.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      throw new HttpError(400, '地图坐标无效', 'validation_error');
+    }
+    const keyword = typeof body.keyword === 'string' ? body.keyword.trim().slice(0, 80) : '';
+    const pageSize = Math.min(20, Math.max(1, Number(body.page_size) || 20));
+    const pageIndex = Math.max(1, Number(body.page_index) || 1);
+    const params = {
+      boundary: `nearby(${lat},${lng},1000,1)`,
+      page_size: pageSize,
+      page_index: pageIndex,
+      orderby: '_distance',
+      get_subpois: 0,
+    };
+    if (keyword) params.keyword = keyword;
+    const data = await tencentGet('/ws/place/v1/search', params);
+    const pois = Array.isArray(data.data) ? data.data.map(normalizePoi) : [];
+    return { status: 200, body: { pois, count: data.count || pois.length } };
+  }, { auth: true });
+
+  route('POST', /^\/api\/me\/usual-origin\/search$/, async ({ body }) => {
+    const keyword = typeof body.keyword === 'string' ? body.keyword.trim().slice(0, 80) : (typeof body.query === 'string' ? body.query.trim().slice(0, 80) : '');
+    if (keyword.length < 1) throw new HttpError(400, '请输入搜索关键词', 'validation_error');
+    const lat = Number(body.lat);
+    const lng = Number(body.lng ?? body.lon);
+    const params = { keyword, page_size: Math.min(20, Math.max(1, Number(body.page_size) || 20)), page_index: Math.max(1, Number(body.page_index) || 1) };
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      params.boundary = `nearby(${lat},${lng},50000,1)`;
+      params.orderby = '_distance';
+    } else {
+      params.boundary = `region(全国,0)`;
+    }
+    const data = await tencentGet('/ws/place/v1/search', params);
+    const pois = Array.isArray(data.data) ? data.data.map(normalizePoi) : [];
+    return { status: 200, body: { pois, count: data.count || pois.length } };
+  }, { auth: true });
+
+  route('POST', /^\/api\/me\/usual-origin\/reverse$/, async ({ body }) => {
+    const lat = Number(body.lat);
+    const lng = Number(body.lng ?? body.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      throw new HttpError(400, '地图坐标无效', 'validation_error');
+    }
+    const data = await tencentGet('/ws/geocoder/v1/', { location: `${lat},${lng}`, get_poi: 1, poi_options: 'radius=1000;page_size=20;page_index=1;policy=1' });
+    const result = data.result || {};
+    const formatted = result.formatted_addresses?.recommend || result.address || '';
+    const comp = result.address_component || {};
+    const pois = Array.isArray(result.pois) ? result.pois.map((p) => {
+      const loc = p.location || p.latlng || {};
+      return normalizePoi({
+        id: p.id, title: p.title, address: p.address || formatted,
+        location: { lat: loc.lat ?? lat, lng: loc.lng ?? lng },
+        ad_info: p.ad_info || { province: comp.province, city: comp.city, district: comp.district },
+        _distance: p._distance ?? p.distance,
+        category: p.category,
+      });
+    }) : [];
+    return {
+      status: 200,
+      body: {
+        address: formatted,
+        component: { province: comp.province || '', city: comp.city || '', district: comp.district || '', street: comp.street || '', street_number: comp.street_number || '' },
+        pois,
+      },
+    };
+  }, { auth: true });
+
+  route('GET', /^\/api\/map\/config$/, async () => {
+    return { status: 200, body: { tencentKey: config.tencentMap?.key || '' } };
+  }, { auth: true });
+
   route('POST', /^\/api\/me\/usual-origin\/parse$/, async ({ body }) => {
     const text = typeof body.text === 'string' ? body.text.trim().slice(0, 1000) : '';
     if (!text) throw new HttpError(400, '请输入地点描述', 'validation_error');
@@ -872,39 +985,6 @@ export function createApp(config, options = {}) {
     catch { throw new AIError('AI 返回的地点格式无法识别，请补充描述后重试。', 502, 'ai_invalid_json'); }
     const fields = ['name', 'country', 'province', 'city', 'district', 'township', 'street', 'streetNumber'];
     return { status: 200, body: { origin: Object.fromEntries(fields.map((key) => [key, String(origin[key] || '').slice(0, 160)])) } };
-  }, { auth: true });
-
-  route('POST', /^\/api\/me\/usual-origin\/search$/, async ({ body }) => {
-    const query = typeof body.query === 'string' ? body.query.trim().slice(0, 160) : '';
-    if (query.length < 2) throw new HttpError(400, '地点搜索至少需要 2 个字符', 'validation_error');
-    const url = new URL('https://photon.komoot.io/api/');
-    url.searchParams.set('q', query);
-    url.searchParams.set('limit', '6');
-    url.searchParams.set('lang', normalizeLocale(body.locale) === 'zh' ? 'default' : (normalizeLocale(body.locale) || 'en'));
-    let response;
-    try { response = await fetch(url, { signal: AbortSignal.timeout(20_000) }); }
-    catch { throw new HttpError(502, '地点搜索暂时不可用，请稍后重试。', 'place_search_unavailable'); }
-    if (!response.ok) throw new HttpError(502, '地点搜索暂时不可用，请稍后重试。', 'place_search_unavailable');
-    const data = await response.json();
-    return { status: 200, body: { features: Array.isArray(data.features) ? data.features.slice(0, 6) : [] } };
-  }, { auth: true });
-
-  route('POST', /^\/api\/me\/usual-origin\/reverse$/, async ({ body }) => {
-    const lat = Number(body.lat);
-    const lon = Number(body.lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-      throw new HttpError(400, '地图坐标无效', 'validation_error');
-    }
-    const url = new URL('https://photon.komoot.io/reverse');
-    url.searchParams.set('lat', String(lat));
-    url.searchParams.set('lon', String(lon));
-    url.searchParams.set('lang', normalizeLocale(body.locale) === 'zh' ? 'default' : (normalizeLocale(body.locale) || 'en'));
-    let response;
-    try { response = await fetch(url, { signal: AbortSignal.timeout(20_000) }); }
-    catch { throw new HttpError(502, '地址解析暂时不可用，请稍后重试。', 'place_search_unavailable'); }
-    if (!response.ok) throw new HttpError(502, '地址解析暂时不可用，请稍后重试。', 'place_search_unavailable');
-    const data = await response.json();
-    return { status: 200, body: { features: Array.isArray(data.features) ? data.features.slice(0, 2) : [] } };
   }, { auth: true });
 
   route(

@@ -4590,12 +4590,26 @@
           ${emailChangedNotice ? `<div class="email-updated-banner" role="status"><strong>${t('settings.emailUpdated')}</strong><span>${t('settings.emailUpdatedShort')}</span></div>` : ''}
           ${section === 'account-security' ? `<div class="account-refresh-status" id="account-refresh-status" role="status" hidden></div>` : ''}
           ${panel('language', `<section class="card panel"><div class="lang-panel">${languageSwitcher()}</div></section>`)}
-          ${panel('origin', `<section class="card panel">
-            <div id="origin-list" class="origin-list"></div>
-            <form id="origin-form" class="origin-entry" novalidate><input name="text" maxlength="1000" placeholder="${esc(t('settings.originInput'))}" aria-label="${esc(t('settings.originInput'))}" /><button class="btn origin-map" type="button" id="origin-map" title="${esc(t('settings.originMap'))}" aria-label="${esc(t('settings.originMap'))}">⌖</button><button class="btn primary" type="submit" id="origin-submit">＋</button><button class="btn origin-cancel-edit" type="button" id="origin-cancel-edit" hidden>${esc(t('settings.originCancel'))}</button></form>
-            <div id="origin-suggestions" class="origin-suggestions" hidden></div><p class="form-error" id="origin-error" hidden></p>
-            <div id="origin-map-modal" class="origin-map-modal" hidden><div class="origin-map-head"><strong>${esc(t('settings.originMap'))}</strong><div class="origin-map-actions"><button type="button" class="btn origin-locate" id="origin-locate">◎ ${esc(t('settings.originLocate'))}</button><button type="button" class="btn" id="origin-map-close">×</button></div></div><div id="origin-map-canvas"></div><p>${esc(t('settings.originMapHint'))}</p><p class="form-error origin-map-error" id="origin-map-error" hidden></p><button class="btn primary block" id="origin-map-use" type="button" disabled>${esc(t('settings.originMapUse'))}</button></div>
-          </section>`)}
+          ${panel('origin', `<section class="card panel origin-panel">
+            <div id="origin-list" class="origin-address-list"></div>
+            <button class="btn primary block" type="button" id="origin-add">＋ ${esc(t('settings.originAdd') || '新增地址')}</button>
+            <p class="form-error" id="origin-error" hidden></p>
+          </section>
+          <div id="origin-picker" class="origin-picker" hidden>
+            <div class="origin-picker-head">
+              <button type="button" class="btn ghost" id="origin-picker-back">取消</button>
+              <strong>选择位置</strong>
+              <button type="button" class="btn primary" id="origin-picker-confirm" disabled>确定</button>
+            </div>
+            <div class="origin-picker-search"><input id="origin-picker-query" type="search" placeholder="搜索地点" /></div>
+            <div id="origin-picker-body" class="origin-picker-body">
+              <div id="origin-picker-map" class="origin-picker-map"></div>
+              <div class="origin-picker-center-pin">📍</div>
+              <div id="origin-picker-drag" class="origin-picker-drag" role="separator" aria-label="拖动调整"><span></span></div>
+              <div id="origin-picker-pois" class="origin-picker-pois"></div>
+            </div>
+            <div id="origin-picker-search-results" class="origin-picker-search-results" hidden></div>
+          </div>`)}
           ${publicView ? `<section class="card panel"><p class="panel-sub">${t('settings.publicSub')}</p><button class="btn primary block" data-action="login">${t('settings.goLogin')}</button></section>` : ''}
           ${panel('account-security', `<section class="account-settings-group account-profile-group"><h2 class="settings-group-heading">${t('settings.accountInfo')}</h2><div class="current-email-block"><span class="account-field-title">${t('settings.email')}</span><strong>${esc(state.user.email || '—')}</strong></div><form id="email-form" class="account-edit-form" novalidate><label class="account-edit-field"><span>${t('settings.newEmail')}</span><input name="email" type="email" maxlength="254" inputmode="email" autocomplete="email" placeholder="${t('settings.newEmailPlaceholder')}" required /></label><p class="form-error" id="email-error" hidden></p><button class="btn primary account-action" type="submit">${t('settings.sendVerificationEmail')}</button></form><div id="pending-email-status" class="pending-email-status" ${pendingEmailActive?'':'hidden'}><button class="status-close-btn" type="button" data-dismiss-status="pending-email-status" aria-label="${t('settings.close')}">×</button><strong>${t('settings.verificationSentTo')} ${esc(pendingEmailActive ? state.user.pendingEmail : '')}</strong><p>${t('settings.verificationHint', { date: pendingEmailActive ? fmtDate(state.user.pendingEmailExpiresAt) : '' })}</p><small>${t('settings.verificationNote')}</small><p>${t('pending.resendHint')}</p><button class="btn ghost block account-action" id="resend-email-btn" type="button">${t('pending.resend')}</button></div></section><section class="account-settings-group"><h2 class="settings-group-heading">${t('settings.passwordTitle')}</h2><p class="panel-sub">${t('settings.passwordSub')}</p><form id="password-form" class="form compact" novalidate><label class="field"><span>${t('settings.currentPassword')}</span><input name="currentPassword" type="password" maxlength="128" autocomplete="current-password" placeholder="${t('settings.currentPlaceholder')}" required /></label><label class="field"><span>${t('reset.newPasswordLabel')}</span><input name="newPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" placeholder="${t('auth.passwordPlaceholderRegister')}" required /></label><label class="field"><span>${t('reset.confirmLabel')}</span><input name="confirm" type="password" maxlength="128" autocomplete="new-password" placeholder="${t('auth.confirmPlaceholder')}" required /></label><p class="form-error" id="password-error" hidden></p><p class="form-ok" id="password-ok" hidden></p><button class="btn primary block account-action" type="submit">${t('settings.updatePassword')}</button></form></section><section class="account-settings-group"><h2 class="settings-group-heading">${t('settings.resetPassword')}</h2><p class="panel-sub">${t('settings.resetPasswordSub')}</p><div id="pending-reset-status" class="pending-email-status pending-reset-status" ${pendingResetActive?'':'hidden'}><button class="status-close-btn" type="button" data-dismiss-status="pending-reset-status" aria-label="${t('settings.close')}">×</button><strong>${t('forgot.sentTo',{email:state.user.email || ''})}</strong><p>${t('forgot.expires',{date:fmtDate(state.user.pendingResetExpiresAt)})}</p><small>${t('forgot.notReceived')}</small><button class="btn ghost block account-action" id="resend-reset-btn" type="button">${t('forgot.resend')}</button></div><button class="btn ghost block account-action" id="reset-password-btn" type="button">${t('forgot.submit')}</button></section><section class="account-settings-group account-logout-group"><button class="btn account-logout block" data-action="logout">${t('home.logout')}</button></section>`) }
           ${panel('data', `<section class="card panel"><p class="panel-sub">${t('settings.dataSub')}</p><button class="btn ghost block" data-action="database-open">${t('settings.openDatabase')}</button></section>`)}
@@ -4676,214 +4690,198 @@
     }
 
     const passwordForm = document.getElementById('password-form');
-    const originForm = document.getElementById('origin-form');
-    const originFields = ['name', 'country', 'province', 'city', 'district', 'township', 'street', 'streetNumber'];
-    const originInput = originForm?.elements.text;
-    const originSuggestions = document.getElementById('origin-suggestions');
-    let editingOriginIndex = null;
-    let selectedPlace = null;
-    let resolvedPlace = null;
-    let photonFeatures = [];
-    let searchTimer = null;
-    let searchSequence = 0;
-    let mapInstance = null;
-    let mapMarker = null;
-    let mapAddress = null;
-    const currentOrigins = () => Array.isArray(state.user.usualOrigin)
-      ? [...state.user.usualOrigin]
-      : (state.user.usualOrigin && Object.values(state.user.usualOrigin).some(Boolean) ? [state.user.usualOrigin] : []);
-    const featureOrigin = (props = {}) => ({
-      name: props.name || '', country: props.country || '', province: props.state || props.province || '',
-      city: props.city || props.town || props.village || '', district: props.district || props.suburb || props.city_district || props.county || '',
-      township: props.locality || props.town || props.village || '', street: props.street || props.road || '',
-      streetNumber: props.housenumber || props.house_number || '',
-    });
-    const originAddressText = (origin) => [
-      origin.name,
-      [origin.street, origin.streetNumber].filter(Boolean).join(' '),
-      origin.township, origin.district, origin.city, origin.province, origin.country,
-    ].filter(Boolean).filter((part, index, parts) => parts.indexOf(part) === index).join('，');
-    const featureLabel = (feature) => originAddressText(featureOrigin(feature?.properties || {}));
-    const setOriginEditMode = (index) => {
-      editingOriginIndex = index;
-      const submit = document.getElementById('origin-submit');
-      submit.textContent = index === null ? '＋' : t('settings.originUpdate');
-      document.getElementById('origin-cancel-edit').hidden = index === null;
+    // 常用地址：列表 + 腾讯地图选点（仿微信发送位置）
+    const currentOrigins = () => Array.isArray(state.user.usualOrigin) ? [...state.user.usualOrigin] : [];
+    const saveOrigins = async (origins) => {
+      const result = await api('/api/me/usual-origin', { method: 'PUT', body: { origins } });
+      state.user.usualOrigin = result.usualOrigin || origins;
+      localStorage.setItem(STORAGE.user, JSON.stringify(state.user));
+      renderOrigins();
     };
     const renderOrigins = () => {
       const list = document.getElementById('origin-list');
       if (!list) return;
-      list.innerHTML = currentOrigins().map((origin, index) => `<div class="origin-chip"><button type="button" class="origin-chip-main" data-origin-edit="${index}" title="${esc(t('settings.originEdit'))}"><span class="origin-pin">⌖</span><span class="origin-chip-copy"><strong>${esc(origin.name || origin.city || origin.country || '—')}</strong><small>${esc([origin.district, origin.city, origin.province, origin.country].filter(Boolean).join(' · '))}</small></span><span class="origin-edit-mark">✎</span></button><button type="button" class="origin-remove" data-origin-remove="${index}" aria-label="×">×</button></div>`).join('') || `<p class="origin-empty">${esc(t('settings.originEmpty'))}</p>`;
+      const origins = currentOrigins();
+      list.innerHTML = origins.map((o, i) => `<div class="origin-item"><div class="origin-item-main"><strong>${esc(o.name || o.address || '—')}</strong><small>${esc(o.address || [o.district,o.city,o.province].filter(Boolean).join('') || '')}</small></div><button type="button" class="origin-delete" data-origin-delete="${i}" aria-label="删除">×</button></div>`).join('')
+        || `<p class="origin-empty">${esc(t('settings.originEmpty') || '还没有常用地址')}</p>`;
     };
     renderOrigins();
-    document.getElementById('origin-list')?.addEventListener('click', async (event) => {
-      const removeButton = event.target.closest('[data-origin-remove]');
-      if (removeButton) {
-        const index = Number(removeButton.dataset.originRemove);
-        const origins = currentOrigins();
-        origins.splice(index, 1);
-        try { const result = await api('/api/me/usual-origin', { method: 'PUT', body: { origins } }); state.user.usualOrigin = result.usualOrigin; localStorage.setItem(STORAGE.user, JSON.stringify(state.user)); renderOrigins(); }
-        catch (error) { showError('origin-error', error.message); }
-        if (editingOriginIndex === index) { originForm.reset(); selectedPlace = null; resolvedPlace = null; setOriginEditMode(null); }
-        else if (editingOriginIndex !== null && editingOriginIndex > index) setOriginEditMode(editingOriginIndex - 1);
-        return;
-      }
-      const editButton = event.target.closest('[data-origin-edit]');
-      if (!editButton) return;
-      const index = Number(editButton.dataset.originEdit);
-      const origin = currentOrigins()[index];
-      if (!origin) return;
-      setOriginEditMode(index);
-      originInput.value = originAddressText(origin);
-      selectedPlace = null;
-      resolvedPlace = { ...origin };
-      originSuggestions.hidden = true;
-      originInput.focus();
-    });
-    const saveOrigin = async (origin, editingIndex = editingOriginIndex) => {
+    document.getElementById('origin-list')?.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-origin-delete]');
+      if (!btn) return;
+      const idx = Number(btn.dataset.originDelete);
       const origins = currentOrigins();
-      if (editingIndex === null) origins.push(origin);
-      else origins[editingIndex] = origin;
-      const result = await api('/api/me/usual-origin', { method: 'PUT', body: { origins } });
-      state.user.usualOrigin = result.usualOrigin;
-      localStorage.setItem(STORAGE.user, JSON.stringify(state.user));
-      originForm.reset();
-      selectedPlace = null;
-      resolvedPlace = null;
-      setOriginEditMode(null);
-      renderOrigins();
-      toast(t('settings.originSaved'));
-    };
-    const renderSuggestions = (features, message = '') => {
-      photonFeatures = features;
-      originSuggestions.innerHTML = features.map((feature, index) => `<button type="button" class="origin-suggestion" data-origin-suggestion="${index}"><strong>${esc(feature.properties?.name || '—')}</strong><small>${esc(featureLabel(feature))}</small></button>`).join('')
-        + (message ? `<p class="origin-suggestion-note">${esc(message)}</p>` : (features.length ? `<p class="origin-suggestion-note">${esc(t('settings.originSearchAttribution'))}</p>` : ''));
-      originSuggestions.hidden = !features.length && !message;
-    };
-    originInput?.addEventListener('input', () => {
-      selectedPlace = null;
-      resolvedPlace = null;
-      clearTimeout(searchTimer);
-      const query = originInput.value.trim();
-      const sequence = ++searchSequence;
-      if (query.length < 2) { renderSuggestions([]); return; }
-      searchTimer = setTimeout(async () => {
-        renderSuggestions([], t('settings.originSearching'));
+      origins.splice(idx, 1);
+      try { await saveOrigins(origins); } catch (err) { showError('origin-error', err.message); }
+    });
+
+    let tmap = null, tmapReady = null, pickerMapRatio = 0.5;
+    async function ensureTencentMap() {
+      if (window.TMap) return window.TMap;
+      if (tmapReady) return tmapReady;
+      tmapReady = (async () => {
+        const cfg = await api('/api/map/config').catch(() => ({}));
+        const key = cfg.tencentKey;
+        if (!key) throw new Error('未配置腾讯地图 Key，请在服务器设置 TENCENT_MAP_KEY');
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = `https://map.qq.com/api/gljs?v=1.exp&key=${encodeURIComponent(key)}`;
+          s.onload = resolve; s.onerror = () => reject(new Error('腾讯地图加载失败'));
+          document.head.appendChild(s);
+        });
+        return window.TMap;
+      })();
+      return tmapReady;
+    }
+
+    const picker = document.getElementById('origin-picker');
+    const pickerBody = document.getElementById('origin-picker-body');
+    const poisEl = document.getElementById('origin-picker-pois');
+    const mapEl = document.getElementById('origin-picker-map');
+    const dragEl = document.getElementById('origin-picker-drag');
+    const confirmBtn = document.getElementById('origin-picker-confirm');
+    const searchInput = document.getElementById('origin-picker-query');
+    const searchResults = document.getElementById('origin-picker-search-results');
+    let selectedPoi = null, nearbyPois = [], suppressMove = false, moveTimer = null, searchSeq = 0;
+
+    function applyPickerRatio() {
+      if (!pickerBody || !mapEl || !poisEl) return;
+      const h = pickerBody.clientHeight || 400;
+      const dragH = dragEl ? dragEl.offsetHeight : 16;
+      const mapH = Math.max(120, Math.min(h - 120 - dragH, Math.round((h - dragH) * pickerMapRatio)));
+      mapEl.style.height = mapH + 'px';
+      poisEl.style.height = (h - mapH - dragH) + 'px';
+      if (tmap) setTimeout(() => { try { tmap.resize(); } catch {} }, 0);
+    }
+    dragEl?.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      const startY = e.clientY, startRatio = pickerMapRatio;
+      const onMove = (ev) => {
+        const h = pickerBody.clientHeight || 400;
+        const dy = ev.clientY - startY;
+        pickerMapRatio = Math.max(0.25, Math.min(0.8, startRatio + dy / h));
+        applyPickerRatio();
+      };
+      const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+
+    function renderPois(pois, selectedId) {
+      nearbyPois = pois || [];
+      if (!poisEl) return;
+      poisEl.innerHTML = nearbyPois.map((p, i) => {
+        const active = (selectedId != null ? p.id === selectedId : i === 0) ? ' active' : '';
+        const dist = p.distance != null ? `<span class="poi-dist">${p.distance < 1000 ? p.distance + 'm' : (p.distance/1000).toFixed(1)+'km'}</span>` : '';
+        return `<button type="button" class="origin-poi${active}" data-poi-index="${i}"><div class="poi-main"><strong>${esc(p.name || '位置')}</strong><small>${esc(p.address || '')}</small></div>${dist}<span class="poi-check">✓</span></button>`;
+      }).join('') || `<p class="origin-empty">附近没有找到地点</p>`;
+      if (nearbyPois.length) {
+        const idx = selectedId != null ? Math.max(0, nearbyPois.findIndex(p => p.id === selectedId)) : 0;
+        selectedPoi = nearbyPois[idx] || null;
+        confirmBtn.disabled = !selectedPoi;
+      } else { selectedPoi = null; confirmBtn.disabled = true; }
+    }
+    poisEl?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-poi-index]');
+      if (!btn) return;
+      const poi = nearbyPois[Number(btn.dataset.poiIndex)];
+      if (!poi || !Number.isFinite(poi.lat) || !Number.isFinite(poi.lng)) return;
+      selectedPoi = poi; confirmBtn.disabled = false;
+      renderPois(nearbyPois, poi.id);
+      if (tmap) { suppressMove = true; tmap.setCenter(new TMap.LatLng(poi.lat, poi.lng)); setTimeout(() => { suppressMove = false; }, 0); }
+    });
+
+    async function fetchNearby(lat, lng) {
+      try {
+        const data = await api('/api/me/usual-origin/nearby', { method: 'POST', body: { lat, lng } });
+        const pois = Array.isArray(data.pois) ? data.pois : [];
+        pois.sort((a,b) => (a.distance ?? 1e9) - (b.distance ?? 1e9));
+        renderPois(pois, selectedPoi?.id);
+      } catch (err) { poisEl.innerHTML = `<p class="form-error">${esc(err.message || '获取附近地点失败')}</p>`; }
+    }
+
+    async function openPicker() {
+      if (!picker) return;
+      hideError('origin-error');
+      try {
+        await ensureTencentMap();
+      } catch (err) { showError('origin-error', err.message); return; }
+      picker.hidden = false;
+      applyPickerRatio();
+      selectedPoi = null; nearbyPois = []; confirmBtn.disabled = true;
+      poisEl.innerHTML = '<p class="origin-empty">正在获取附近地点…</p>';
+      if (!tmap) {
+        const center = new TMap.LatLng(39.908823, 116.397470);
+        tmap = new TMap.Map(mapEl, { center, zoom: 16, viewMode: '2D' });
+        tmap.on('idle', () => {
+          if (suppressMove) return;
+          clearTimeout(moveTimer);
+          moveTimer = setTimeout(() => {
+            const c = tmap.getCenter();
+            if (c) fetchNearby(c.getLat(), c.getLng());
+          }, 300);
+        });
+      }
+      setTimeout(() => { try { tmap.resize(); } catch {} }, 0);
+      // 定位到当前位置
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          const c = new TMap.LatLng(pos.coords.latitude, pos.coords.longitude);
+          suppressMove = true; tmap.setCenter(c); tmap.setZoom(17); setTimeout(() => { suppressMove = false; fetchNearby(pos.coords.latitude, pos.coords.longitude); }, 0);
+        }, () => { const c = tmap.getCenter(); if (c) fetchNearby(c.getLat(), c.getLng()); }, { enableHighAccuracy: true, timeout: 8000 });
+      } else {
+        const c = tmap.getCenter(); if (c) fetchNearby(c.getLat(), c.getLng());
+      }
+    }
+
+    function closePicker() { if (picker) picker.hidden = true; if (searchResults) searchResults.hidden = true; }
+    document.getElementById('origin-add')?.addEventListener('click', openPicker);
+    document.getElementById('origin-picker-back')?.addEventListener('click', closePicker);
+    confirmBtn?.addEventListener('click', async () => {
+      if (!selectedPoi) return;
+      const origin = { name: selectedPoi.name || '', address: selectedPoi.address || '', lat: selectedPoi.lat, lng: selectedPoi.lng, province: selectedPoi.province || '', city: selectedPoi.city || '', district: selectedPoi.district || '' };
+      try {
+        await saveOrigins([...currentOrigins(), origin]);
+        toast(t('settings.originSaved') || '常用地址已保存');
+        closePicker();
+      } catch (err) { toast(err.message, 'error'); }
+    });
+
+    searchInput?.addEventListener('input', () => {
+      const q = (searchInput.value || '').trim();
+      const seq = ++searchSeq;
+      clearTimeout(searchInput._timer);
+      if (!q) { if (searchResults) searchResults.hidden = true; return; }
+      searchInput._timer = setTimeout(async () => {
         try {
-          const data = await api('/api/me/usual-origin/search', { method: 'POST', body: { query, locale: getLocale() } });
-          if (sequence !== searchSequence || originInput.value.trim() !== query) return;
-          const features = Array.isArray(data.features) ? data.features : [];
-          renderSuggestions(features, features.length ? '' : t('settings.originNoResults'));
-        } catch {
-          if (sequence === searchSequence) renderSuggestions([], t('settings.originNoResults'));
-        }
+          const c = tmap?.getCenter();
+          const body = { keyword: q };
+          if (c) { body.lat = c.getLat(); body.lng = c.getLng(); }
+          const data = await api('/api/me/usual-origin/search', { method: 'POST', body });
+          if (seq !== searchSeq) return;
+          const pois = Array.isArray(data.pois) ? data.pois : [];
+          if (!searchResults) return;
+          searchResults.innerHTML = pois.map((p, i) => `<button type="button" class="origin-poi" data-search-index="${i}"><div class="poi-main"><strong>${esc(p.name||'')}</strong><small>${esc(p.address||'')}</small></div></button>`).join('') || '<p class="origin-empty">没有找到地点</p>';
+          searchResults._pois = pois;
+          searchResults.hidden = false;
+        } catch {}
       }, 350);
     });
-    originSuggestions?.addEventListener('click', async (event) => {
-      const button = event.target.closest('[data-origin-suggestion]');
-      if (!button) return;
-      const feature = photonFeatures[Number(button.dataset.originSuggestion)];
-      if (!feature) return;
-      selectedPlace = feature.properties || {};
-      resolvedPlace = featureOrigin(selectedPlace);
-      const selectedInputValue = featureLabel(feature);
-      originInput.value = selectedInputValue;
-      renderSuggestions([], t('settings.originSearching'));
-      const [lon, lat] = feature.geometry?.coordinates || [];
-      if (Number.isFinite(lat) && Number.isFinite(lon)) {
-        try {
-          const data = await api('/api/me/usual-origin/reverse', { method: 'POST', body: { lat, lon, locale: getLocale() } });
-          if (originInput.value !== selectedInputValue) return;
-          const nearest = featureOrigin(data.features?.[0]?.properties || {});
-          resolvedPlace = Object.fromEntries(originFields.map((field) => [field, nearest[field] || resolvedPlace[field] || '']));
-          resolvedPlace.name = selectedPlace.name || resolvedPlace.name;
-        } catch { /* Keep the selected search result if reverse lookup is unavailable. */ }
-      }
-      originInput.value = originAddressText(resolvedPlace);
-      renderSuggestions([]);
-      originInput.focus();
-    });
-    document.getElementById('origin-cancel-edit')?.addEventListener('click', () => {
-      originForm.reset();
-      selectedPlace = null;
-      resolvedPlace = null;
-      renderSuggestions([]);
-      setOriginEditMode(null);
-    });
-    if (originForm) originForm.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      hideError('origin-error');
-      const button = document.getElementById('origin-submit');
-      const editingIndex = editingOriginIndex;
-      const rawText = originInput.value.trim();
-      if (!rawText) { showError('origin-error', t('settings.originNoResults')); return; }
-      renderSuggestions([]);
-      setBusy(button, true, t('busy.saving'));
-      try {
-        const context = resolvedPlace ? `\n已选地点的结构化地址信息：${originAddressText(resolvedPlace)}` : '';
-        if (!(await ensureServer())) { setBusy(button, false); return; }
-        const parsed = await api('/api/me/usual-origin/parse', { method: 'POST', body: { text: `${rawText}${context}` } });
-        const origin = Object.fromEntries(originFields.map((field) => [field, parsed.origin?.[field] || resolvedPlace?.[field] || '']));
-        await saveOrigin(origin, editingIndex);
-      } catch (error) {
-        showError('origin-error', error.message);
-      } finally {
-        setBusy(button, false);
-        if (editingOriginIndex === null) button.textContent = '＋';
+    searchResults?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-search-index]');
+      if (!btn) return;
+      const poi = (searchResults._pois || [])[Number(btn.dataset.searchIndex)];
+      if (!poi || !tmap) return;
+      searchResults.hidden = true; searchInput.value = poi.name || '';
+      if (Number.isFinite(poi.lat) && Number.isFinite(poi.lng)) {
+        suppressMove = true;
+        tmap.setCenter(new TMap.LatLng(poi.lat, poi.lng));
+        tmap.setZoom(17);
+        setTimeout(() => { suppressMove = false; fetchNearby(poi.lat, poi.lng); }, 0);
+        selectedPoi = poi;
       }
     });
-    const mapModal = document.getElementById('origin-map-modal');
-    const reversePhoton = async (lat, lon) => {
-      const data = await api('/api/me/usual-origin/reverse', { method: 'POST', body: { lat, lon, locale: getLocale() } });
-      const props = data.features?.[0]?.properties;
-      if (!props) throw new Error('reverse_empty');
-      return featureOrigin(props);
-    };
-    const pickMapLocation = async (latlng) => {
-      mapMarker.setLatLng(latlng);
-      mapAddress = null;
-      const use = document.getElementById('origin-map-use');
-      use.disabled = true;
-      try {
-        mapAddress = await reversePhoton(latlng.lat, latlng.lng);
-        use.disabled = false;
-      } catch { showError('origin-map-error', t('settings.originNoResults')); }
-    };
-    document.getElementById('origin-map')?.addEventListener('click', async () => {
-      mapModal.hidden = false;
-      try {
-        if (!window.L) await new Promise((resolve, reject) => { const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; document.head.append(link); const script = document.createElement('script'); script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'; script.onload = resolve; script.onerror = reject; document.head.append(script); });
-        if (!mapInstance) {
-          mapInstance = window.L.map('origin-map-canvas').setView([35.68, 139.69], 4);
-          window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19 }).addTo(mapInstance);
-          mapMarker = window.L.marker([35.68, 139.69], { draggable: true }).addTo(mapInstance);
-          mapInstance.on('click', (e) => pickMapLocation(e.latlng));
-          mapMarker.on('dragend', (e) => pickMapLocation(e.target.getLatLng()));
-        }
-        setTimeout(() => mapInstance.invalidateSize(), 0);
-      } catch {
-        showError('origin-map-error', t('settings.originNoResults'));
-      }
-    });
-    document.getElementById('origin-locate')?.addEventListener('click', () => {
-      hideError('origin-map-error');
-      if (!window.isSecureContext && location.protocol !== 'file:') { showError('origin-map-error', t('settings.originSecureRequired')); return; }
-      if (!navigator.geolocation) { showError('origin-map-error', t('settings.originLocationError')); return; }
-      const button = document.getElementById('origin-locate');
-      button.disabled = true;
-      navigator.geolocation.getCurrentPosition(({ coords }) => {
-        const latlng = { lat: coords.latitude, lng: coords.longitude };
-        mapInstance.flyTo([coords.latitude, coords.longitude], 16, { animate: true, duration: 0.7 });
-        button.disabled = false;
-        pickMapLocation(latlng);
-      }, () => { showError('origin-map-error', t('settings.originLocationError')); button.disabled = false; }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
-    });
-    document.getElementById('origin-map-close')?.addEventListener('click', () => { mapModal.hidden = true; });
-    document.getElementById('origin-map-use')?.addEventListener('click', async () => {
-      if (!mapAddress) return;
-      const origin = { ...mapAddress, name: mapAddress.name || mapAddress.street || mapAddress.city || mapAddress.country };
-      try { await saveOrigin(origin); mapModal.hidden = true; } catch (error) { showError('origin-map-error', error.message); }
-    });
+
 
     if (passwordForm) {
       passwordForm.addEventListener('submit', async (event) => {

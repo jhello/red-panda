@@ -95,6 +95,9 @@ export function loadConfig(env = process.env) {
       model: value(env, 'OPENAI_MODEL', 'gpt-4o-mini'),
       mock: value(env, 'RED_PANDA_AI_MOCK', '0') === '1',
     },
+    tencentMap: {
+      key: value(env, 'TENCENT_MAP_KEY', value(env, 'RED_PANDA_TENCENT_MAP_KEY', '')),
+    },
   };
 }
 
