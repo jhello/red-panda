@@ -2269,21 +2269,12 @@ input#plan-input::placeholder {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-}
-.about-link-row {
-  display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: var(--paper, #f7f2e8);
+  gap: 4px;
 }
 .about-link-label {
   font-size: 13px;
   color: var(--muted, #6b6b6b);
-  flex: 0 0 auto;
 }
 .about-link-value {
   font-size: 13px;
@@ -2294,7 +2285,7 @@ input#plan-input::placeholder {
   padding: 0;
   cursor: pointer;
   word-break: break-all;
-  text-align: right;
+  text-align: center;
 }
 .about-link-value:hover {
   text-decoration: underline;
