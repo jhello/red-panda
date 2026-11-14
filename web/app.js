@@ -4756,7 +4756,7 @@
     const searchInput = document.getElementById('origin-picker-query');
     const searchResults = document.getElementById('origin-picker-search-results');
     const locateBtn = document.getElementById('origin-picker-locate');
-    let selectedPoi = null, nearbyPois = [], suppressMove = false, moveTimer = null, searchSeq = 0;
+    let selectedPoi = null, nearbyPois = [], suppressMove = false, moveTimer = null, searchSeq = 0, nearbySeq = 0;
 
     function applyPickerRatio() {
       if (!pickerBody || !mapWrap || !listPanel) return;
@@ -4873,12 +4873,34 @@
 
     async function fetchNearby(lat, lng) {
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const seq = ++nearbySeq;
       try {
-        const data = await api('/api/me/usual-origin/nearby', { method: 'POST', body: { lat, lng } });
-        const pois = Array.isArray(data.pois) ? data.pois : [];
+        const [nearbyRes, reverseRes] = await Promise.allSettled([
+          api('/api/me/usual-origin/nearby', { method: 'POST', body: { lat, lng } }),
+          api('/api/me/usual-origin/reverse', { method: 'POST', body: { lat, lng } }),
+        ]);
+        if (seq !== nearbySeq) return;
+        const pois = nearbyRes.status === 'fulfilled' && Array.isArray(nearbyRes.value.pois) ? nearbyRes.value.pois : [];
         pois.sort((a,b) => (a.distance ?? 1e9) - (b.distance ?? 1e9));
-        renderPois(pois, selectedPoi?.id);
-      } catch (err) { if (poisEl) poisEl.innerHTML = `<p class="form-error">${esc(err.message || '获取附近地点失败')}</p>`; }
+        const rev = reverseRes.status === 'fulfilled' ? (reverseRes.value || {}) : {};
+        const centerAddr = rev.address || [rev.component?.province, rev.component?.city, rev.component?.district, rev.component?.street, rev.component?.street_number].filter(Boolean).join('') || '';
+        const centerPoi = {
+          id: '__center__',
+          name: '',
+          address: centerAddr,
+          lat,
+          lng,
+          distance: 0,
+          province: rev.component?.province || '',
+          city: rev.component?.city || '',
+          district: rev.component?.district || '',
+        };
+        const list = [centerPoi, ...pois.filter(p => p && p.id !== '__center__')];
+        renderPois(list, selectedPoi?.id || '__center__');
+      } catch (err) {
+        if (seq !== nearbySeq) return;
+        if (poisEl) poisEl.innerHTML = `<p class="form-error">${esc(err.message || '获取附近地点失败')}</p>`;
+      }
     }
 
     function locateTo(lat, lng, zoom = 17) {
