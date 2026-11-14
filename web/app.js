@@ -5007,6 +5007,7 @@
       case 'database-sort-size':
         databaseSort='size'; drawDatabaseTypes(); break;
       case 'settings-section':
+        if (target.dataset.section === 'data') { navigate('#/database'); break; }
         replaceHash(`#/settings/${target.dataset.section}`);
         render();
         break;
