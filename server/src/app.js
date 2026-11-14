@@ -11,15 +11,6 @@ import { fileSize, openDatabase } from './db.js';
 import { getLanUrls } from './config.js';
 import { createMailer } from './mailer.js';
 import { emailChangeVerificationEmail, resetEmail, verificationEmail } from './emails.js';
-import {
-  MAX_MEDIA_BYTES,
-  mediaFileName,
-  mediaFilePath,
-  mediaKindFor,
-  mimeForFile,
-  removeMediaFile,
-  saveMediaFile,
-} from './media.js';
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -113,24 +104,6 @@ function readJson(req) {
   });
 }
 
-/** 读取请求体的原始字节（上传照片 / 视频时用）。 */
-function readRaw(req, maxBytes = MAX_MEDIA_BYTES) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let size = 0;
-    req.on('data', (chunk) => {
-      size += chunk.length;
-      if (size > maxBytes) {
-        reject(new HttpError(413, '文件太大了', 'payload_too_large'));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', reject);
-  });
-}
 
 function requiredString(value, label, { min = 0, max = 200, trim = true } = {}) {
   if (typeof value !== 'string') {
@@ -148,6 +121,26 @@ function optionalString(value, label, max = 5000) {
   const text = value.trim();
   if (text.length > max) throw new HttpError(400, `${label}不能超过 ${max} 个字符`, 'validation_error');
   return text;
+}
+
+function normalizeEmail(value) {
+  const email = String(value ?? '').trim().toLowerCase();
+  if (email.length < 5 || email.length > 254 || !EMAIL_RE.test(email)) {
+    throw new HttpError(400, '请输入有效的邮箱地址', 'validation_error');
+  }
+  return email;
+}
+
+const SUPPORTED_LOCALES = new Set(['zh', 'en', 'de']);
+
+/** Accept "zh", "en", "de" and common BCP-47 tags such as zh-Hans-DE or de-AT. */
+function normalizeLocale(value) {
+  const text = String(value ?? '').trim().toLowerCase();
+  if (SUPPORTED_LOCALES.has(text)) return text;
+  if (text.startsWith('zh')) return 'zh';
+  if (text.startsWith('en')) return 'en';
+  if (text.startsWith('de')) return 'de';
+  return '';
 }
 
 /** Field aliases a model may use for each field of a journey plan. */
@@ -296,88 +289,9 @@ function normalizeJourneyPlan(value) {
   };
 }
 
-/** Journey rows carry the plan as JSON; expose it as an object. */
-function publicJourney(row) {
-  if (!row) return row;
-  let plan = null;
-  if (row.plan) {
-    try {
-      plan = JSON.parse(row.plan);
-    } catch {
-      plan = null;
-    }
-  }
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    plan,
-    depart_time: row.depart_time || '',
-    return_time: row.return_time || '',
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  };
-}
-
-/** 行程里的目的地（可能有好几个）。 */
-function destinationsOf(journey) {
-  const items = journey?.plan?.items;
-  if (!Array.isArray(items) || !items.length) return '';
-  return items
-    .map((item) => String(item?.destination ?? '').trim())
-    .filter(Boolean)
-    .join(' · ');
-}
-
-/** 回忆里的一张照片 / 视频。 */
-function publicMedia(row) {
-  return {
-    id: row.id,
-    memoryId: row.memory_id,
-    kind: row.kind,
-    mime: row.mime,
-    size: row.size,
-    url: `/api/media/${row.access_key}`,
-    createdAt: row.created_at,
-  };
-}
-
-/** 一条回忆：文字 + 照片 / 视频。 */
-function publicMemory(row) {
-  return {
-    id: row.id,
-    journeyId: row.journey_id,
-    note: row.note,
-    createdAt: row.created_at,
-    media: (row.media ?? []).map(publicMedia),
-  };
-}
-
-function normalizeEmail(value) {
-  const email = String(value ?? '').trim().toLowerCase();
-  if (email.length < 5 || email.length > 254 || !EMAIL_RE.test(email)) {
-    throw new HttpError(400, '请输入有效的邮箱地址', 'validation_error');
-  }
-  return email;
-}
-
-const SUPPORTED_LOCALES = new Set(['zh', 'en', 'de']);
-
-/** Accept "zh", "en", "de" and common BCP-47 tags such as zh-Hans-DE or de-AT. */
-function normalizeLocale(value) {
-  const text = String(value ?? '').trim().toLowerCase();
-  if (SUPPORTED_LOCALES.has(text)) return text;
-  if (/^zh\b|^zh[-_]/.test(text)) return 'zh';
-  if (/^en\b|^en[-_]/.test(text)) return 'en';
-  if (/^de\b|^de[-_]/.test(text)) return 'de';
-  return '';
-}
-
-/** The language selected for this action wins; otherwise use the saved preference. */
-function localeForUser(user, body, req) {
+function localeForUser(body, req) {
   return (
     normalizeLocale(body?.locale) ||
-    normalizeLocale(user?.locale) ||
     normalizeLocale(req?.headers?.['accept-language']) ||
     'zh'
   );
@@ -391,16 +305,11 @@ function validatePassword(value) {
 }
 
 function publicUser(row) {
-  let usualOrigin = {};
-  try { usualOrigin = JSON.parse(row.usual_origin || '{}'); } catch { /* legacy or malformed data */ }
   return {
     id: row.id,
     email: row.email || null,
-    displayName: row.display_name || '',
     emailVerified: Boolean(row.email_verified),
-    locale: row.locale || '',
     createdAt: row.created_at,
-    usualOrigin: Array.isArray(usualOrigin) ? usualOrigin : (usualOrigin && Object.values(usualOrigin).some(Boolean) ? [usualOrigin] : []),
   };
 }
 
@@ -442,50 +351,6 @@ function serveFile(req, res, filePath) {
   return true;
 }
 
-/** 发送照片 / 视频，支持 Range 请求（浏览器播放视频需要拖动进度）。 */
-function serveMedia(req, res, filePath, mime) {
-  const stat = fs.statSync(filePath);
-  const headers = {
-    'Content-Type': mime || mimeForFile(filePath),
-    'Accept-Ranges': 'bytes',
-    'Cache-Control': 'private, max-age=86400',
-    'X-Content-Type-Options': 'nosniff',
-  };
-  const match = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? '').trim());
-  if (match) {
-    let start = match[1] === '' ? null : Number(match[1]);
-    let end = match[2] === '' ? null : Number(match[2]);
-    if (start === null && end !== null) {
-      start = Math.max(0, stat.size - end);
-      end = stat.size - 1;
-    } else if (start === null) {
-      start = 0;
-    }
-    if (end === null || end >= stat.size) end = stat.size - 1;
-    if (start > end || start >= stat.size) {
-      res.writeHead(416, { 'Content-Range': `bytes */${stat.size}` });
-      res.end();
-      return;
-    }
-    res.writeHead(206, {
-      ...headers,
-      'Content-Range': `bytes ${start}-${end}/${stat.size}`,
-      'Content-Length': end - start + 1,
-    });
-    if (req.method === 'HEAD') {
-      res.end();
-    } else {
-      fs.createReadStream(filePath, { start, end }).pipe(res);
-    }
-    return;
-  }
-  res.writeHead(200, { ...headers, 'Content-Length': stat.size });
-  if (req.method === 'HEAD') {
-    res.end();
-  } else {
-    fs.createReadStream(filePath).pipe(res);
-  }
-}
 
 function notFound(req, res) {
   if (req.url?.startsWith('/api/')) {
@@ -533,18 +398,12 @@ export function createApp(config, options = {}) {
   function route(method, pattern, handler, options = {}) {
     const methodUpper = method.toUpperCase();
     const routePath = pattern.source.replaceAll('\\/', '/').replace(/^\^/, '').replace(/\$$/, '');
-    const movedToClient = ['POST', 'PUT', 'DELETE'].includes(methodUpper)
-      && (/^\/api\/(journeys|memories)/.test(routePath)
-        || /^\/api\/me\/(profile|locale|usual-origin)$/.test(routePath));
     routes.push({
       method: methodUpper,
       pattern,
-      handler: movedToClient
-        ? () => { throw new HttpError(410, '个人行程与偏好已迁移到本机保存', 'client_storage_only'); }
-        : handler,
+      handler,
       auth: options.auth === true,
       admin: options.admin === true,
-      raw: options.raw === true,
     });
   }
 
@@ -572,11 +431,8 @@ export function createApp(config, options = {}) {
       user: {
         id: row.user_id,
         email: row.email,
-        display_name: row.display_name,
         email_verified: row.email_verified,
-        locale: row.locale,
         created_at: row.user_created_at,
-        usual_origin: row.usual_origin,
       },
     };
   }
@@ -653,7 +509,7 @@ export function createApp(config, options = {}) {
       link,
       email: user.email,
       hours: config.verificationHours,
-      locale: localeForUser(user, context.body, context.req),
+      locale: localeForUser(context.body, context.req),
     });
     await mailer.send({ to: user.email, ...mail });
     return link;
@@ -666,7 +522,7 @@ export function createApp(config, options = {}) {
     const expiresAt = new Date(now.getTime() + hours * 60 * 60 * 1000);
     db.createEmailVerification({ tokenHash: hashToken(token), userId: user.id, now: now.toISOString(), expiresAt: expiresAt.toISOString(), targetEmail: email });
     const link = `${publicBaseUrl()}/api/auth/verify?token=${encodeURIComponent(token)}`;
-    const mail = emailChangeVerificationEmail({ link, email, hours, locale: localeForUser(user, context.body, context.req) });
+    const mail = emailChangeVerificationEmail({ link, email, hours, locale: localeForUser(context.body, context.req) });
     try {
       await mailer.send({ to: email, ...mail });
     } catch (error) {
@@ -692,7 +548,7 @@ export function createApp(config, options = {}) {
       link,
       email: user.email,
       hours: Math.ceil(config.resetMinutes / 60),
-      locale: localeForUser(user, context.body, context.req),
+      locale: localeForUser(context.body, context.req),
     });
     try {
       await mailer.send({ to: user.email, ...mail });
@@ -709,12 +565,11 @@ export function createApp(config, options = {}) {
     const users = db.listUsers().map((user) => ({
       id: user.id,
       email: user.email,
-      displayName: user.display_name || user.email.split('@')[0],
+      displayName: user.email.split('@')[0],
       emailVerified: Boolean(user.email_verified),
       createdAt: user.created_at,
       lastLoginAt: user.last_login_at,
       lastSeenAt: user.last_seen_at,
-      journeyCount: user.journey_count,
       online: Boolean(user.last_seen_at) && now - Date.parse(user.last_seen_at) < ONLINE_WINDOW_MS,
     }));
     return {
@@ -968,13 +823,6 @@ export function createApp(config, options = {}) {
     { auth: true },
   );
 
-  route('PUT', /^\/api\/me\/profile$/, ({ auth, body }) => {
-    const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
-    if (!displayName || displayName.length > 40) throw new HttpError(400, '昵称需要为 1 到 40 个字符', 'validation_error');
-    db.setDisplayName(auth.user.id, displayName);
-    return { status: 200, body: { displayName } };
-  }, { auth: true });
-
   route('PUT', /^\/api\/me\/email$/, async ({ auth, body, req }) => {
     const email = normalizeEmail(body.email);
     if (email === String(auth.user.email || '').toLowerCase()) {
@@ -994,16 +842,6 @@ export function createApp(config, options = {}) {
     return { status: 200, body: pending };
   }, { auth: true });
 
-  route('DELETE', /^\/api\/me\/personal-data$/, ({ auth }) => {
-    for (const memory of db.listMemories(auth.user.id)) {
-      const removed = db.deleteMemory(auth.user.id, memory.id);
-      for (const item of removed?.media ?? []) removeMediaFile(config.dataDir, auth.user.id, mediaFileName(item.access_key, item.mime));
-    }
-    for (const journey of db.listJourneys(auth.user.id)) db.deleteJourney(auth.user.id, journey.id);
-    db.clearClientProfile(auth.user.id);
-    return { status: 204 };
-  }, { auth: true });
-
   route(
     'PUT',
     /^\/api\/me\/password$/,
@@ -1018,24 +856,6 @@ export function createApp(config, options = {}) {
       // Keep this session, sign out every other device.
       db.deleteOtherSessions(auth.user.id, auth.tokenHash);
       return { status: 204 };
-    },
-    { auth: true },
-  );
-
-  route(
-    'PUT',
-    /^\/api\/me\/usual-origin$/,
-    ({ auth, body }) => {
-      const fields = ['name', 'country', 'province', 'city', 'district', 'township', 'street', 'streetNumber'];
-      const origins = Array.isArray(body.origins) ? body.origins : [body];
-      if (origins.length > 20) throw new HttpError(400, '最多保存 20 个常用出发地', 'validation_error');
-      const clean = origins.map((item) => Object.fromEntries(fields.map((field) => {
-        const value = typeof item?.[field] === 'string' ? item[field].trim() : '';
-        if (value.length > 160) throw new HttpError(400, '出发地字段不能超过 160 个字符', 'validation_error');
-        return [field, value];
-      }))).filter((item) => Object.values(item).some(Boolean));
-      db.setUsualOrigin(auth.user.id, clean);
-      return { status: 200, body: { usualOrigin: clean } };
     },
     { auth: true },
   );
@@ -1088,236 +908,20 @@ export function createApp(config, options = {}) {
   }, { auth: true });
 
   route(
-    'PUT',
-    /^\/api\/me\/locale$/,
-    () => ({ status: 410, body: { code: 'client_storage_only', error: '界面语言已迁移到本机保存' } }),
-    { auth: true },
-  );
-
-  route(
-    'GET',
-    /^\/api\/journeys$/,
-    ({ auth }) => ({
-      status: 200,
-      body: { journeys: db.listJourneys(auth.user.id).map(publicJourney) },
-    }),
-    { auth: true },
-  );
-
-  route(
-    'POST',
-    /^\/api\/journeys$/,
-    ({ auth, body }) => {
-      const name = requiredString(body.name, '旅程名称', { min: 1, max: 80 });
-      const description = optionalString(body.description, '旅程描述', 5000);
-      const plan = normalizeJourneyPlan(body.plan);
-      const journey = db.createJourney({
-        userId: auth.user.id,
-        name,
-        description,
-        plan: plan ? JSON.stringify(plan) : '',
-        departTime: plan?.departTime ?? '',
-        returnTime: plan?.returnTime ?? '',
-        now: new Date().toISOString(),
-      });
-      return { status: 201, body: { journey: publicJourney(journey) } };
-    },
-    { auth: true },
-  );
-
-  route(
-    'GET',
-    /^\/api\/journeys\/(\d+)$/,
-    ({ auth, params }) => {
-      const journey = db.getJourney(auth.user.id, Number(params[0]));
-      if (!journey) throw new HttpError(404, '旅程不存在', 'not_found');
-      return { status: 200, body: { journey: publicJourney(journey) } };
-    },
-    { auth: true },
-  );
-
-  route(
-    'PUT',
-    /^\/api\/journeys\/(\d+)$/,
-    ({ auth, params, body }) => {
-      const name = requiredString(body.name, '旅程名称', { min: 1, max: 80 });
-      const description = optionalString(body.description, '旅程描述', 5000);
-      const plan = normalizeJourneyPlan(body.plan);
-      const journey = db.updateJourney({
-        userId: auth.user.id,
-        id: Number(params[0]),
-        name,
-        description,
-        plan: plan ? JSON.stringify(plan) : '',
-        departTime: plan?.departTime ?? '',
-        returnTime: plan?.returnTime ?? '',
-        now: new Date().toISOString(),
-      });
-      if (!journey) throw new HttpError(404, '旅程不存在', 'not_found');
-      return { status: 200, body: { journey: publicJourney(journey) } };
-    },
-    { auth: true },
-  );
-
-  route(
-    'DELETE',
-    /^\/api\/journeys\/(\d+)$/,
-    ({ auth, params }) => {
-      const deleted = db.deleteJourney(auth.user.id, Number(params[0]));
-      if (!deleted) throw new HttpError(404, '旅程不存在', 'not_found');
-      return { status: 204 };
-    },
-    { auth: true },
-  );
-
-  // ---- 回忆（照片 / 视频 / 文字）-------------------------------------------
-
-  route(
-    'GET',
-    /^\/api\/memories$/,
-    ({ auth, query }) => {
-      const journeyId = query.journeyId ? Number(query.journeyId) : null;
-      if (journeyId !== null && !Number.isInteger(journeyId)) {
-        throw new HttpError(400, '行程编号不正确', 'validation_error');
-      }
-      return {
-        status: 200,
-        body: {
-          memories: db.listMemories(auth.user.id, journeyId).map(publicMemory),
-          counts: db.countMemoriesByJourney(auth.user.id),
-        },
-      };
-    },
-    { auth: true },
-  );
-
-  route(
-    'POST',
-    /^\/api\/memories$/,
-    ({ auth, body }) => {
-      const raw = body.journeyId;
-      const journeyId =
-        raw === undefined || raw === null || raw === '' ? null : Number(raw);
-      if (journeyId !== null && !Number.isInteger(journeyId)) {
-        throw new HttpError(400, '行程编号不正确', 'validation_error');
-      }
-      if (journeyId !== null && !db.getJourney(auth.user.id, journeyId)) {
-        throw new HttpError(404, '行程不存在', 'not_found');
-      }
-      const note = optionalString(body.note, '回忆文字', 2000);
-      if (!note && journeyId === null) {
-        throw new HttpError(400, '写点什么，或者选一段行程', 'validation_error');
-      }
-      const memory = db.createMemory({
-        userId: auth.user.id,
-        journeyId,
-        note,
-        now: new Date().toISOString(),
-      });
-      return { status: 201, body: { memory: publicMemory(memory) } };
-    },
-    { auth: true },
-  );
-
-  route(
-    'DELETE',
-    /^\/api\/memories\/(\d+)$/,
-    ({ auth, params }) => {
-      const result = db.deleteMemory(auth.user.id, Number(params[0]));
-      if (!result) throw new HttpError(404, '回忆不存在', 'not_found');
-      for (const item of result.media) {
-        removeMediaFile(
-          config.dataDir,
-          auth.user.id,
-          mediaFileName(item.access_key, item.mime),
-        );
-      }
-      return { status: 204 };
-    },
-    { auth: true },
-  );
-
-  // 上传照片 / 视频：请求体就是文件本身，Content-Type 说明类型。
-  route(
-    'POST',
-    /^\/api\/memories\/(\d+)\/media$/,
-    ({ auth, params, body, req }) => {
-      const memory = db.getMemory(auth.user.id, Number(params[0]));
-      if (!memory) throw new HttpError(404, '回忆不存在', 'not_found');
-      const buffer = Buffer.isBuffer(body) ? body : Buffer.alloc(0);
-      if (!buffer.length) throw new HttpError(400, '文件内容为空', 'validation_error');
-      const mime = String(req.headers['content-type'] ?? '')
-        .split(';')[0]
-        .trim()
-        .toLowerCase();
-      const kind = mediaKindFor(mime);
-      if (!kind) {
-        throw new HttpError(415, '只支持照片和视频', 'unsupported_media');
-      }
-      const saved = saveMediaFile(config.dataDir, auth.user.id, buffer, mime);
-      const media = db.createMedia({
-        memoryId: memory.id,
-        userId: auth.user.id,
-        accessKey: saved.key,
-        kind,
-        mime,
-        size: buffer.length,
-        now: new Date().toISOString(),
-      });
-      return { status: 201, body: { media: publicMedia(media) } };
-    },
-    { auth: true, raw: true },
-  );
-
-  // 媒体文件：访问密钥本身就是凭证，方便 <img> / <video> 直接引用。
-  route('GET', /^\/api\/media\/([a-f0-9]{32})$/, ({ params, res, req }) => {
-    const item = db.getMediaByKey(params[0]);
-    if (!item) throw new HttpError(404, '文件不存在', 'not_found');
-    const fileName = mediaFileName(item.access_key, item.mime);
-    const filePath = mediaFilePath(config.dataDir, item.user_id, fileName);
-    if (!filePath || !fs.existsSync(filePath)) {
-      throw new HttpError(404, '文件不存在', 'not_found');
-    }
-    serveMedia(req, res, filePath, item.mime);
-    return { status: 200 };
-  });
-
-  route(
     'POST',
     /^\/api\/ai\/memory-recap$/,
     async ({ auth, body, req }) => {
-      const journeyId = Number(body.journeyId);
-      if (!Number.isInteger(journeyId)) {
-        throw new HttpError(400, '行程编号不正确', 'validation_error');
-      }
-      let context;
-      if (body.context && typeof body.context === 'object') {
-        const supplied = body.context;
-        context = {
-          journeyName: optionalString(supplied.journeyName, '旅程名称', 80),
-          destination: optionalString(supplied.destination, '目的地', 500),
-          departTime: optionalString(supplied.departTime, '出发时间', 40),
-          returnTime: optionalString(supplied.returnTime, '返回时间', 40),
-          photos: Math.max(0, Math.min(10000, Number(supplied.photos) || 0)),
-          videos: Math.max(0, Math.min(10000, Number(supplied.videos) || 0)),
-          notes: Array.isArray(supplied.notes) ? supplied.notes.slice(0, 100).map((note) => optionalString(note, '回忆文字', 2000)).filter(Boolean) : [],
-        };
-      } else {
-        const journey = db.getJourney(auth.user.id, journeyId);
-        if (!journey) throw new HttpError(404, '行程不存在', 'not_found');
-        const memories = db.listMemories(auth.user.id, journeyId);
-        const media = memories.flatMap((item) => item.media ?? []);
-        context = {
-          journeyName: journey.name,
-          destination: destinationsOf(journey),
-          departTime: journey.depart_time || '',
-          returnTime: journey.return_time || '',
-          photos: media.filter((item) => item.kind === 'image').length,
-          videos: media.filter((item) => item.kind === 'video').length,
-          notes: memories.map((item) => item.note).filter(Boolean),
-        };
-      }
-      const locale = localeForUser(auth.user, body, req);
+      const supplied = (body.context && typeof body.context === 'object') ? body.context : {};
+      const context = {
+        journeyName: optionalString(supplied.journeyName, '旅程名称', 80),
+        destination: optionalString(supplied.destination, '目的地', 500),
+        departTime: optionalString(supplied.departTime, '出发时间', 40),
+        returnTime: optionalString(supplied.returnTime, '返回时间', 40),
+        photos: Math.max(0, Math.min(10000, Number(supplied.photos) || 0)),
+        videos: Math.max(0, Math.min(10000, Number(supplied.videos) || 0)),
+        notes: Array.isArray(supplied.notes) ? supplied.notes.slice(0, 100).map((note) => optionalString(note, '回忆文字', 2000)).filter(Boolean) : [],
+      };
+      const locale = localeForUser(body, req);
       if (config.ai.mock) {
         state.metrics.aiCalls += 1;
         return {
@@ -1512,7 +1116,7 @@ export function createApp(config, options = {}) {
 
         let body = {};
         if (['POST', 'PUT', 'PATCH'].includes(req.method ?? '')) {
-          body = matched.raw ? await readRaw(req) : await readJson(req);
+          body = await readJson(req);
         }
 
         const query = Object.fromEntries(parsed.searchParams);

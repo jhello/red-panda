@@ -31,7 +31,6 @@ application/json; charset=utf-8`），`204` 响应无正文。
 | `403` | 邮箱尚未验证 |
 | `404` | 资源不存在 |
 | `409` | 邮箱已注册 |
-| `410` | 该数据已迁移到客户端，服务端不再接收写入 |
 | `429` | 尝试或邮件操作过多 |
 | `502` / `503` / `504` | 邮件发送失败 / AI 未配置 / AI 超时 |
 | `500` | 服务器内部错误 |
@@ -110,17 +109,13 @@ application/json; charset=utf-8`），`204` 响应无正文。
   "user": {
     "id": 1,
     "email": "you@example.com",
-    "displayName": "",
     "emailVerified": true,
-    "locale": "",
-    "usualOrigin": [],
     "createdAt": "2026-11-11T13:47:23.000Z"
   }
 }
 ```
 
-`displayName`、`locale`、`usualOrigin` 只可能出现在尚未完成迁移的旧账户上；
-客户端迁移完成后会通过 `DELETE /api/me/personal-data` 清除，之后以本机 IndexedDB 为准。
+昵称、界面语言和常用出发地保存在客户端 IndexedDB，服务端不再返回这些字段。
 
 邮箱未验证时返回 `403`（`email_not_verified`），此时可以调用重发接口。
 
@@ -180,10 +175,7 @@ application/json; charset=utf-8`），`204` 响应无正文。
   "user": {
     "id": 1,
     "email": "you@example.com",
-    "displayName": "",
     "emailVerified": true,
-    "locale": "",
-    "usualOrigin": [],
     "createdAt": "…",
     "pendingEmail": null,
     "pendingEmailExpiresAt": null,
@@ -224,15 +216,10 @@ application/json; charset=utf-8`），`204` 响应无正文。
 { "pendingResetExpiresAt": "…" }
 ```
 
-### `DELETE /api/me/personal-data`
-
-需要认证。清除服务端为旧版本保留的个人数据副本：昵称、语言、常用出发地、
-旅程、回忆和媒体文件。客户端确认本地写入成功后调用。返回 `204`。
-
 ### `PUT /api/me/profile`、`PUT /api/me/locale`、`PUT /api/me/usual-origin`
 
-返回 `410`（`client_storage_only`）。昵称、界面语言和常用出发地现在保存在
-客户端 IndexedDB。
+这些接口已删除，返回 `404`。昵称、界面语言和常用出发地保存在客户端
+IndexedDB，由客户端本地读写。
 
 ### `POST /api/me/usual-origin/parse`
 
@@ -257,86 +244,10 @@ application/json; charset=utf-8`），`204` 响应无正文。
 
 ---
 
-## 旅程（旧数据读取）
+## 个人数据
 
-旅程、行程计划、出发和返回时间现在保存在客户端 IndexedDB。以下读取接口
-只用于把旧版本服务端数据迁移到客户端；迁移完成后客户端会删除服务端副本。
-
-### `GET /api/journeys`
-
-需要认证。返回该账户在旧版本中的旅程：
-
-```json
-{
-  "journeys": [
-    {
-      "id": 1,
-      "name": "东海之行",
-      "description": "…",
-      "plan": null,
-      "depart_time": "",
-      "return_time": "",
-      "created_at": "2026-11-11T13:40:00.000Z",
-      "updated_at": "2026-11-11T13:41:00.000Z"
-    }
-  ]
-}
-```
-
-按 `depart_time` 升序排列。
-
-### `GET /api/journeys/:id`
-
-需要认证。返回 `{ "journey": { … } }`；不存在返回 `404`。
-
-### `POST /api/journeys`、`PUT /api/journeys/:id`、`DELETE /api/journeys/:id`
-
-返回 `410`（`client_storage_only`）。服务端不再保存或删除旅程。
-
----
-
-## 回忆（旧数据读取）
-
-「回忆」用来给**已经走过的行程**添上照片、视频和文字。文字、照片、视频和
-元数据现在保存在客户端 IndexedDB，实际文件以 Blob 形式存放。
-
-### `GET /api/memories`
-
-需要认证。返回旧版本保存的回忆，`?journeyId=` 可以只看某一段行程：
-
-```json
-{
-  "memories": [
-    {
-      "id": 1,
-      "journeyId": 3,
-      "note": "那天风很大，狐狸在墙头看我。",
-      "createdAt": "2026-11-12T11:16:00.000Z",
-      "media": [
-        {
-          "id": 1,
-          "memoryId": 1,
-          "kind": "image",
-          "mime": "image/png",
-          "size": 104180,
-          "url": "/api/media/d85a5dcf6d9b98b265450299046d45de",
-          "createdAt": "2026-11-12T11:16:00.000Z"
-        }
-      ]
-    }
-  ],
-  "counts": { "3": 1 }
-}
-```
-
-### `GET /api/media/:key`
-
-按访问密钥取回旧版本保存的照片 / 视频，**不需要登录**。迁移时客户端会把
-文件下载成 Blob，完成后再删除服务端文件。新上传不会写入这里。
-
-### `POST /api/memories`、`DELETE /api/memories/:id`、`POST /api/memories/:id/media`
-
-返回 `410`（`client_storage_only`）。回忆和媒体现在由客户端管理。
+旅程、回忆、照片和视频以及账户资料（昵称、界面语言、常用出发地）全部保存在
+客户端 IndexedDB，服务端不再保存这些数据，也不提供相关读写接口。
 
 ### `POST /api/ai/memory-recap`
 
@@ -495,7 +406,6 @@ AI 未配置时返回 `503`（`ai_not_configured`）。
   "ai": { "configured": false, "mock": false, "model": "gpt-4o-mini", "baseUrl": "https://api.openai.com/v1" },
   "stats": {
     "users": 2,
-    "journeys": 1,
     "activeSessions": 2,
     "requestsTotal": 12,
     "requestsByStatus": { "200": 10, "401": 2 },
@@ -504,19 +414,17 @@ AI 未配置时返回 `503`（`ai_not_configured`）。
   "users": [
     {
       "id": 1,
-      "username": "you@example.com",
       "email": "you@example.com",
       "displayName": "you",
       "emailVerified": true,
       "createdAt": "…",
       "lastLoginAt": "…",
       "lastSeenAt": "…",
-      "journeyCount": 1,
       "online": true
     }
   ],
   "requests": [
-    { "time": "…", "method": "GET", "path": "/api/journeys", "status": 200, "ms": 3, "ip": "::1" }
+    { "time": "…", "method": "GET", "path": "/api/me", "status": 200, "ms": 3, "ip": "::1" }
   ]
 }
 ```
@@ -568,12 +476,6 @@ curl -s -X PUT "$BASE/api/me/email" \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"email":"new@example.com"}'
-
-# 迁移完成、确认客户端已写入后，清除服务端旧副本
-curl -s -X DELETE "$BASE/api/me/personal-data" -H "Authorization: Bearer $TOKEN"
-
-# 读取旧版本旅程（只读，供客户端迁移）
-curl -s "$BASE/api/journeys" -H "Authorization: Bearer $TOKEN"
 
 # 生成描述（需配置 AI 或 mock）
 curl -s -X POST "$BASE/api/ai/journey-description" \

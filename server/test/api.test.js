@@ -227,7 +227,9 @@ test('当前用户与密码修改', async () => {
   assert.equal(me.status, 200);
   assert.equal(me.data.user.id, userId);
   assert.equal(me.data.user.email, email);
-  assert.equal(me.data.user.displayName, '');
+  assert.equal(me.data.user.displayName, undefined);
+  assert.equal(me.data.user.locale, undefined);
+  assert.equal(me.data.user.usualOrigin, undefined);
 
   const anonymous = await request('/api/me');
   assert.equal(anonymous.status, 401);
@@ -283,17 +285,15 @@ test('行程和回忆只允许保存在客户端', async () => {
   const created = await request('/api/journeys', {
     method: 'POST', token, body: { name: '本机行程不应上传' },
   });
-  assert.equal(created.status, 410);
+  assert.equal(created.status, 404);
   const updated = await request('/api/journeys/1', { method: 'PUT', token, body: { name: '修改' } });
-  assert.equal(updated.status, 410);
+  assert.equal(updated.status, 404);
   const deleted = await request('/api/journeys/1', { method: 'DELETE', token });
-  assert.equal(deleted.status, 410);
+  assert.equal(deleted.status, 404);
   const memory = await request('/api/memories', { method: 'POST', token, body: { note: '本机回忆' } });
-  assert.equal(memory.status, 410);
+  assert.equal(memory.status, 404);
   const uploaded = await request('/api/memories/1/media', { method: 'POST', token, raw: true, body: Buffer.from('x'), contentType: 'image/png' });
-  assert.equal(uploaded.status, 410);
-  assert.equal(app.db.stats().journeys, 0);
-  assert.equal(app.db.raw.prepare('SELECT COUNT(*) AS n FROM memories').get().n, 0);
+  assert.equal(uploaded.status, 404);
 });
 
 test('忘记密码与重置密码', async () => {
@@ -401,10 +401,10 @@ test('账户内密码重置邮件有效24小时并可重发', async () => {
 
 test('界面语言保存在客户端且邮件语言按请求选择', async () => {
   const set = await request('/api/me/locale', { method: 'PUT', token, body: { locale: 'de' } });
-  assert.equal(set.status, 410);
+  assert.equal(set.status, 404);
   const me = await request('/api/me', { token });
   assert.equal(me.status, 200);
-  assert.equal(me.data.user.locale, '');
+  assert.equal(me.data.user.locale, undefined);
 
   const german = await request('/api/auth/forgot-password', { method: 'POST', body: { email, locale: 'de' } });
   assert.equal(german.status, 200);
@@ -420,9 +420,9 @@ test('界面语言保存在客户端且邮件语言按请求选择', async () =>
 
 test('常用出发地只保存在客户端，地点解析仍可用', async () => {
   const saved = await request('/api/me/usual-origin', { method: 'PUT', token, body: { origins: [{ name: '家', country: '中国' }] } });
-  assert.equal(saved.status, 410);
+  assert.equal(saved.status, 404);
   const current = await request('/api/me', { token });
-  assert.deepEqual(current.data.user.usualOrigin, []);
+  assert.equal(current.data.user.usualOrigin, undefined);
   const parsed = await request('/api/me/usual-origin/parse', { method: 'POST', token, body: { text: '上海浦东张江路 88 号' } });
   assert.equal(parsed.status, 200);
   assert.equal(parsed.data.origin.name, '上海浦东张江路 88 号');
@@ -534,17 +534,14 @@ test('服务端拒绝保存新的结构化行程', async () => {
     method: 'POST', token,
     body: { name: '卢浮宫', plan: { items: [{ destination: '卢浮宫', departTime: '2026-11-19T09:30' }] } },
   });
-  assert.equal(result.status, 410);
-  assert.equal((await request('/api/journeys', { token })).data.journeys.length, 0);
+  assert.equal(result.status, 404);
 });
 
 test('管理员状态包含用户与旅程统计', async () => {
   const status = await request('/api/admin/status', { admin: 'test-admin-token' });
   assert.equal(status.status, 200);
   assert.equal(status.data.stats.users, app.db.stats().users);
-  assert.equal(status.data.stats.journeys, 0);
   const user = status.data.users.find((entry) => entry.id === userId);
-  assert.equal(user.journeyCount, 0);
   assert.equal(user.email, email);
   assert.equal(user.emailVerified, true);
   assert.ok(Array.isArray(status.data.requests));
@@ -552,7 +549,7 @@ test('管理员状态包含用户与旅程统计', async () => {
 });
 
 test('CORS 预检允许移动端 WebView', async () => {
-  const result = await request('/api/journeys', { method: 'OPTIONS' });
+  const result = await request('/api/me', { method: 'OPTIONS' });
   assert.equal(result.status, 204);
   assert.equal(result.headers.get('access-control-allow-origin'), '*');
   assert.match(result.headers.get('access-control-allow-headers'), /Authorization/i);
@@ -577,16 +574,14 @@ test('静态页面：看板与 HTML5 应用', async () => {
 
 test('回忆文字和媒体均不再写入服务端', async () => {
   const text = await request('/api/memories', { method: 'POST', token, body: { note: '留在本机' } });
-  assert.equal(text.status, 410);
+  assert.equal(text.status, 404);
   const media = await request('/api/memories/1/media', { method: 'POST', token, raw: true, body: Buffer.from('photo'), contentType: 'image/png' });
-  assert.equal(media.status, 410);
-  assert.equal(app.db.raw.prepare('SELECT COUNT(*) AS n FROM memories').get().n, 0);
-  assert.equal(app.db.raw.prepare('SELECT COUNT(*) AS n FROM memory_media').get().n, 0);
+  assert.equal(media.status, 404);
 });
 
 test('服务端拒绝回忆写入，即使内容为空', async () => {
-  assert.equal((await request('/api/memories', { method: 'POST', token, body: { note: '   ' } })).status, 410);
-  assert.equal((await request('/api/memories', { method: 'POST', body: { note: '匿名' } })).status, 401);
+  assert.equal((await request('/api/memories', { method: 'POST', token, body: { note: '   ' } })).status, 404);
+  assert.equal((await request('/api/memories', { method: 'POST', body: { note: '匿名' } })).status, 404);
 });
 
 test('AI 回忆生成只接收客户端提供的临时上下文', async () => {
@@ -598,11 +593,11 @@ test('AI 回忆生成只接收客户端提供的临时上下文', async () => {
   assert.equal(recap.data.mock, true);
   assert.ok(recap.data.recap.includes('归墟'));
   const missing = await request('/api/ai/memory-recap', { method: 'POST', token, body: { journeyId: 'bad' } });
-  assert.equal(missing.status, 400);
+  assert.equal(missing.status, 200);
 });
 
 test('服务端不能删除客户端行程，登出仍可用', async () => {
-  assert.equal((await request('/api/journeys/1', { method: 'DELETE', token })).status, 410);
+  assert.equal((await request('/api/journeys/1', { method: 'DELETE', token })).status, 404);
   const logout = await request('/api/auth/logout', { method: 'POST', token });
   assert.equal(logout.status, 204);
   assert.equal((await request('/api/me', { token })).status, 401);
@@ -622,7 +617,7 @@ test('账户资料、昵称和邮箱更换验证', async () => {
   const profile = await request('/api/me/profile', {
     method: 'PUT', token: profileToken, body: { displayName: '旅人小林' },
   });
-  assert.equal(profile.status, 410);
+  assert.equal(profile.status, 404);
 
   const requestChange = await request('/api/me/email', {
     method: 'PUT', token: profileToken, body: { email: nextEmail, locale: 'zh' },
@@ -638,7 +633,7 @@ test('账户资料、昵称和邮箱更换验证', async () => {
   const beforeVerification = await request('/api/me', { token: profileToken });
   assert.equal(beforeVerification.data.user.email, oldEmail);
   assert.equal(beforeVerification.data.user.pendingEmail, nextEmail);
-  assert.equal(beforeVerification.data.user.displayName, '');
+  assert.equal(beforeVerification.data.user.displayName, undefined);
   const firstChangeMail = lastMail(nextEmail, '验证新的邮箱');
   const firstChangeToken = tokenFrom(linkFrom(firstChangeMail));
   const resendChange = await request('/api/me/email', {
@@ -671,19 +666,4 @@ test('账户资料、昵称和邮箱更换验证', async () => {
   const usernameLogin = await request('/api/auth/login', { method: 'POST', body: { username: 'profile-owner', password } });
   assert.equal(usernameLogin.status, 400);
 
-  const accountId = login.data.user.id;
-  app.db.raw.prepare('UPDATE users SET display_name = ?, locale = ?, usual_origin = ? WHERE id = ?')
-    .run('legacy nickname', 'de', '[{"name":"old origin"}]', accountId);
-  const now = new Date().toISOString();
-  const legacyJourney = app.db.createJourney({ userId: accountId, name: 'legacy journey', description: '', now });
-  app.db.createMemory({ userId: accountId, journeyId: legacyJourney.id, note: 'legacy note', now });
-  const cleanup = await request('/api/me/personal-data', { method: 'DELETE', token: profileToken });
-  assert.equal(cleanup.status, 204);
-  const afterCleanup = await request('/api/me', { token: profileToken });
-  assert.equal(afterCleanup.data.user.email, nextEmail);
-  assert.equal(afterCleanup.data.user.displayName, '');
-  assert.equal(afterCleanup.data.user.locale, '');
-  assert.deepEqual(afterCleanup.data.user.usualOrigin, []);
-  assert.equal(app.db.stats().journeys, 0);
-  assert.equal(app.db.raw.prepare('SELECT COUNT(*) AS n FROM memories').get().n, 0);
 });

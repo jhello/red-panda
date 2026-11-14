@@ -176,14 +176,9 @@
         <span class="stat-foot">${online} 在线 · ${stats.activeSessions} 个有效会话</span>
       </div>
       <div class="stat">
-        <span class="stat-label">旅程</span>
-        <strong>${stats.journeys}</strong>
-        <span class="stat-foot">AI 调用 ${stats.aiCalls} 次</span>
-      </div>
-      <div class="stat">
         <span class="stat-label">AI</span>
         <strong class="${ai.configured ? 'ok' : 'warn'} small">${ai.configured ? '已配置' : '未配置'}</strong>
-        <span class="stat-foot">${esc(ai.model)}${ai.mock ? ' · mock' : ''}</span>
+        <span class="stat-foot">${esc(ai.model)}${ai.mock ? ' · mock' : ''} · 调用 ${stats.aiCalls} 次</span>
       </div>`;
 
     renderUsers(data.users);
@@ -194,7 +189,7 @@
   function renderUsers(users) {
     $('user-count').textContent = `${users.length} 位用户`;
     if (users.length === 0) {
-      $('users-body').innerHTML = '<tr class="empty-row"><td colspan="5">还没有注册用户</td></tr>';
+      $('users-body').innerHTML = '<tr class="empty-row"><td colspan="4">还没有注册用户</td></tr>';
       return;
     }
     $('users-body').innerHTML = users
@@ -202,7 +197,6 @@
         (user) => `
         <tr>
           <td class="user-name">${esc(user.email)}</td>
-          <td>${user.journeyCount}</td>
           <td>${fmtDateTime(user.lastSeenAt)}</td>
           <td>${fmtDateTime(user.createdAt)}</td>
           <td>${

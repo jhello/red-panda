@@ -104,7 +104,7 @@
       const targetMemoryIds = new Set(targetMemories.map((item) => String(item.id)));
       const settingsById = new Map(targetSettings.map((item) => [item.id, item]));
       for (const item of sourceSettings) {
-        if (item.id === 'migration-v1' || item.id === 'legacy-claimed') continue;
+        if (item.id === 'legacy-claimed') continue;
         const existing = settingsById.get(item.id);
         settingsById.set(item.id, existing ? { ...item, ...existing, id: item.id } : item);
       }
@@ -214,16 +214,16 @@
     };
   }
 
-  async function hydrateClientProfile(user, { migrateServerProfile = false } = {}) {
+  async function hydrateClientProfile(user) {
     if (!user) return user;
     const saved = (await storeAll('settings')).find((item) => item.id === 'profile') || { id: 'profile' };
     const fallbackName = String(user.email || '').split('@')[0] || t('nav.me');
     const profile = {
       ...saved,
       id: 'profile',
-      displayName: saved.displayName || (migrateServerProfile && user.displayName) || fallbackName,
-      locale: saved.locale || (migrateServerProfile && normalizeLocaleTag(user.locale)) || '',
-      usualOrigin: saved.usualOrigin || (migrateServerProfile && user.usualOrigin) || [],
+      displayName: saved.displayName || fallbackName,
+      locale: saved.locale || '',
+      usualOrigin: saved.usualOrigin || [],
     };
     await storePut('settings', profile);
     if (!localStorage.getItem(STORAGE.lang) && profile.locale) {
@@ -235,8 +235,8 @@
   }
 
   /**
-   * Journeys, memories, preferences and media are read/written locally. The
-   * server only keeps account authentication and legacy copies for migration.
+   * Journeys, memories, profile and media are read/written locally. The
+   * server only keeps account authentication.
    */
   async function localDataApi(path, options = {}) {
     const method = options.method || 'GET';
@@ -1896,35 +1896,6 @@
     backupStatus(`导入合并完成：\n${results.join('\n')}`,100,'success');
     return true;
   }
-  async function migrateLegacyServerData() {
-    if (!state.token || !state.server) return;
-    const headers={Authorization:`Bearer ${state.token}`,Accept:'application/json'};
-    const clearServer=async()=>{const response=await fetch(`${state.server}/api/me/personal-data`,{method:'DELETE',headers,signal:AbortSignal.timeout(30000)});if(!response.ok)throw new Error('Server cleanup failed');};
-    const marker=(await storeAll('settings')).find(item=>item.id==='migration-v1');
-    if(marker?.imported){if(marker.cleanupPending){try{await clearServer();await storePut('settings',{...marker,cleanupPending:false});}catch{}}return;}
-    const get=async path=>{const response=await fetch(`${state.server}${path}`,{headers,signal:AbortSignal.timeout(30000)});if(!response.ok)throw new Error('Legacy data unavailable');return response.json();};
-    try {
-      const [{journeys=[]},{memories=[]}]=await Promise.all([get('/api/journeys'),get('/api/memories')]);
-      const journeyIds=new Map(journeys.map(journey=>[String(journey.id),makeId()]));
-      const importedJourneys=journeys.map(journey=>({...journey,id:journeyIds.get(String(journey.id))}));
-      const importedMemories=[];
-      for(const memory of memories){
-        const media=await Promise.all((memory.media||[]).map(async item=>{const response=await fetch(`${state.server}${item.url}`,{headers,signal:AbortSignal.timeout(120000)});if(!response.ok)throw new Error('Media migration failed');const {url,...metadata}=item;return {...metadata,id:makeId(),blob:await response.blob()};}));
-        importedMemories.push({...memory,id:makeId(),journeyId:journeyIds.get(String(memory.journeyId))||null,media});
-      }
-      const hydrated=await hydrateClientProfile(state.user,{migrateServerProfile:true});
-      const localProfile=(await storeAll('settings')).find(item=>item.id==='profile')||{id:'profile'};
-      const profile={...localProfile,displayName:hydrated.displayName,locale:hydrated.locale,usualOrigin:hydrated.usualOrigin};
-      const db=await localDb();
-      await new Promise((resolve,reject)=>{const tx=db.transaction(['journeys','memories','settings'],'readwrite');for(const journey of importedJourneys)tx.objectStore('journeys').put(journey);for(const memory of importedMemories)tx.objectStore('memories').put(memory);tx.objectStore('settings').put(profile);tx.objectStore('settings').put({id:'migration-v1',at:new Date().toISOString(),imported:true,cleanupPending:true});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
-      state.user=hydrated;cacheUser(hydrated);
-      await clearServer();
-      await storePut('settings',{id:'migration-v1',at:new Date().toISOString(),imported:true,cleanupPending:false});
-    } catch {
-      // Keep the server copy until the complete client-side copy has succeeded.
-    }
-  }
-
   async function pingServer(server) {
     let response;
     try {
@@ -2287,11 +2258,10 @@
         });
         state.token = data.token;
         state.user = data.user;
-        state.user = await hydrateClientProfile(data.user, { migrateServerProfile: true });
+        state.user = await hydrateClientProfile(data.user);
         localStorage.setItem(STORAGE.token, data.token);
         cacheUser(state.user);
-        await migrateLegacyServerData();
-        toast(t('auth.welcome'));
+           toast(t('auth.welcome'));
         // 登录后回到默认的行程页，并且不留下多余的历史记录。
         historyDepth = 0;
         history.replaceState(null, '', '#/');
@@ -3512,8 +3482,7 @@
 
   function mediaUrl(media) {
     if (!media?.url) return '';
-    if (/^(blob:|data:)/.test(media.url)) return media.url;
-    return `${state.server}${media.url}`;
+    return media.url;
   }
 
   /** 回忆页：挑一段走过的行程，给它添上照片、视频和文字。 */
@@ -4006,7 +3975,7 @@
   async function refreshAccountSettings({ notify = false } = {}) {
     if (!state.token || !state.server) throw new Error(t('api.noServer'));
     const { user: serverUser } = await api('/api/me');
-    const user = await hydrateClientProfile(serverUser, { migrateServerProfile: true });
+    const user = await hydrateClientProfile(serverUser);
     const previous = state.user || {};
     const changed = ['email', 'pendingEmail', 'pendingEmailExpiresAt', 'pendingResetExpiresAt', 'displayName'].some((key) => (previous[key] || null) !== (user[key] || null));
     state.user = user;
@@ -4734,7 +4703,7 @@
       try {
         const data = await api('/api/me');
         state.user = data.user;
-        state.user = await hydrateClientProfile(data.user, { migrateServerProfile: true });
+        state.user = await hydrateClientProfile(data.user);
         cacheUser(state.user);
       } catch (error) {
         if (error.status === 401) {
@@ -4746,10 +4715,9 @@
     }
 
     try {
-      if(state.user) state.user=await hydrateClientProfile(state.user,{migrateServerProfile:true});
+      if(state.user) state.user=await hydrateClientProfile(state.user);
     } catch { /* IndexedDB can be unavailable in restricted browser modes. */ }
 
-    await migrateLegacyServerData();
 
     state.ready = true;
     render();
