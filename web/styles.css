@@ -583,7 +583,10 @@ img.seal {
   max-height: 62vh;
   padding: 0 18px;
   overflow-y: auto;
-  pointer-events: none;
+  pointer-events: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   animation: draft-veil-in 0.28s ease both;
 }
 

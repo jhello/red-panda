@@ -5318,12 +5318,24 @@
   document.addEventListener('click', (event) => {
     if (!draftOverlayOpen) return;
     const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
-    const insideDraft = path.some((node) => {
+    const insideList = path.some((node) => {
       if (!node || node.nodeType !== 1) return false;
-      return node.id === 'draft-list' || node.id === 'draft-layer';
-    });
-    if (insideDraft || event.target.closest('.draft-list')) return;
+      return node.id === 'draft-list' || (typeof node.classList?.contains === 'function' && node.classList.contains('draft-list'));
+    }) || Boolean(event.target.closest('.draft-list'));
+    const insideLayer = path.some((node) => {
+      if (!node || node.nodeType !== 1) return false;
+      return node.id === 'draft-layer';
+    }) || Boolean(event.target.closest('#draft-layer'));
+    if (insideList) return;
     if (event.target.closest('.nav-bar')) return;
+    if (insideLayer) {
+      if (expandedDraftId) {
+        collapseExpanded();
+        return;
+      }
+      closeDraftOverlay();
+      return;
+    }
     if (expandedDraftId) {
       collapseExpanded();
       return;
