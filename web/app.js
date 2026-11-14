@@ -4607,7 +4607,7 @@
               <div class="origin-picker-map-wrap">
                 <div id="origin-picker-map" class="origin-picker-map"></div>
                 <div class="origin-picker-center-pin" aria-hidden="true"></div>
-                <button type="button" class="origin-picker-locate" id="origin-picker-locate" aria-label="回到当前位置">◎</button>
+                <button type="button" class="origin-picker-locate" id="origin-picker-locate" aria-label="回到当前位置"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
               </div>
               <div id="origin-picker-drag" class="origin-picker-drag" role="separator" aria-label="拖动调整"><span></span></div>
               <div class="origin-picker-list-panel">
@@ -4859,7 +4859,7 @@
       if (poisEl) poisEl.innerHTML = '<p class="origin-empty">正在获取附近地点…</p>';
       if (!tmap) {
         const center = new TMap.LatLng(39.908823, 116.397470);
-        tmap = new TMap.Map(mapEl, { center, zoom: 16, viewMode: '2D' });
+        tmap = new TMap.Map(mapEl, { center, zoom: 16, viewMode: '2D', pitch: 0, rotation: 0, pitchable: false, rotatable: false, showControl: false });
         tmap.on('idle', () => {
           if (suppressMove) return;
           clearTimeout(moveTimer);
