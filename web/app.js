@@ -2152,7 +2152,7 @@
   async function renderDatabase(){
     app.innerHTML=`<div class="screen">${topbar({title:t('backup.title'),back:true})}<main class="page database-page">
       <div id="database-summary" class="database-summary"><div class="skeleton-block"></div></div>
-      <div class="database-actions"><button class="btn primary" data-action="backup-export">${t('backup.exportData')}</button><label class="btn ghost" for="backup-file">${t('backup.chooseFile')}</label><input id="backup-file" type="file" accept=".rpd,.json,application/json,application/gzip" hidden /></div>
+      <div class="database-actions"><button class="btn ghost" data-action="backup-export">${t('backup.exportData')}</button><label class="btn ghost" for="backup-file">${t('backup.chooseFile')}</label><input id="backup-file" type="file" accept=".rpd,.json,application/json,application/gzip" hidden /></div>
       <div id="database-status" class="backup-status" role="status" aria-live="polite"></div>
       <section class="database-table"><div class="database-table-head"><strong>${t('backup.details')}</strong><div><button class="link subtle" data-action="database-sort-count">${t('backup.byCount')}<span class="database-sort-arrow" aria-hidden="true"></span></button><button class="link subtle" data-action="database-sort-size">${t('backup.bySize')}<span class="database-sort-arrow" aria-hidden="true"></span></button></div></div><div id="database-types"><div class="skeleton-block"></div></div></section>
       <p class="panel-sub">${t('backup.sizeNote')}</p>
