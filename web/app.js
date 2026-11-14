@@ -3313,8 +3313,12 @@
     // 离线提示条贴在导航栏上边，草稿浮层要再往上让一让。
     const banner = document.getElementById('app-status');
     const bannerHeight = banner && !banner.hidden ? banner.getBoundingClientRect().height : 0;
+    const bottom = Math.round(window.innerHeight - navRect.top + 10 + bannerHeight);
     layer.style.top = 'auto';
-    layer.style.bottom = `${Math.round(window.innerHeight - navRect.top + 10 + bannerHeight)}px`;
+    layer.style.bottom = `${bottom}px`;
+    // 允许列表使用从屏幕顶部安全区到导航栏上方的全部可用空间，避免被限制在局部区域而截断。
+    const topSafe = 12;
+    layer.style.maxHeight = `${Math.max(120, Math.round(window.innerHeight - bottom - topSafe))}px`;
   }
 
   function refreshDraftList() {

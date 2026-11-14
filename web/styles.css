@@ -579,7 +579,7 @@ img.seal {
   width: 100%;
   max-width: 620px;
   margin: 0 auto;
-  max-height: 62vh;
+  max-height: calc(100dvh - 84px - var(--offline-h, 0px) - env(safe-area-inset-top, 0px) - 12px);
   padding: 0 18px;
   overflow-y: auto;
   pointer-events: auto;
