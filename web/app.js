@@ -3324,7 +3324,26 @@
     list.innerHTML = drafts.length
       ? drafts.map((draft) => draftRowMarkup(draft, expandedDraftId === draft.id)).join('')
       : `<p class="draft-none">${t('draft.none')}</p>`;
-    if (!drafts.length) closeDraftOverlay();
+    if (!drafts.length) {
+      closeDraftOverlay();
+      return;
+    }
+    if (expandedDraftId) {
+      const escaped =
+        typeof CSS !== 'undefined' && CSS.escape
+          ? CSS.escape(String(expandedDraftId))
+          : String(expandedDraftId).replace(/["\\]/g, '\\$&');
+      const expanded = list.querySelector(`[data-draft-id="${escaped}"]`);
+      if (expanded && typeof expanded.scrollIntoView === 'function') {
+        requestAnimationFrame(() => {
+          try {
+            expanded.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          } catch {
+            // ignore
+          }
+        });
+      }
+    }
   }
 
   // ---- journey plan: prompt → AI plan → editable table ---------------------
