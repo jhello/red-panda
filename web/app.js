@@ -263,11 +263,11 @@
       const journeys = await storeAll('journeys');
       const journey = journeys.find((item) => String(item.id) === id);
       if (method === 'GET') {
-        if (!journey) throw new ApiError(t('api.requestFailed'), 404, 'not_found');
+        if (!journey) throw new ApiError(t('api.journeyNotFound'), 404, 'not_found');
         return { journey };
       }
       if (method === 'PUT') {
-        if (!journey) throw new ApiError(t('api.requestFailed'), 404, 'not_found');
+        if (!journey) throw new ApiError(t('api.journeyNotFound'), 404, 'not_found');
         const updated = buildLocalJourney(body, journey);
         await storePut('journeys', updated);
         return { journey: updated };
@@ -301,10 +301,10 @@
       const journeyId = body.journeyId ?? null;
       const note = String(body.note ?? '').trim();
       if (journeyId !== null && !(await storeAll('journeys')).some((item) => String(item.id) === String(journeyId))) {
-        throw new ApiError(getLocale() === 'zh' ? '行程不存在' : 'Journey not found', 404, 'not_found');
+        throw new ApiError(t('api.journeyNotFound'), 404, 'not_found');
       }
       if (!note && journeyId === null) {
-        throw new ApiError(getLocale() === 'zh' ? '写点什么，或者选一段行程' : 'Write something or pick a journey', 400, 'validation_error');
+        throw new ApiError(t('api.validationEmpty'), 400, 'validation_error');
       }
       const memory = { id: makeId(), journeyId, note, createdAt: new Date().toISOString(), media: [] };
       await storePut('memories', memory);
@@ -317,10 +317,10 @@
       const all = await storeAll('memories');
       const memory = all.find((item) => String(item.id) === id);
       if (p.endsWith('/media') && method === 'POST') {
-        if (!memory) throw new ApiError(getLocale() === 'zh' ? '回忆不存在' : 'Memory not found', 404, 'not_found');
+        if (!memory) throw new ApiError(t('api.memoryNotFound'), 404, 'not_found');
         const blob = options.body;
         if (!(blob instanceof Blob) || !blob.size) {
-          throw new ApiError(getLocale() === 'zh' ? '文件内容为空' : 'The file is empty', 400, 'validation_error');
+          throw new ApiError(t('api.memoryEmpty'), 400, 'validation_error');
         }
         const media = {
           id: makeId(),
@@ -335,7 +335,7 @@
         return { media: { ...media, url: mediaObjectUrl(media) } };
       }
       if (method === 'DELETE') {
-        if (!memory) throw new ApiError(getLocale() === 'zh' ? '回忆不存在' : 'Memory not found', 404, 'not_found');
+        if (!memory) throw new ApiError(t('api.memoryNotFound'), 404, 'not_found');
         for (const item of memory.media || []) revokeMediaObjectUrl(item.id);
         await storeDelete('memories', memory.id);
         return {};
@@ -346,7 +346,7 @@
       const existing = (await storeAll('settings')).find((item) => item.id === 'profile') || { id: 'profile' };
       const displayName = String(body.displayName || '').trim();
       if (!displayName || displayName.length > 40) {
-        throw new ApiError(getLocale() === 'zh' ? '昵称需要为 1 到 40 个字符' : 'Nickname must be 1 to 40 characters', 400, 'validation_error');
+        throw new ApiError(t('api.nicknameLength'), 400, 'validation_error');
       }
       existing.displayName = displayName;
       await storePut('settings', existing);
@@ -485,6 +485,11 @@
         not_found: '内容不存在',
         internal_error: '服务器内部错误',
         ai_invalid_json: 'AI 返回的内容格式不正确',
+        journeyNotFound: '行程不存在',
+        memoryNotFound: '回忆不存在',
+        memoryEmpty: '文件内容为空',
+        validationEmpty: '写点什么，或者选一段行程',
+        nicknameLength: '昵称需要为 1 到 40 个字符',
       },
 
       offline: {
@@ -541,6 +546,7 @@
         welcome: '欢迎回来',
         verifyFirst: '请先验证邮箱',
         mailSentToast: '验证邮件已发送，请查收',
+        tagline: '出门带只小熊猫。',
       },
 
       pending: {
@@ -710,6 +716,27 @@
         originMap: '地图选点', originMapHint: '点击地图或拖动图钉选择位置', originMapUse: '使用此地点', originEmpty: '还没有常用地点',
         originEdit: '编辑', originUpdate: '保存修改', originCancel: '取消编辑', originLocate: '定位到当前位置', originSearching: '正在搜索地点…', originNoResults: '没有找到地点', originSearchAttribution: '地点数据 © OpenStreetMap contributors', originLocationError: '无法获取当前位置，请检查定位权限。',
         originSecureRequired: '网页定位需要 HTTPS，请用安全连接打开页面，或使用 Android App。',
+        accountSecurity: '账户与安全',
+        dataBackup: '数据与备份',
+        accountInfo: '账户资料',
+        newEmail: '新邮箱地址',
+        newEmailPlaceholder: '输入新的邮箱地址',
+        sendVerificationEmail: '发送验证邮件',
+        close: '关闭',
+        verificationSentTo: '验证邮件已发送至',
+        verificationHint: '请前往新邮箱点击验证链接。验证完成后返回此页，下拉页面即可刷新邮箱地址。链接有效期至 {date}。',
+        verificationNote: '验证前仍使用原邮箱；超过 24 小时链接失效，新邮箱地址将不再显示。',
+        emailUpdated: '邮箱已更新',
+        emailUpdatedBody: '新邮箱验证成功，已替换账户中的原邮箱地址。',
+        emailUpdatedShort: '新邮箱验证成功，已替换原邮箱。',
+        returnToApp: '请返回小熊猫应用，账户资料会自动同步。',
+        goSignIn: '前往登录',
+        dataSub: '查看本机数据占用，导入或导出跨平台备份。',
+        openDatabase: '打开数据库',
+        errEmailEmpty: '请输入新邮箱地址',
+        emailSentToast: '验证邮件已发送，请在 24 小时内完成验证',
+        emailCancelledToast: '邮箱未更改，待验证地址已取消',
+        emailResentToast: '验证邮件已重新发送，请在 24 小时内完成验证',
         resetPassword: '忘记密码',
         resetPasswordSub: '点击下方按钮，我们会向当前账户邮箱发送密码重置邮件。',
         aboutTitle: '关于',
@@ -717,6 +744,78 @@
         aboutData: '数据保存在你自己的服务器上。',
         connectedOk: '连接成功 · {name} v{version}',
         serverChangedToast: '服务器已切换，请重新登录',
+      },
+
+      me: {
+        footprints: '我的足迹',
+        destinations: '{n} 个目的地',
+        worldFootprints: '世界地图足迹',
+        footprintsSub: '记录旅程，点亮去过的地方',
+        editNickname: '修改昵称',
+        nicknameEmpty: '昵称不能为空',
+        nicknameSaved: '昵称已保存',
+      },
+
+      account: {
+        updated: '账户信息已更新',
+        upToDate: '账户信息已是最新',
+        pullRefresh: '松开即可刷新账户信息',
+        refreshing: '正在刷新账户信息…',
+        refreshed: '账户信息已刷新',
+      },
+
+      backup: {
+        title: '数据库',
+        journeys: '行程',
+        memories: '回忆文字',
+        media: '照片与视频',
+        preferences: '偏好设置',
+        records: '数据条目',
+        estimatedTotal: '总占用估算',
+        types: '数据类型',
+        items: '条',
+        exportData: '导出数据',
+        chooseFile: '选择备份文件并导入',
+        details: '数据明细',
+        byCount: '按条数',
+        bySize: '按体积',
+        sizeNote: '体积为本机数据的估算值；媒体按文件大小统计。',
+        exportCancelled: '已取消导出',
+        exportingJourneys: '正在导出行程（{done}/{total}）…',
+        journeysExported: '行程导出完成，{n} 条。正在处理回忆…',
+        memoriesExporting: '回忆 {i}/{n}；媒体 {done}/{total} 已导出…',
+        exportingMemories: '正在导出回忆 {i}/{n}…',
+        mediaExported: '媒体导出完成，{n} 个。正在写入偏好设置（{s} 条）…',
+        compressing: '正在压缩备份…',
+        exportSuccess: '全部导出成功',
+        journeyUnit: '段行程',
+        memoryUnit: '条回忆',
+        mediaUnit: '个媒体',
+        settingUnit: '条设置',
+        packagedChoose: '各类数据已打包，正在选择保存位置…',
+        exportFailed: '导出失败',
+        downloadStarted: '已发起下载 {file}（{size}）。请检查下载列表确认文件已保存。',
+        importConfirm: '导入将合并备份数据：新增记录会加入，内容不同的同编号记录会更新，完全相同的记录会跳过。继续吗？',
+        readingFile: '正在读取 {file}…',
+        decompressing: '正在解压并检查备份…',
+        notBackup: '文件不是小熊猫备份',
+        unsupportedVersion: '不支持的数据结构版本：{version}',
+        incomplete: '备份内容不完整',
+        journeysRead: '行程数据：已读取 {n} 条。',
+        readingMemories: '正在读取回忆 {i}/{n}…',
+        readingMedia: '正在读取照片/视频 {done}/{total}…',
+        mediaRead: '媒体数据：已读取 {c} 个；偏好设置：{s} 条，开始比较本机数据…',
+        comparing: '比较完成，正在合并设置与数据…',
+        mergeComplete: '导入合并完成：\n{results}',
+        stats: '{label}：原有 {old} 条，新增 {added} 条，完全相同 {identical} 条，更新 {updated} 条',
+        statsJourney: '行程',
+        statsMemory: '回忆',
+        statsMedia: '媒体',
+        statsSettings: '设置',
+        selectedFile: '已选择文件',
+        imported: '数据已导入',
+        importCancelled: '已取消导入',
+        importFailed: '导入失败',
       },
 
       logout: {
@@ -830,6 +929,11 @@
         not_found: 'Not found',
         internal_error: 'Internal server error',
         ai_invalid_json: 'The AI returned an unexpected response',
+        journeyNotFound: 'Journey not found',
+        memoryNotFound: 'Memory not found',
+        memoryEmpty: 'The file is empty',
+        validationEmpty: 'Write something or pick a journey',
+        nicknameLength: 'Nickname must be 1 to 40 characters',
       },
 
       offline: {
@@ -886,6 +990,7 @@
         welcome: 'Welcome back',
         verifyFirst: 'Please verify your email first',
         mailSentToast: 'Verification email sent — please check your inbox',
+        tagline: 'Take a little red panda along.',
       },
 
       pending: {
@@ -1066,6 +1171,99 @@
         aboutData: 'Your data lives on your own server.',
         connectedOk: 'Connected · {name} v{version}',
         serverChangedToast: 'Server changed — please log in again',
+        accountSecurity: 'Account & security',
+        dataBackup: 'Data & backup',
+        accountInfo: 'Account information',
+        newEmail: 'New email address',
+        newEmailPlaceholder: 'Enter a new email address',
+        sendVerificationEmail: 'Send verification email',
+        close: 'Close',
+        verificationSentTo: 'Verification email sent to',
+        verificationHint: 'Open the verification link sent to this address. After verifying, return here and pull down to refresh your email address. It expires at {date}.',
+        verificationNote: 'Your current email remains active until verified. After 24 hours the link and pending address expire.',
+        emailUpdated: 'Email updated',
+        emailUpdatedBody: 'Your new email has been verified and now replaces the previous address on your account.',
+        emailUpdatedShort: 'The verified address is now your account email.',
+        returnToApp: 'Return to Red Panda to sync your account details.',
+        goSignIn: 'Go to sign in',
+        dataSub: 'Review local storage and manage portable backups.',
+        openDatabase: 'Open database',
+        errEmailEmpty: 'Enter a new email address',
+        emailSentToast: 'Verification email sent. Verify within 24 hours',
+        emailCancelledToast: 'Email unchanged; pending address cancelled',
+        emailResentToast: 'Verification email resent. Verify within 24 hours',
+      },
+
+      me: {
+        footprints: 'My footprints',
+        destinations: '{n} destinations',
+        worldFootprints: 'World map footprints',
+        footprintsSub: 'Your journeys, marked on the map',
+        editNickname: 'Edit nickname',
+        nicknameEmpty: 'Nickname cannot be empty',
+        nicknameSaved: 'Nickname saved',
+      },
+
+      account: {
+        updated: 'Account information updated',
+        upToDate: 'Account information is up to date',
+        pullRefresh: 'Release to refresh account information',
+        refreshing: 'Refreshing account information…',
+        refreshed: 'Account information refreshed',
+      },
+
+      backup: {
+        title: 'Database',
+        journeys: 'Journeys',
+        memories: 'Memory entries',
+        media: 'Photos and videos',
+        preferences: 'Preferences',
+        records: 'Records',
+        estimatedTotal: 'Estimated total',
+        types: 'Types',
+        items: 'items',
+        exportData: 'Export data',
+        chooseFile: 'Choose backup file',
+        details: 'Data details',
+        byCount: 'By count',
+        bySize: 'By size',
+        sizeNote: 'Sizes are estimates; media uses file sizes.',
+        exportCancelled: 'Export cancelled',
+        exportingJourneys: 'Exporting journeys ({done}/{total})…',
+        journeysExported: 'Journeys complete ({n}). Processing memories…',
+        memoriesExporting: 'Memories {i}/{n}; media {done}/{total} exported…',
+        exportingMemories: 'Exporting memories {i}/{n}…',
+        mediaExported: 'Media complete ({n}). Writing preferences ({s})…',
+        compressing: 'Compressing backup…',
+        exportSuccess: 'All data exported successfully',
+        journeyUnit: 'journeys',
+        memoryUnit: 'memories',
+        mediaUnit: 'media',
+        settingUnit: 'settings',
+        packagedChoose: 'Data packaged; choose a save location…',
+        exportFailed: 'Export failed',
+        downloadStarted: 'Download started: {file} ({size}). Check your downloads list to confirm it was saved.',
+        importConfirm: 'Import will merge the backup: new records are added, changed records with matching IDs are updated, and identical records are skipped. Continue?',
+        readingFile: 'Reading {file}…',
+        decompressing: 'Decompressing and checking backup…',
+        notBackup: 'This file is not a Red Panda backup',
+        unsupportedVersion: 'Unsupported data version: {version}',
+        incomplete: 'The backup is incomplete',
+        journeysRead: 'Journeys: read {n} records.',
+        readingMemories: 'Reading memories {i}/{n}…',
+        readingMedia: 'Reading photos/videos {done}/{total}…',
+        mediaRead: 'Media: read {c}; preferences: {s}. Comparing with local data…',
+        comparing: 'Comparison complete; merging settings and data…',
+        mergeComplete: 'Import merge complete:\n{results}',
+        stats: '{label}: {old} existing, {added} added, {identical} identical, {updated} updated',
+        statsJourney: 'Journeys',
+        statsMemory: 'Memories',
+        statsMedia: 'Media',
+        statsSettings: 'Settings',
+        selectedFile: 'Selected file',
+        imported: 'Data imported',
+        importCancelled: 'Import cancelled',
+        importFailed: 'Import failed',
       },
 
       logout: {
@@ -1180,6 +1378,11 @@
         not_found: 'Nicht gefunden',
         internal_error: 'Interner Serverfehler',
         ai_invalid_json: 'Die KI hat eine unerwartete Antwort zurückgegeben',
+        journeyNotFound: 'Reise nicht gefunden',
+        memoryNotFound: 'Erinnerung nicht gefunden',
+        memoryEmpty: 'Datei ist leer',
+        validationEmpty: 'Schreib etwas oder wähle eine Reise',
+        nicknameLength: 'Der Spitzname muss 1 bis 40 Zeichen lang sein',
       },
 
       offline: {
@@ -1238,6 +1441,7 @@
         welcome: 'Willkommen zurück',
         verifyFirst: 'Bitte bestätige zuerst deine E-Mail',
         mailSentToast: 'Bestätigungs-E-Mail gesendet – bitte Postfach prüfen',
+        tagline: 'Nimm einen kleinen Roten Panda mit.',
       },
 
       pending: {
@@ -1411,6 +1615,27 @@
         originMap: 'Auf Karte wählen', originMapHint: 'Karte anklicken oder Markierung ziehen', originMapUse: 'Diesen Ort verwenden', originEmpty: 'Noch keine gespeicherten Orte',
         originEdit: 'Bearbeiten', originUpdate: 'Änderungen speichern', originCancel: 'Bearbeitung abbrechen', originLocate: 'Mein Standort', originSearching: 'Orte werden gesucht…', originNoResults: 'Keine Orte gefunden', originSearchAttribution: 'Ortsdaten © OpenStreetMap contributors', originLocationError: 'Standort nicht verfügbar. Bitte Standortberechtigung prüfen.',
         originSecureRequired: 'Der Web-Standort benötigt HTTPS. Öffne die Seite sicher oder nutze die Android-App.',
+        accountSecurity: 'Konto & Sicherheit',
+        dataBackup: 'Daten & Sicherung',
+        accountInfo: 'Kontoinformationen',
+        newEmail: 'Neue E-Mail-Adresse',
+        newEmailPlaceholder: 'Neue E-Mail-Adresse eingeben',
+        sendVerificationEmail: 'Bestätigungs-E-Mail senden',
+        close: 'Schließen',
+        verificationSentTo: 'Bestätigungs-E-Mail gesendet an',
+        verificationHint: 'Öffne den Bestätigungslink in der neuen E-Mail. Kehre danach hierher zurück und ziehe die Seite nach unten, um die Adresse zu aktualisieren. Der Link ist gültig bis {date}.',
+        verificationNote: 'Bis zur Bestätigung bleibt die aktuelle E-Mail aktiv. Nach 24 Stunden verfällt der Link und die neue Adresse wird nicht mehr angezeigt.',
+        emailUpdated: 'E-Mail aktualisiert',
+        emailUpdatedBody: 'Deine neue E-Mail wurde bestätigt und ersetzt jetzt die bisherige Adresse deines Kontos.',
+        emailUpdatedShort: 'Die bestätigte Adresse ist jetzt deine Konto-E-Mail.',
+        returnToApp: 'Kehre zu Red Panda zurück, um deine Kontodaten zu synchronisieren.',
+        goSignIn: 'Zur Anmeldung',
+        dataSub: 'Prüfe den lokalen Speicher und verwalte plattformübergreifende Sicherungen.',
+        openDatabase: 'Datenbank öffnen',
+        errEmailEmpty: 'Bitte gib eine neue E-Mail-Adresse ein',
+        emailSentToast: 'Bestätigungs-E-Mail gesendet – bitte innerhalb von 24 Stunden bestätigen',
+        emailCancelledToast: 'E-Mail unverändert; ausstehende Adresse verworfen',
+        emailResentToast: 'Bestätigungs-E-Mail erneut gesendet – bitte innerhalb von 24 Stunden bestätigen',
         resetPassword: 'Passwort vergessen',
         resetPasswordSub: 'Mit der Schaltfläche unten senden wir einen Link an deine Konto-E-Mail-Adresse.',
         aboutTitle: 'Über',
@@ -1418,6 +1643,78 @@
         aboutData: 'Deine Daten liegen auf deinem eigenen Server.',
         connectedOk: 'Verbunden · {name} v{version}',
         serverChangedToast: 'Server gewechselt – bitte neu anmelden',
+      },
+
+      me: {
+        footprints: 'Meine Spuren',
+        destinations: '{n} Ziele',
+        worldFootprints: 'Weltkarte der Spuren',
+        footprintsSub: 'Reisen festhalten, besuchte Orte erleuchten',
+        editNickname: 'Spitznamen bearbeiten',
+        nicknameEmpty: 'Der Spitzname darf nicht leer sein',
+        nicknameSaved: 'Spitzname gespeichert',
+      },
+
+      account: {
+        updated: 'Kontodaten aktualisiert',
+        upToDate: 'Kontodaten sind aktuell',
+        pullRefresh: 'Loslassen, um Kontodaten zu aktualisieren',
+        refreshing: 'Kontodaten werden aktualisiert…',
+        refreshed: 'Kontodaten aktualisiert',
+      },
+
+      backup: {
+        title: 'Datenbank',
+        journeys: 'Reisen',
+        memories: 'Erinnerungstexte',
+        media: 'Fotos und Videos',
+        preferences: 'Einstellungen',
+        records: 'Einträge',
+        estimatedTotal: 'Geschätzte Gesamtgröße',
+        types: 'Datentypen',
+        items: 'Einträge',
+        exportData: 'Daten exportieren',
+        chooseFile: 'Backupdatei auswählen',
+        details: 'Datenübersicht',
+        byCount: 'Nach Anzahl',
+        bySize: 'Nach Größe',
+        sizeNote: 'Größen sind Schätzwerte; Medien zählen nach Dateigröße.',
+        exportCancelled: 'Export abgebrochen',
+        exportingJourneys: 'Reisen werden exportiert ({done}/{total})…',
+        journeysExported: 'Reisen exportiert ({n}). Erinnerungen werden verarbeitet…',
+        memoriesExporting: 'Erinnerungen {i}/{n}; Medien {done}/{total} exportiert…',
+        exportingMemories: 'Erinnerungen werden exportiert ({i}/{n})…',
+        mediaExported: 'Medien exportiert ({n}). Einstellungen werden geschrieben ({s})…',
+        compressing: 'Sicherung wird komprimiert…',
+        exportSuccess: 'Alle Daten erfolgreich exportiert',
+        journeyUnit: 'Reisen',
+        memoryUnit: 'Erinnerungen',
+        mediaUnit: 'Medien',
+        settingUnit: 'Einstellungen',
+        packagedChoose: 'Daten paketiert; Speicherort wählen…',
+        exportFailed: 'Export fehlgeschlagen',
+        downloadStarted: 'Download gestartet: {file} ({size}). Prüfe die Downloadliste, ob die Datei gespeichert wurde.',
+        importConfirm: 'Beim Import wird die Sicherung zusammengeführt: Neue Einträge kommen hinzu, geänderte Einträge mit gleicher ID werden aktualisiert, identische Einträge übersprungen. Fortfahren?',
+        readingFile: '{file} wird gelesen…',
+        decompressing: 'Sicherung wird entpackt und geprüft…',
+        notBackup: 'Die Datei ist keine Red-Panda-Sicherung',
+        unsupportedVersion: 'Nicht unterstützte Datenversion: {version}',
+        incomplete: 'Die Sicherung ist unvollständig',
+        journeysRead: 'Reisen: {n} Einträge gelesen.',
+        readingMemories: 'Erinnerungen werden gelesen ({i}/{n})…',
+        readingMedia: 'Fotos/Videos werden gelesen ({done}/{total})…',
+        mediaRead: 'Medien: {c} gelesen; Einstellungen: {s}. Vergleich mit lokalen Daten…',
+        comparing: 'Vergleich abgeschlossen; Einstellungen und Daten werden zusammengeführt…',
+        mergeComplete: 'Import abgeschlossen:\n{results}',
+        stats: '{label}: vorher {old}, neu {added}, identisch {identical}, aktualisiert {updated}',
+        statsJourney: 'Reisen',
+        statsMemory: 'Erinnerungen',
+        statsMedia: 'Medien',
+        statsSettings: 'Einstellungen',
+        selectedFile: 'Ausgewählte Datei',
+        imported: 'Daten importiert',
+        importCancelled: 'Import abgebrochen',
+        importFailed: 'Import fehlgeschlagen',
       },
 
       logout: {
@@ -1469,6 +1766,9 @@
 
   function setLocale(locale) {
     if (!LOCALE_KEYS.includes(locale) || locale === getLocale()) return;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const focusedLang = document.activeElement?.dataset?.lang || '';
     currentLocale = locale;
     localStorage.setItem(STORAGE.lang, locale);
     applyDocumentLocale();
@@ -1477,7 +1777,12 @@
       cacheUser(state.user);
       api('/api/me/locale', { method: 'PUT', body: { locale } }).catch(() => {});
     }
-    render();
+    // 语言切换只是换一套文案，不需要播放页面入场动画，也不应该丢失滚动位置。
+    render({ animate: false });
+    window.scrollTo(scrollX, scrollY);
+    if (focusedLang) {
+      app.querySelector(`[data-lang="${focusedLang}"]`)?.focus({ preventScroll: true });
+    }
   }
 
   function t(key, vars = {}) {
@@ -1825,32 +2130,32 @@
     const [journeys,memories,settings]=await Promise.all([storeAll('journeys'),storeAll('memories'),storeAll('settings')]);
     const media=memories.flatMap(m=>m.media||[]);
     const types=[
-      {key:'journeys',name:getLocale()==='zh'?'行程':'Journeys',count:journeys.length,size:byteSize(journeys)},
-      {key:'memories',name:getLocale()==='zh'?'回忆文字':'Memory entries',count:memories.length,size:byteSize(memories.map(({media,...m})=>m))},
-      {key:'media',name:getLocale()==='zh'?'照片与视频':'Photos and videos',count:media.length,size:media.reduce((n,x)=>n+Number(x.blob?.size||x.size||0),0)},
-      {key:'settings',name:getLocale()==='zh'?'偏好设置':'Preferences',count:settings.length,size:byteSize(settings)},
+      {key:'journeys',name:t('backup.journeys'),count:journeys.length,size:byteSize(journeys)},
+      {key:'memories',name:t('backup.memories'),count:memories.length,size:byteSize(memories.map(({media,...m})=>m))},
+      {key:'media',name:t('backup.media'),count:media.length,size:media.reduce((n,x)=>n+Number(x.blob?.size||x.size||0),0)},
+      {key:'settings',name:t('backup.preferences'),count:settings.length,size:byteSize(settings)},
     ];
     return {journeys,memories,settings,types,totalCount:types.reduce((n,x)=>n+x.count,0),totalSize:types.reduce((n,x)=>n+x.size,0)};
   }
   function formatBytes(value){if(value<1024)return`${value} B`;if(value<1048576)return`${(value/1024).toFixed(1)} KB`;return`${(value/1048576).toFixed(1)} MB`;}
   function drawDatabaseSummary(snapshot){
     const summary=document.getElementById('database-summary'); if(!summary)return;
-    summary.innerHTML=`<div><span>${getLocale()==='zh'?'数据条目':'Records'}</span><strong>${snapshot.totalCount}</strong></div><div><span>${getLocale()==='zh'?'总占用估算':'Estimated total'}</span><strong>${formatBytes(snapshot.totalSize)}</strong></div><div><span>${getLocale()==='zh'?'数据类型':'Types'}</span><strong>${snapshot.types.length}</strong></div>`;
+    summary.innerHTML=`<div><span>${t('backup.records')}</span><strong>${snapshot.totalCount}</strong></div><div><span>${t('backup.estimatedTotal')}</span><strong>${formatBytes(snapshot.totalSize)}</strong></div><div><span>${t('backup.types')}</span><strong>${snapshot.types.length}</strong></div>`;
   }
   function drawDatabaseTypes(){
     if(!databaseSnapshotCache)return;
     const rows=databaseSnapshotCache.types.slice().sort((a,b)=>databaseSort==='size'?b.size-a.size:b.count-a.count);
-    const list=document.getElementById('database-types'); if(list)list.innerHTML=rows.map(x=>`<div class="database-row"><strong>${esc(x.name)}</strong><span>${x.count} ${getLocale()==='zh'?'条':'items'}</span><span>${formatBytes(x.size)}</span></div>`).join('');
+    const list=document.getElementById('database-types'); if(list)list.innerHTML=rows.map(x=>`<div class="database-row"><strong>${esc(x.name)}</strong><span>${x.count} ${t('backup.items')}</span><span>${formatBytes(x.size)}</span></div>`).join('');
     document.querySelectorAll('[data-action^="database-sort-"]').forEach(button=>{const active=button.dataset.action===`database-sort-${databaseSort}`;button.classList.toggle('is-active',active);const arrow=button.querySelector('.database-sort-arrow');if(arrow)arrow.textContent=active?'▼':'';});
   }
   async function refreshDatabaseStats(){databaseSnapshotCache=await databaseSnapshot();drawDatabaseSummary(databaseSnapshotCache);drawDatabaseTypes();}
   async function renderDatabase(){
-    app.innerHTML=`<div class="screen">${topbar({title:getLocale()==='zh'?'数据库':'Database',back:true})}<main class="page database-page">
+    app.innerHTML=`<div class="screen">${topbar({title:t('backup.title'),back:true})}<main class="page database-page">
       <div id="database-summary" class="database-summary"><div class="skeleton-block"></div></div>
-      <div class="database-actions"><button class="btn primary" data-action="backup-export">${getLocale()==='zh'?'导出数据':'Export data'}</button><label class="btn ghost" for="backup-file">${getLocale()==='zh'?'选择备份文件并导入':'Choose backup file'}</label><input id="backup-file" type="file" accept=".rpd,.json,application/json,application/gzip" hidden /></div>
+      <div class="database-actions"><button class="btn primary" data-action="backup-export">${t('backup.exportData')}</button><label class="btn ghost" for="backup-file">${t('backup.chooseFile')}</label><input id="backup-file" type="file" accept=".rpd,.json,application/json,application/gzip" hidden /></div>
       <div id="database-status" class="backup-status" role="status" aria-live="polite"></div>
-      <section class="database-table"><div class="database-table-head"><strong>${getLocale()==='zh'?'数据明细':'Data details'}</strong><div><button class="link subtle" data-action="database-sort-count">${getLocale()==='zh'?'按条数':'By count'}<span class="database-sort-arrow" aria-hidden="true"></span></button><button class="link subtle" data-action="database-sort-size">${getLocale()==='zh'?'按体积':'By size'}<span class="database-sort-arrow" aria-hidden="true"></span></button></div></div><div id="database-types"><div class="skeleton-block"></div></div></section>
-      <p class="panel-sub">${getLocale()==='zh'?'体积为本机数据的估算值；媒体按文件大小统计。':'Sizes are estimates; media uses file sizes.'}</p>
+      <section class="database-table"><div class="database-table-head"><strong>${t('backup.details')}</strong><div><button class="link subtle" data-action="database-sort-count">${t('backup.byCount')}<span class="database-sort-arrow" aria-hidden="true"></span></button><button class="link subtle" data-action="database-sort-size">${t('backup.bySize')}<span class="database-sort-arrow" aria-hidden="true"></span></button></div></div><div id="database-types"><div class="skeleton-block"></div></div></section>
+      <p class="panel-sub">${t('backup.sizeNote')}</p>
     </main></div>`;
     databaseSnapshotCache=await databaseSnapshot();
     drawDatabaseSummary(databaseSnapshotCache);
@@ -1864,24 +2169,24 @@
     const androidSave = typeof window.AndroidBackup?.saveBackup === 'function';
     if (!androidSave && window.showSaveFilePicker) {
       try { destination = await window.showSaveFilePicker({ suggestedName:filename, types:[{description:'Red Panda backup',accept:{'application/gzip':['.rpd']}}] }); }
-      catch (error) { if(error.name==='AbortError'){backupStatus(getLocale()==='zh'?'已取消导出': 'Export cancelled');return;} destination=null; }
+      catch (error) { if(error.name==='AbortError'){backupStatus(t('backup.exportCancelled'));return;} destination=null; }
     }
     const snapshot=await databaseSnapshot();
     const {journeys,memories,settings}=snapshot;
     const mediaTotal=snapshot.types.find(x=>x.key==='media').count;let mediaDone=0;
-    backupStatus(getLocale()==='zh'?`正在导出行程（${journeys.length}/${journeys.length}）…`:`Exporting journeys (${journeys.length}/${journeys.length})…`,8);
+    backupStatus(t('backup.exportingJourneys', { done: journeys.length, total: journeys.length }), 8);
     const journeyRecords=journeys.map(x=>({...x}));
-    backupStatus(getLocale()==='zh'?`行程导出完成，${journeyRecords.length} 条。正在处理回忆…`:`Journeys complete (${journeyRecords.length}). Processing memories…`,25);
+    backupStatus(t('backup.journeysExported', { n: journeyRecords.length }), 25);
     const packed=[];
-    for(let i=0;i<memories.length;i++){const m=memories[i];const media=[];for(const v of(m.media||[])){media.push({...v,url:undefined,blob:undefined,data:v.blob?await blobToBase64(v.blob):''});mediaDone++;backupStatus(getLocale()==='zh'?`回忆 ${i+1}/${memories.length}；媒体 ${mediaDone}/${mediaTotal} 已导出…`:`Memories ${i+1}/${memories.length}; media ${mediaDone}/${mediaTotal} exported…`,25+(mediaTotal?55*mediaDone/mediaTotal:55));}packed.push({...m,media});if(!media.length)backupStatus(getLocale()==='zh'?`正在导出回忆 ${i+1}/${memories.length}…`:`Exporting memories ${i+1}/${memories.length}…`,25+(memories.length?55*(i+1)/memories.length:55));}
-    backupStatus(getLocale()==='zh'?`媒体导出完成，${mediaDone} 个。正在写入偏好设置（${settings.length} 条）…`:`Media complete (${mediaDone}). Writing preferences (${settings.length})…`,82);
+    for(let i=0;i<memories.length;i++){const m=memories[i];const media=[];for(const v of(m.media||[])){media.push({...v,url:undefined,blob:undefined,data:v.blob?await blobToBase64(v.blob):''});mediaDone++;backupStatus(t('backup.memoriesExporting', { i: i+1, n: memories.length, done: mediaDone, total: mediaTotal }),25+(mediaTotal?55*mediaDone/mediaTotal:55));}packed.push({...m,media});if(!media.length)backupStatus(t('backup.exportingMemories', { i: i+1, n: memories.length }),25+(memories.length?55*(i+1)/memories.length:55));}
+    backupStatus(t('backup.mediaExported', { n: mediaDone, s: settings.length }),82);
     const data={format:'red-panda-backup',schemaVersion:1,version:1,journeys:journeyRecords,memories:packed,settings:settings.map(x=>({...x}))};
-    backupStatus(getLocale()==='zh'?'正在压缩备份…':'Compressing backup…',85);
+    backupStatus(t('backup.compressing'),85);
     const stream=new Blob([new TextEncoder().encode(JSON.stringify(data))]).stream().pipeThrough(new CompressionStream('gzip'));
     const file=await new Response(stream).blob();
-    if(destination){const writer=await destination.createWritable();await writer.write(file);await writer.close();backupStatus(`${getLocale()==='zh'?'全部导出成功':'All data exported successfully'} · ${journeyRecords.length} ${getLocale()==='zh'?'段行程':'journeys'} · ${packed.length} ${getLocale()==='zh'?'条回忆':'memories'} · ${mediaDone} ${getLocale()==='zh'?'个媒体':'media'} · ${settings.length} ${getLocale()==='zh'?'条设置':'settings'} · ${destination.name}`,100,'success');}
-    else if(window.AndroidBackup?.saveBackup){backupStatus(getLocale()==='zh'?'各类数据已打包，正在选择保存位置…':'Data packaged; choose a save location…',95);const base64=await blobToBase64(file);await new Promise((resolve,reject)=>{window.__backupSaveResult=(ok,message)=>{window.__backupSaveResult=null;if(ok){backupStatus(`${getLocale()==='zh'?'全部导出成功':'All data exported successfully'} · ${journeyRecords.length} 段行程 · ${packed.length} 条回忆 · ${mediaDone} 个媒体 · ${settings.length} 条设置 · ${message}`,100,'success');resolve();}else{backupStatus(`${getLocale()==='zh'?'导出失败':'Export failed'}: ${message}`,null,'error');reject(new Error(message));}};window.AndroidBackup.saveBackup(filename,base64);});}
-    else {const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),60000);backupStatus(getLocale()==='zh'?`已发起下载 ${filename}（${formatBytes(file.size)}）。请检查下载列表确认文件已保存。`:`Download started: ${filename} (${formatBytes(file.size)}). Check your downloads list to confirm it was saved.`,100,'pending');}
+    if(destination){const writer=await destination.createWritable();await writer.write(file);await writer.close();backupStatus(`${t('backup.exportSuccess')} · ${journeyRecords.length} ${t('backup.journeyUnit')} · ${packed.length} ${t('backup.memoryUnit')} · ${mediaDone} ${t('backup.mediaUnit')} · ${settings.length} ${t('backup.settingUnit')} · ${destination.name}`,100,'success');}
+    else if(window.AndroidBackup?.saveBackup){backupStatus(t('backup.packagedChoose'),95);const base64=await blobToBase64(file);await new Promise((resolve,reject)=>{window.__backupSaveResult=(ok,message)=>{window.__backupSaveResult=null;if(ok){backupStatus(`${t('backup.exportSuccess')} · ${journeyRecords.length} ${t('backup.journeyUnit')} · ${packed.length} ${t('backup.memoryUnit')} · ${mediaDone} ${t('backup.mediaUnit')} · ${settings.length} ${t('backup.settingUnit')} · ${message}`,100,'success');resolve();}else{backupStatus(`${t('backup.exportFailed')}: ${message}`,null,'error');reject(new Error(message));}};window.AndroidBackup.saveBackup(filename,base64);});}
+    else {const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),60000);backupStatus(t('backup.downloadStarted', { file: filename, size: formatBytes(file.size) }),100,'pending');}
   }
   function blobToBase64(blob) { return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]);r.onerror=()=>reject(r.error);r.readAsDataURL(blob);}); }
   const BACKUP_IMPORTERS = {
@@ -1911,35 +2216,35 @@
     for(const item of incoming){const old=oldById.get(String(item.id));if(!old){result.added++;result.records.push(item);continue;}const [a,b]=await Promise.all([backupRecordSignature(item,includeMedia),backupRecordSignature(old,includeMedia)]);if(a===b)result.identical++;else{result.updated++;result.records.push(item);}}
     return result;
   }
-  const importStatsText=(label,s)=>`${label}：原有 ${s.old} 条，新增 ${s.added} 条，完全相同 ${s.identical} 条，更新 ${s.updated} 条`;
+  const importStatsText=(label,s)=>t('backup.stats',{label,old:s.old,added:s.added,identical:s.identical,updated:s.updated});
   async function importBackup(file) {
-    if (!confirm(getLocale()==='zh'?'导入将合并备份数据：新增记录会加入，内容不同的同编号记录会更新，完全相同的记录会跳过。继续吗？':'Import will merge the backup: new records are added, changed records with matching IDs are updated, and identical records are skipped. Continue?')) return false;
-    backupStatus(getLocale()==='zh'?`正在读取 ${file.name}…`:`Reading ${file.name}…`,0);
+    if (!confirm(t('backup.importConfirm'))) return false;
+    backupStatus(t('backup.readingFile', { file: file.name }),0);
     let buf=await file.arrayBuffer(); const u=new Uint8Array(buf);
-    backupStatus(getLocale()==='zh'?'正在解压并检查备份…':'Decompressing and checking backup…',15);
+    backupStatus(t('backup.decompressing'),15);
     if(u[0]===0x1f&&u[1]===0x8b) buf=await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
     const data=JSON.parse(new TextDecoder().decode(buf));
-    if(data.format!=='red-panda-backup') throw new Error('文件不是小熊猫备份');
+    if(data.format!=='red-panda-backup') throw new Error(t('backup.notBackup'));
     // schemaVersion is the current explicit format field; `version` remains
     // accepted for backups written by the first released format.
     const schemaVersion=Number(data.schemaVersion ?? data.version);
-    const adapt=BACKUP_IMPORTERS[schemaVersion]; if(!adapt)throw new Error(`不支持的数据结构版本：${schemaVersion}`);
-    const normalized=await adapt(data); if(!Array.isArray(normalized.journeys)||!Array.isArray(normalized.memories))throw new Error('备份内容不完整');
-    backupStatus(getLocale()==='zh'?`行程数据：已读取 ${normalized.journeys.length} 条。`:`Journeys: read ${normalized.journeys.length} records.`,25);
+    const adapt=BACKUP_IMPORTERS[schemaVersion]; if(!adapt)throw new Error(t('backup.unsupportedVersion', { version: schemaVersion }));
+    const normalized=await adapt(data); if(!Array.isArray(normalized.journeys)||!Array.isArray(normalized.memories))throw new Error(t('backup.incomplete'));
+    backupStatus(t('backup.journeysRead', { n: normalized.journeys.length }),25);
     const memories=[];let count=0,total=normalized.memories.reduce((n,m)=>n+(m.media||[]).length,0);
-    for(let i=0;i<normalized.memories.length;i++){const m=normalized.memories[i],media=[];backupStatus(getLocale()==='zh'?`正在读取回忆 ${i+1}/${normalized.memories.length}…`:`Reading memories ${i+1}/${normalized.memories.length}…`,20+(normalized.memories.length?15*(i+1)/normalized.memories.length:15));for(const v of(m.media||[])){const raw=atob(v.data||'');const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));const {data,url:_url,...metadata}=v;media.push({...metadata,blob:new Blob([bytes],{type:v.mime||'application/octet-stream'})});count++;backupStatus(getLocale()==='zh'?`正在读取照片/视频 ${count}/${total}…`:`Reading photos/videos ${count}/${total}…`,35+(total?35*count/total:35));}memories.push({...m,media});}
-    backupStatus(getLocale()==='zh'?`媒体数据：已读取 ${count} 个；偏好设置：${normalized.settings.length} 条，开始比较本机数据…`:`Media: read ${count}; preferences: ${normalized.settings.length}. Comparing with local data…`,75);
+    for(let i=0;i<normalized.memories.length;i++){const m=normalized.memories[i],media=[];backupStatus(t('backup.readingMemories', { i: i+1, n: normalized.memories.length }),20+(normalized.memories.length?15*(i+1)/normalized.memories.length:15));for(const v of(m.media||[])){const raw=atob(v.data||'');const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));const {data,url:_url,...metadata}=v;media.push({...metadata,blob:new Blob([bytes],{type:v.mime||'application/octet-stream'})});count++;backupStatus(t('backup.readingMedia', { done: count, total: total }),35+(total?35*count/total:35));}memories.push({...m,media});}
+    backupStatus(t('backup.mediaRead', { c: count, s: normalized.settings.length }),75);
     const oldJourneys=await storeAll('journeys'),oldMemories=await storeAll('memories'),oldSettings=await storeAll('settings');
     const [journeyStats,memoryStats,settingStats]=await Promise.all([
       compareBackupRecords(normalized.journeys,oldJourneys),compareBackupRecords(memories,oldMemories,true),compareBackupRecords(normalized.settings,oldSettings),
     ]);
     const oldMedia=oldMemories.flatMap(m=>m.media||[]),newMedia=memories.flatMap(m=>m.media||[]);
     const mediaStats=await compareBackupRecords(newMedia,oldMedia);
-    backupStatus(getLocale()==='zh'?'比较完成，正在合并设置与数据…':'Comparison complete; merging settings and data…',82);
+    backupStatus(t('backup.comparing'),82);
     const db=await localDb();await new Promise((resolve,reject)=>{const tx=db.transaction(['journeys','memories','settings'],'readwrite');for(const j of journeyStats.records)tx.objectStore('journeys').put(j);for(const m of memoryStats.records)tx.objectStore('memories').put(m);for(const s of settingStats.records)tx.objectStore('settings').put(s);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
     await refreshDatabaseStats();
-    const results=[importStatsText('行程',journeyStats),importStatsText('回忆',memoryStats),importStatsText('媒体',mediaStats),importStatsText('设置',settingStats)];
-    backupStatus(`导入合并完成：\n${results.join('\n')}`,100,'success');
+    const results=[importStatsText(t('backup.statsJourney'),journeyStats),importStatsText(t('backup.statsMemory'),memoryStats),importStatsText(t('backup.statsMedia'),mediaStats),importStatsText(t('backup.statsSettings'),settingStats)];
+    backupStatus(t('backup.mergeComplete', { results: results.join('\n') }),100,'success');
     return true;
   }
   async function pingServer(server) {
@@ -2088,7 +2393,8 @@
 
   // ---- rendering ----------------------------------------------------------
 
-  function render() {
+  function render({ animate = true } = {}) {
+    document.documentElement.classList.toggle('is-locale-switching', !animate);
     if (!state.ready) {
       app.innerHTML = loadingScreen();
       renderNavBar();
@@ -2280,7 +2586,7 @@
         <div class="auth-hero">
           <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
           <h1 class="auth-title">${t('brand.big')}</h1>
-          <p class="auth-tag">${active === 'login' && getLocale()==='zh' ? '出门带只小熊猫。' : t('home.sub')}</p>
+          <p class="auth-tag">${t('auth.tagline')}</p>
         </div>
 
         <div class="card auth-card">
@@ -4105,7 +4411,7 @@
     const places = (state.journeys || []).filter((journey) => journey.destination || journey.name);
     const pins = places.slice(0, 12).map((journey, index) => `<span class="footprint-pin pin-${index % 6}" title="${esc(journey.destination || journey.name)}">•</span>`).join('');
     const displayName = state.user?.displayName || state.user?.email?.split('@')[0] || t('nav.me');
-    app.innerHTML = `<div class="screen me-screen"><header class="me-head"><button type="button" class="me-name-edit" id="me-name-edit">${esc(displayName)}</button><button class="gear-btn" data-action="settings" aria-label="${t('settings.title')}">⚙</button></header><main class="page me-page"><button class="footprint-card" data-action="journeys"><div class="footprint-copy"><strong>${getLocale()==='zh'?'我的足迹':'My footprints'}</strong><span id="footprint-count">${places.length} ${getLocale()==='zh'?'个目的地':'destinations'}</span></div><div class="footprint-map" aria-label="${getLocale()==='zh'?'世界地图足迹':'World map footprints'}"><svg viewBox="0 0 720 330" role="img"><path d="M45 90 82 50 154 38 194 62 220 51 250 80 225 111 195 117 177 151 144 158 129 194 92 190 74 156 48 142ZM230 188 266 176 299 193 309 229 289 267 265 292 245 259 232 230ZM320 80 362 58 404 63 418 79 451 65 495 79 530 100 573 96 622 130 606 155 565 145 538 171 499 162 469 189 439 179 424 151 396 144 373 163 346 145 318 130ZM433 193 461 184 490 204 496 239 474 266 449 243Z"/></svg><span id="footprint-pins">${pins}</span></div><p>${getLocale()==='zh'?'记录旅程，点亮去过的地方':'Your journeys, marked on the map'}</p></button></main></div>`;
+    app.innerHTML = `<div class="screen me-screen"><header class="me-head"><button type="button" class="me-name-edit" id="me-name-edit">${esc(displayName)}</button><button class="gear-btn" data-action="settings" aria-label="${t('settings.title')}">⚙</button></header><main class="page me-page"><button class="footprint-card" data-action="journeys"><div class="footprint-copy"><strong>${t('me.footprints')}</strong><span id="footprint-count">${places.length} ${t('me.destinations', { n: places.length })}</span></div><div class="footprint-map" aria-label="${t('me.worldFootprints')}"><svg viewBox="0 0 720 330" role="img"><path d="M45 90 82 50 154 38 194 62 220 51 250 80 225 111 195 117 177 151 144 158 129 194 92 190 74 156 48 142ZM230 188 266 176 299 193 309 229 289 267 265 292 245 259 232 230ZM320 80 362 58 404 63 418 79 451 65 495 79 530 100 573 96 622 130 606 155 565 145 538 171 499 162 469 189 439 179 424 151 396 144 373 163 346 145 318 130ZM433 193 461 184 490 204 496 239 474 266 449 243Z"/></svg><span id="footprint-pins">${pins}</span></div><p>${t('me.footprintsSub')}</p></button></main></div>`;
 
     const nameButton = document.getElementById('me-name-edit');
     nameButton?.addEventListener('click', () => {
@@ -4115,7 +4421,7 @@
       input.type = 'text';
       input.maxLength = 40;
       input.autocomplete = 'nickname';
-      input.setAttribute('aria-label', getLocale()==='zh'?'修改昵称':'Edit nickname');
+      input.setAttribute('aria-label', t('me.editNickname'));
       input.value = originalName;
       nameButton.hidden = true;
       nameButton.parentElement.insertBefore(input, nameButton.nextSibling);
@@ -4132,7 +4438,7 @@
         if (saving || !input.isConnected) return;
         const nextName = input.value.trim();
         if (!nextName) {
-          toast(getLocale()==='zh'?'昵称不能为空':'Nickname cannot be empty', 'error');
+          toast(t('me.nicknameEmpty'), 'error');
           input.focus();
           return;
         }
@@ -4147,7 +4453,7 @@
           state.user = { ...state.user, displayName: result.displayName };
           cacheUser(state.user);
           restoreName(result.displayName);
-          toast(getLocale()==='zh'?'昵称已保存':'Nickname saved');
+          toast(t('me.nicknameSaved'));
         } catch (error) {
           saving = false;
           input.disabled = false;
@@ -4168,7 +4474,7 @@
       if (parseRoute().name !== 'me') return;
       const count = document.getElementById('footprint-count');
       const markers = document.getElementById('footprint-pins');
-      if (count) count.textContent = `${journeys.length} ${getLocale()==='zh'?'个目的地':'destinations'}`;
+      if (count) count.textContent = `${journeys.length} ${t('me.destinations', { n: journeys.length })}`;
       if (markers) markers.innerHTML = journeys.filter((journey) => journey.destination || journey.name).slice(0, 12).map((journey, index) => `<span class="footprint-pin pin-${index % 6}" title="${esc(journey.destination || journey.name)}">•</span>`).join('');
     }).catch(() => {});
   }
@@ -4183,7 +4489,7 @@
     cacheUser(user);
     const route = parseRoute();
     if (changed && route.name === 'settings' && route.section === 'account-security') renderSettings({ refreshProfile: false });
-    if (notify) toast(changed ? (getLocale()==='zh'?'账户信息已更新':'Account information updated') : (getLocale()==='zh'?'账户信息已是最新':'Account information is up to date'));
+    if (notify) toast(changed ? t('account.updated') : t('account.upToDate'));
     return changed;
   }
 
@@ -4206,7 +4512,7 @@
       if (distance >= 58) {
         armed = true;
         status.hidden = false;
-        status.textContent = getLocale()==='zh'?'松开即可刷新账户信息':'Release to refresh account information';
+        status.textContent = t('account.pullRefresh');
         if (event.cancelable) event.preventDefault();
       }
     }, { passive: false });
@@ -4215,10 +4521,10 @@
       startY = null;
       if (!armed) { status.hidden = true; return; }
       status.hidden = false;
-      status.textContent = getLocale()==='zh'?'正在刷新账户信息…':'Refreshing account information…';
+      status.textContent = t('account.refreshing');
       try { await refreshAccountSettings({ notify: true }); }
       catch (error) { toast(error.message, 'error'); }
-      if (status.isConnected) { status.textContent = getLocale()==='zh'?'账户信息已刷新':'Account information refreshed'; setTimeout(() => { if (status.isConnected) status.hidden = true; }, 900); }
+      if (status.isConnected) { status.textContent = t('account.refreshed'); setTimeout(() => { if (status.isConnected) status.hidden = true; }, 900); }
     };
     page.addEventListener('touchend', finish, { passive: true });
     page.addEventListener('touchcancel', finish, { passive: true });
@@ -4229,19 +4535,19 @@
     const section = route.section || '';
     if (publicView) {
       const emailChanged = route.query.emailChanged === '1';
-      app.innerHTML = `<div class="screen settings-screen"><main class="page settings-page email-result-page"><section class="email-verified-result" role="status"><span class="email-result-check" aria-hidden="true">✓</span><h1>${emailChanged ? (getLocale()==='zh'?'邮箱已更新':'Email updated') : (getLocale()==='zh'?'设置':'Settings')}</h1><p>${emailChanged ? (getLocale()==='zh'?'新邮箱验证成功，已替换账户中的原邮箱地址。':'Your new email has been verified and now replaces the previous address on your account.') : t('settings.publicSub')}</p>${emailChanged ? `<p class="email-result-note">${getLocale()==='zh'?'请返回小熊猫应用，账户资料会自动同步。':'Return to Red Panda to sync your account details.'}</p>` : ''}<button class="btn primary block" data-action="login">${emailChanged ? (getLocale()==='zh'?'前往登录':'Go to sign in') : t('settings.goLogin')}</button></section></main></div>`;
+      app.innerHTML = `<div class="screen settings-screen"><main class="page settings-page email-result-page"><section class="email-verified-result" role="status"><span class="email-result-check" aria-hidden="true">✓</span><h1>${emailChanged ? t('settings.emailUpdated') : t('settings.title')}</h1><p>${emailChanged ? t('settings.emailUpdatedBody') : t('settings.publicSub')}</p>${emailChanged ? `<p class="email-result-note">${t('settings.returnToApp')}</p>` : ''}<button class="btn primary block" data-action="login">${emailChanged ? t('settings.goSignIn') : t('settings.goLogin')}</button></section></main></div>`;
       return;
     }
     if (!publicView && !section) {
-      const entries = [['language',t('settings.languageTitle'),'🌐'],['account-security',getLocale()==='zh'?'账户与安全':'Account & security','person'],['origin',t('settings.originTitle'),'⌖'],['data',getLocale()==='zh'?'数据与备份':'Data & backup','▤'],['about',t('settings.aboutTitle'),'ⓘ']];
+      const entries = [['language',t('settings.languageTitle'),'🌐'],['account-security',t('settings.accountSecurity'),'person'],['origin',t('settings.originTitle'),'⌖'],['data',t('settings.dataBackup'),'▤'],['about',t('settings.aboutTitle'),'ⓘ']];
       app.innerHTML = `<div class="screen settings-screen">${topbar({ title: t('settings.title'), back: true, backAction: 'me' })}<main class="page settings-page"><div class="settings-group">${entries.map(([id,label,icon])=>`<button class="system-row" data-action="settings-section" data-section="${id}"><span class="system-icon">${icon === '🌐' ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>' : icon === 'person' ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c.6-4 3.2-6 7.5-6s6.9 2 7.5 6"/></svg>' : icon}</span><span>${label}</span><b>›</b></button>`).join('')}</div></main></div>`;
       return;
     }
     const sectionTitles = {
       language: t('settings.languageTitle'),
-      'account-security': getLocale()==='zh'?'账户与安全':'Account & security',
+      'account-security': t('settings.accountSecurity'),
       origin: t('settings.originTitle'),
-      data: getLocale()==='zh'?'数据与备份':'Data & backup',
+      data: t('settings.dataBackup'),
       about: t('settings.aboutTitle'),
     };
     const panel = (id, html) => (section === id || (publicView && id === 'language')) ? html : '';
@@ -4252,7 +4558,7 @@
       <div class="screen settings-screen">
         ${topbar({ title: sectionTitles[section] || t('settings.title'), back: true, backAction: 'settings-home' })}
         <main class="page settings-page settings-detail${section === 'account-security' ? ' account-security-page' : ''}">
-          ${emailChangedNotice ? `<div class="email-updated-banner" role="status"><strong>${getLocale()==='zh'?'邮箱已更新':'Email updated'}</strong><span>${getLocale()==='zh'?'新邮箱验证成功，已替换原邮箱。':'The verified address is now your account email.'}</span></div>` : ''}
+          ${emailChangedNotice ? `<div class="email-updated-banner" role="status"><strong>${t('settings.emailUpdated')}</strong><span>${t('settings.emailUpdatedShort')}</span></div>` : ''}
           ${section === 'account-security' ? `<div class="account-refresh-status" id="account-refresh-status" role="status" hidden></div>` : ''}
           ${panel('language', `<section class="card panel"><div class="lang-panel">${languageSwitcher()}</div></section>`)}
           ${panel('origin', `<section class="card panel">
@@ -4262,8 +4568,8 @@
             <div id="origin-map-modal" class="origin-map-modal" hidden><div class="origin-map-head"><strong>${esc(t('settings.originMap'))}</strong><div class="origin-map-actions"><button type="button" class="btn origin-locate" id="origin-locate">◎ ${esc(t('settings.originLocate'))}</button><button type="button" class="btn" id="origin-map-close">×</button></div></div><div id="origin-map-canvas"></div><p>${esc(t('settings.originMapHint'))}</p><p class="form-error origin-map-error" id="origin-map-error" hidden></p><button class="btn primary block" id="origin-map-use" type="button" disabled>${esc(t('settings.originMapUse'))}</button></div>
           </section>`)}
           ${publicView ? `<section class="card panel"><p class="panel-sub">${t('settings.publicSub')}</p><button class="btn primary block" data-action="login">${t('settings.goLogin')}</button></section>` : ''}
-          ${panel('account-security', `<section class="account-settings-group account-profile-group"><h2 class="settings-group-heading">${getLocale()==='zh'?'账户资料':'Account information'}</h2><div class="current-email-block"><span class="account-field-title">${t('settings.email')}</span><strong>${esc(state.user.email || '—')}</strong></div><form id="email-form" class="account-edit-form" novalidate><label class="account-edit-field"><span>${getLocale()==='zh'?'新邮箱地址':'New email address'}</span><input name="email" type="email" maxlength="254" inputmode="email" autocomplete="email" placeholder="${getLocale()==='zh'?'输入新的邮箱地址':'Enter a new email address'}" required /></label><p class="form-error" id="email-error" hidden></p><button class="btn primary account-action" type="submit">${getLocale()==='zh'?'发送验证邮件':'Send verification email'}</button></form><div id="pending-email-status" class="pending-email-status" ${pendingEmailActive?'':'hidden'}><button class="status-close-btn" type="button" data-dismiss-status="pending-email-status" aria-label="${getLocale()==='zh'?'关闭':'Close'}">×</button><strong>${getLocale()==='zh'?'验证邮件已发送至':'Verification email sent to'} ${esc(pendingEmailActive ? state.user.pendingEmail : '')}</strong><p>${getLocale()==='zh'?'请前往新邮箱点击验证链接。验证完成后返回此页，下拉页面即可刷新邮箱地址。链接有效期至':'Open the verification link sent to this address. After verifying, return here and pull down to refresh your email address. It expires at'} ${esc(pendingEmailActive ? fmtDate(state.user.pendingEmailExpiresAt) : '')}${getLocale()==='zh'?'。':'.'}</p><small>${getLocale()==='zh'?'验证前仍使用原邮箱；超过 24 小时链接失效，新邮箱地址将不再显示。':'Your current email remains active until verified. After 24 hours the link and pending address expire.'}</small><p>${t('pending.resendHint')}</p><button class="btn ghost block account-action" id="resend-email-btn" type="button">${t('pending.resend')}</button></div></section><section class="account-settings-group"><h2 class="settings-group-heading">${t('settings.passwordTitle')}</h2><p class="panel-sub">${t('settings.passwordSub')}</p><form id="password-form" class="form compact" novalidate><label class="field"><span>${t('settings.currentPassword')}</span><input name="currentPassword" type="password" maxlength="128" autocomplete="current-password" placeholder="${t('settings.currentPlaceholder')}" required /></label><label class="field"><span>${t('reset.newPasswordLabel')}</span><input name="newPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" placeholder="${t('auth.passwordPlaceholderRegister')}" required /></label><label class="field"><span>${t('reset.confirmLabel')}</span><input name="confirm" type="password" maxlength="128" autocomplete="new-password" placeholder="${t('auth.confirmPlaceholder')}" required /></label><p class="form-error" id="password-error" hidden></p><p class="form-ok" id="password-ok" hidden></p><button class="btn primary block account-action" type="submit">${t('settings.updatePassword')}</button></form></section><section class="account-settings-group"><h2 class="settings-group-heading">${t('settings.resetPassword')}</h2><p class="panel-sub">${t('settings.resetPasswordSub')}</p><div id="pending-reset-status" class="pending-email-status pending-reset-status" ${pendingResetActive?'':'hidden'}><button class="status-close-btn" type="button" data-dismiss-status="pending-reset-status" aria-label="${getLocale()==='zh'?'关闭':'Close'}">×</button><strong>${t('forgot.sentTo',{email:state.user.email || ''})}</strong><p>${t('forgot.expires',{date:fmtDate(state.user.pendingResetExpiresAt)})}</p><small>${t('forgot.notReceived')}</small><button class="btn ghost block account-action" id="resend-reset-btn" type="button">${t('forgot.resend')}</button></div><button class="btn ghost block account-action" id="reset-password-btn" type="button">${t('forgot.submit')}</button></section><section class="account-settings-group account-logout-group"><button class="btn account-logout block" data-action="logout">${t('home.logout')}</button></section>`) }
-          ${panel('data', `<section class="card panel"><p class="panel-sub">${getLocale()==='zh'?'查看本机数据占用，导入或导出跨平台备份。':'Review local storage and manage portable backups.'}</p><button class="btn ghost block" data-action="database-open">${getLocale()==='zh'?'打开数据库':'Open database'}</button></section>`)}
+          ${panel('account-security', `<section class="account-settings-group account-profile-group"><h2 class="settings-group-heading">${t('settings.accountInfo')}</h2><div class="current-email-block"><span class="account-field-title">${t('settings.email')}</span><strong>${esc(state.user.email || '—')}</strong></div><form id="email-form" class="account-edit-form" novalidate><label class="account-edit-field"><span>${t('settings.newEmail')}</span><input name="email" type="email" maxlength="254" inputmode="email" autocomplete="email" placeholder="${t('settings.newEmailPlaceholder')}" required /></label><p class="form-error" id="email-error" hidden></p><button class="btn primary account-action" type="submit">${t('settings.sendVerificationEmail')}</button></form><div id="pending-email-status" class="pending-email-status" ${pendingEmailActive?'':'hidden'}><button class="status-close-btn" type="button" data-dismiss-status="pending-email-status" aria-label="${t('settings.close')}">×</button><strong>${t('settings.verificationSentTo')} ${esc(pendingEmailActive ? state.user.pendingEmail : '')}</strong><p>${t('settings.verificationHint', { date: pendingEmailActive ? fmtDate(state.user.pendingEmailExpiresAt) : '' })}</p><small>${t('settings.verificationNote')}</small><p>${t('pending.resendHint')}</p><button class="btn ghost block account-action" id="resend-email-btn" type="button">${t('pending.resend')}</button></div></section><section class="account-settings-group"><h2 class="settings-group-heading">${t('settings.passwordTitle')}</h2><p class="panel-sub">${t('settings.passwordSub')}</p><form id="password-form" class="form compact" novalidate><label class="field"><span>${t('settings.currentPassword')}</span><input name="currentPassword" type="password" maxlength="128" autocomplete="current-password" placeholder="${t('settings.currentPlaceholder')}" required /></label><label class="field"><span>${t('reset.newPasswordLabel')}</span><input name="newPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" placeholder="${t('auth.passwordPlaceholderRegister')}" required /></label><label class="field"><span>${t('reset.confirmLabel')}</span><input name="confirm" type="password" maxlength="128" autocomplete="new-password" placeholder="${t('auth.confirmPlaceholder')}" required /></label><p class="form-error" id="password-error" hidden></p><p class="form-ok" id="password-ok" hidden></p><button class="btn primary block account-action" type="submit">${t('settings.updatePassword')}</button></form></section><section class="account-settings-group"><h2 class="settings-group-heading">${t('settings.resetPassword')}</h2><p class="panel-sub">${t('settings.resetPasswordSub')}</p><div id="pending-reset-status" class="pending-email-status pending-reset-status" ${pendingResetActive?'':'hidden'}><button class="status-close-btn" type="button" data-dismiss-status="pending-reset-status" aria-label="${t('settings.close')}">×</button><strong>${t('forgot.sentTo',{email:state.user.email || ''})}</strong><p>${t('forgot.expires',{date:fmtDate(state.user.pendingResetExpiresAt)})}</p><small>${t('forgot.notReceived')}</small><button class="btn ghost block account-action" id="resend-reset-btn" type="button">${t('forgot.resend')}</button></div><button class="btn ghost block account-action" id="reset-password-btn" type="button">${t('forgot.submit')}</button></section><section class="account-settings-group account-logout-group"><button class="btn account-logout block" data-action="logout">${t('home.logout')}</button></section>`) }
+          ${panel('data', `<section class="card panel"><p class="panel-sub">${t('settings.dataSub')}</p><button class="btn ghost block" data-action="database-open">${t('settings.openDatabase')}</button></section>`)}
           ${panel('about', `<section class="card panel"><p class="panel-sub">${t('settings.aboutBody', { version: esc(window.REDPANDA_CONFIG?.version || '1.0.0') })}</p></section>`)}
         </main>
       </div>`;
@@ -4284,15 +4590,15 @@
     emailForm?.addEventListener('submit', async (event) => {
       event.preventDefault(); hideError('email-error');
       const email = emailForm.elements.email.value.trim();
-      if (!email) { showError('email-error', getLocale()==='zh'?'请输入新邮箱地址':'Enter a new email address'); return; }
+      if (!email) { showError('email-error', t('settings.errEmailEmpty')); return; }
       const button = emailForm.querySelector('button[type="submit"]'); setBusy(button, true, t('busy.sending'));
       try {
         if (!(await ensureServer())) return;
         const result = await api('/api/me/email', { method: 'PUT', body: { email, locale: getLocale() } });
         state.user = { ...state.user, pendingEmail: result.pendingEmail || null, pendingEmailExpiresAt: result.pendingEmailExpiresAt || null };
         cacheUser(state.user); emailForm.reset();
-        if (result.pendingEmail) { toast(getLocale()==='zh'?'验证邮件已发送，请在 24 小时内完成验证':'Verification email sent. Verify within 24 hours'); renderSettings(); }
-        else { toast(getLocale()==='zh'?'邮箱未更改，待验证地址已取消':'Email unchanged; pending address cancelled'); renderSettings(); }
+        if (result.pendingEmail) { toast(t('settings.emailSentToast')); renderSettings(); }
+        else { toast(t('settings.emailCancelledToast')); renderSettings(); }
       } catch (error) { showError('email-error', error.message); }
       finally { if (button.isConnected) setBusy(button, false); }
     });
@@ -4308,7 +4614,7 @@
         const result = await api('/api/me/email', { method: 'PUT', body: { email, locale: getLocale() } });
         state.user = { ...state.user, pendingEmail: result.pendingEmail || null, pendingEmailExpiresAt: result.pendingEmailExpiresAt || null };
         cacheUser(state.user);
-        toast(getLocale()==='zh'?'验证邮件已重新发送，请在 24 小时内完成验证':'Verification email resent. Verify within 24 hours');
+        toast(t('settings.emailResentToast'));
         renderSettings();
         window.scrollTo(0, scrollY);
       } catch (error) {
@@ -4662,7 +4968,7 @@
         retryServer();
         break;
       case 'backup-export':
-        exportBackup().catch(error=>{backupStatus(`${getLocale()==='zh'?'导出失败':'Export failed'}: ${error.message}`,null,'error');toast(error.message,'error');});
+        exportBackup().catch(error=>{backupStatus(`${t('backup.exportFailed')}: ${error.message}`,null,'error');toast(error.message,'error');});
         break;
       case 'database-open':
         navigate('#/database');
@@ -4825,8 +5131,8 @@
   app.addEventListener('click', handleAction);
   app.addEventListener('change', async event => {
     if (event.target.id !== 'backup-file' || !event.target.files?.[0]) return;
-    try { backupStatus(`${getLocale()==='zh'?'已选择文件':'Selected file'}: ${event.target.files[0].name}`); const imported=await importBackup(event.target.files[0]); if(imported)toast(getLocale()==='zh'?'数据已导入':'Data imported'); else backupStatus(getLocale()==='zh'?'已取消导入':'Import cancelled'); }
-    catch (error) { backupStatus(`${getLocale()==='zh'?'导入失败':'Import failed'}: ${error.message}`,null,'error'); toast(`${getLocale()==='zh'?'导入失败':'Import failed'}: ${error.message}`,'error'); }
+    try { backupStatus(`${t('backup.selectedFile')}: ${event.target.files[0].name}`); const imported=await importBackup(event.target.files[0]); if(imported)toast(t('backup.imported')); else backupStatus(t('backup.importCancelled')); }
+    catch (error) { backupStatus(`${t('backup.importFailed')}: ${error.message}`,null,'error'); toast(`${t('backup.importFailed')}: ${error.message}`,'error'); }
     event.target.value='';
   });
   navHost?.addEventListener('click', handleAction);
