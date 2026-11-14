@@ -4592,7 +4592,7 @@
           ${panel('language', `<section class="card panel"><div class="lang-panel">${languageSwitcher()}</div></section>`)}
           ${panel('origin', `<section class="card panel origin-panel">
             <div id="origin-list" class="origin-address-list"></div>
-            <button class="btn primary block" type="button" id="origin-add">＋ ${esc(t('settings.originAdd') || '新增地址')}</button>
+            <button class="btn primary block" type="button" id="origin-add">＋ ${esc(t('settings.originAdd') || '新增地点')}</button>
             <p class="form-error" id="origin-error" hidden></p>
           </section>
           <div id="origin-picker" class="origin-picker" hidden>
