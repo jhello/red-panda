@@ -629,8 +629,10 @@ img.seal {
   border: 1px dashed rgba(168, 58, 44, 0.4);
   border-radius: 999px;
   background: rgba(255, 253, 248, 0.66);
-  -webkit-backdrop-filter: blur(24px) saturate(1.2);
-  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(60px) saturate(1.15);
+  backdrop-filter: blur(60px) saturate(1.15);
+  transform: translateZ(0);
+  will-change: backdrop-filter;
   box-shadow: var(--shadow-soft);
 }
 
@@ -677,8 +679,10 @@ img.seal {
   border: 1px dashed rgba(168, 58, 44, 0.42);
   border-radius: 20px;
   background: rgba(255, 253, 248, 0.72);
-  -webkit-backdrop-filter: blur(24px) saturate(1.2);
-  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(60px) saturate(1.15);
+  backdrop-filter: blur(60px) saturate(1.15);
+  transform: translateZ(0);
+  will-change: backdrop-filter;
   box-shadow: var(--shadow);
   animation: draft-expand 0.32s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
