@@ -4601,17 +4601,23 @@
           <div id="origin-picker" class="origin-picker" hidden>
             <div class="origin-picker-head">
               <button type="button" class="btn ghost" id="origin-picker-back">取消</button>
-              <strong>选择位置</strong>
               <button type="button" class="btn primary" id="origin-picker-confirm" disabled>确定</button>
             </div>
-            <div class="origin-picker-search"><input id="origin-picker-query" type="search" placeholder="搜索地点" /></div>
             <div id="origin-picker-body" class="origin-picker-body">
-              <div id="origin-picker-map" class="origin-picker-map"></div>
-              <div class="origin-picker-center-pin">📍</div>
+              <div class="origin-picker-map-wrap">
+                <div id="origin-picker-map" class="origin-picker-map"></div>
+                <div class="origin-picker-center-pin" aria-hidden="true"></div>
+                <button type="button" class="origin-picker-locate" id="origin-picker-locate" aria-label="回到当前位置">◎</button>
+              </div>
               <div id="origin-picker-drag" class="origin-picker-drag" role="separator" aria-label="拖动调整"><span></span></div>
-              <div id="origin-picker-pois" class="origin-picker-pois"></div>
+              <div class="origin-picker-list-panel">
+                <div class="origin-picker-search"><input id="origin-picker-query" type="search" placeholder="搜索地点" /></div>
+                <div class="origin-picker-list-body">
+                  <div id="origin-picker-pois" class="origin-picker-pois"></div>
+                  <div id="origin-picker-search-results" class="origin-picker-search-results" hidden></div>
+                </div>
+              </div>
             </div>
-            <div id="origin-picker-search-results" class="origin-picker-search-results" hidden></div>
           </div>`)}
           ${publicView ? `<section class="card panel"><p class="panel-sub">${t('settings.publicSub')}</p><button class="btn primary block" data-action="login">${t('settings.goLogin')}</button></section>` : ''}
           ${panel('account-security', `<section class="account-settings-group account-profile-group"><h2 class="settings-group-heading">${t('settings.accountInfo')}</h2><div class="current-email-block"><span class="account-field-title">${t('settings.email')}</span><strong>${esc(state.user.email || '—')}</strong></div><form id="email-form" class="account-edit-form" novalidate><label class="account-edit-field"><span>${t('settings.newEmail')}</span><input name="email" type="email" maxlength="254" inputmode="email" autocomplete="email" placeholder="${t('settings.newEmailPlaceholder')}" required /></label><p class="form-error" id="email-error" hidden></p><button class="btn primary account-action" type="submit">${t('settings.sendVerificationEmail')}</button></form><div id="pending-email-status" class="pending-email-status" ${pendingEmailActive?'':'hidden'}><button class="status-close-btn" type="button" data-dismiss-status="pending-email-status" aria-label="${t('settings.close')}">×</button><strong>${t('settings.verificationSentTo')} ${esc(pendingEmailActive ? state.user.pendingEmail : '')}</strong><p>${t('settings.verificationHint', { date: pendingEmailActive ? fmtDate(state.user.pendingEmailExpiresAt) : '' })}</p><small>${t('settings.verificationNote')}</small><p>${t('pending.resendHint')}</p><button class="btn ghost block account-action" id="resend-email-btn" type="button">${t('pending.resend')}</button></div></section><section class="account-settings-group"><h2 class="settings-group-heading">${t('settings.passwordTitle')}</h2><p class="panel-sub">${t('settings.passwordSub')}</p><form id="password-form" class="form compact" novalidate><label class="field"><span>${t('settings.currentPassword')}</span><input name="currentPassword" type="password" maxlength="128" autocomplete="current-password" placeholder="${t('settings.currentPlaceholder')}" required /></label><label class="field"><span>${t('reset.newPasswordLabel')}</span><input name="newPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" placeholder="${t('auth.passwordPlaceholderRegister')}" required /></label><label class="field"><span>${t('reset.confirmLabel')}</span><input name="confirm" type="password" maxlength="128" autocomplete="new-password" placeholder="${t('auth.confirmPlaceholder')}" required /></label><p class="form-error" id="password-error" hidden></p><p class="form-ok" id="password-ok" hidden></p><button class="btn primary block account-action" type="submit">${t('settings.updatePassword')}</button></form></section><section class="account-settings-group"><h2 class="settings-group-heading">${t('settings.resetPassword')}</h2><p class="panel-sub">${t('settings.resetPasswordSub')}</p><div id="pending-reset-status" class="pending-email-status pending-reset-status" ${pendingResetActive?'':'hidden'}><button class="status-close-btn" type="button" data-dismiss-status="pending-reset-status" aria-label="${t('settings.close')}">×</button><strong>${t('forgot.sentTo',{email:state.user.email || ''})}</strong><p>${t('forgot.expires',{date:fmtDate(state.user.pendingResetExpiresAt)})}</p><small>${t('forgot.notReceived')}</small><button class="btn ghost block account-action" id="resend-reset-btn" type="button">${t('forgot.resend')}</button></div><button class="btn ghost block account-action" id="reset-password-btn" type="button">${t('forgot.submit')}</button></section><section class="account-settings-group account-logout-group"><button class="btn account-logout block" data-action="logout">${t('home.logout')}</button></section>`) }
@@ -4718,7 +4724,7 @@
       try { await saveOrigins(origins); } catch (err) { showError('origin-error', err.message); }
     });
 
-    let tmap = null, tmapReady = null, pickerMapRatio = 0.5;
+    let tmap = null, tmapReady = null, pickerMapRatio = 0.55, myLocationMarker = null, currentPos = null;
     async function ensureTencentMap() {
       if (window.TMap) return window.TMap;
       if (tmapReady) return tmapReady;
@@ -4741,20 +4747,23 @@
     const pickerBody = document.getElementById('origin-picker-body');
     const poisEl = document.getElementById('origin-picker-pois');
     const mapEl = document.getElementById('origin-picker-map');
+    const mapWrap = mapEl?.parentElement;
+    const listPanel = document.querySelector('.origin-picker-list-panel');
     const dragEl = document.getElementById('origin-picker-drag');
     const confirmBtn = document.getElementById('origin-picker-confirm');
     const searchInput = document.getElementById('origin-picker-query');
     const searchResults = document.getElementById('origin-picker-search-results');
+    const locateBtn = document.getElementById('origin-picker-locate');
     let selectedPoi = null, nearbyPois = [], suppressMove = false, moveTimer = null, searchSeq = 0;
 
     function applyPickerRatio() {
-      if (!pickerBody || !mapEl || !poisEl) return;
+      if (!pickerBody || !mapWrap || !listPanel) return;
       const h = pickerBody.clientHeight || 400;
-      const dragH = dragEl ? dragEl.offsetHeight : 16;
-      const mapH = Math.max(120, Math.min(h - 120 - dragH, Math.round((h - dragH) * pickerMapRatio)));
-      mapEl.style.height = mapH + 'px';
-      poisEl.style.height = (h - mapH - dragH) + 'px';
-      if (tmap) setTimeout(() => { try { tmap.resize(); } catch {} }, 0);
+      const dragH = dragEl ? dragEl.offsetHeight : 18;
+      const mapH = Math.max(140, Math.min(h - 160 - dragH, Math.round((h - dragH) * pickerMapRatio)));
+      mapWrap.style.height = mapH + 'px';
+      listPanel.style.height = (h - mapH - dragH) + 'px';
+      if (tmap && typeof tmap.resize === 'function') setTimeout(() => { try { tmap.resize(); } catch {} }, 0);
     }
     dragEl?.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -4762,7 +4771,7 @@
       const onMove = (ev) => {
         const h = pickerBody.clientHeight || 400;
         const dy = ev.clientY - startY;
-        pickerMapRatio = Math.max(0.25, Math.min(0.8, startRatio + dy / h));
+        pickerMapRatio = Math.max(0.2, Math.min(0.8, startRatio + dy / h));
         applyPickerRatio();
       };
       const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
@@ -4770,16 +4779,35 @@
       window.addEventListener('pointerup', onUp);
     });
 
+    function setMyLocation(lat, lng) {
+      if (!tmap || !window.TMap || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      currentPos = { lat, lng };
+      const pos = new TMap.LatLng(lat, lng);
+      if (!myLocationMarker) {
+        myLocationMarker = new TMap.MultiMarker({
+          map: tmap,
+          styles: { dot: new TMap.MarkerStyle({ width: 18, height: 18, anchor: { x: 9, y: 9 }, src: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"><circle cx="9" cy="9" r="7" fill="#2f7cff" stroke="white" stroke-width="3"/></svg>') }) },
+          geometries: [{ id: 'me', styleId: 'dot', position: pos }],
+        });
+      } else {
+        myLocationMarker.updateGeometries([{ id: 'me', styleId: 'dot', position: pos }]);
+      }
+    }
+
     function renderPois(pois, selectedId) {
       nearbyPois = pois || [];
       if (!poisEl) return;
       poisEl.innerHTML = nearbyPois.map((p, i) => {
-        const active = (selectedId != null ? p.id === selectedId : i === 0) ? ' active' : '';
-        const dist = p.distance != null ? `<span class="poi-dist">${p.distance < 1000 ? p.distance + 'm' : (p.distance/1000).toFixed(1)+'km'}</span>` : '';
+        const active = (selectedId != null ? (p.id && p.id === selectedId) || (!p.id && selectedId === i) : i === 0) ? ' active' : '';
+        const dist = p.distance != null ? `<span class="poi-dist">${p.distance < 1000 ? Math.round(p.distance) + 'm' : (p.distance/1000).toFixed(1)+'km'}</span>` : '';
         return `<button type="button" class="origin-poi${active}" data-poi-index="${i}"><div class="poi-main"><strong>${esc(p.name || '位置')}</strong><small>${esc(p.address || '')}</small></div>${dist}<span class="poi-check">✓</span></button>`;
       }).join('') || `<p class="origin-empty">附近没有找到地点</p>`;
       if (nearbyPois.length) {
-        const idx = selectedId != null ? Math.max(0, nearbyPois.findIndex(p => p.id === selectedId)) : 0;
+        let idx = 0;
+        if (selectedId != null) {
+          idx = nearbyPois.findIndex((p, i) => (p.id && p.id === selectedId) || (!p.id && selectedId === i));
+          if (idx < 0) idx = 0;
+        }
         selectedPoi = nearbyPois[idx] || null;
         confirmBtn.disabled = !selectedPoi;
       } else { selectedPoi = null; confirmBtn.disabled = true; }
@@ -4788,31 +4816,47 @@
       const btn = e.target.closest('[data-poi-index]');
       if (!btn) return;
       const poi = nearbyPois[Number(btn.dataset.poiIndex)];
-      if (!poi || !Number.isFinite(poi.lat) || !Number.isFinite(poi.lng)) return;
+      if (!poi) return;
       selectedPoi = poi; confirmBtn.disabled = false;
-      renderPois(nearbyPois, poi.id);
-      if (tmap) { suppressMove = true; tmap.setCenter(new TMap.LatLng(poi.lat, poi.lng)); setTimeout(() => { suppressMove = false; }, 0); }
+      renderPois(nearbyPois, poi.id || Number(btn.dataset.poiIndex));
     });
 
     async function fetchNearby(lat, lng) {
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
       try {
         const data = await api('/api/me/usual-origin/nearby', { method: 'POST', body: { lat, lng } });
         const pois = Array.isArray(data.pois) ? data.pois : [];
         pois.sort((a,b) => (a.distance ?? 1e9) - (b.distance ?? 1e9));
         renderPois(pois, selectedPoi?.id);
-      } catch (err) { poisEl.innerHTML = `<p class="form-error">${esc(err.message || '获取附近地点失败')}</p>`; }
+      } catch (err) { if (poisEl) poisEl.innerHTML = `<p class="form-error">${esc(err.message || '获取附近地点失败')}</p>`; }
+    }
+
+    function locateTo(lat, lng, zoom = 17) {
+      if (!tmap || !window.TMap) return;
+      const c = new TMap.LatLng(lat, lng);
+      suppressMove = true;
+      tmap.setCenter(c);
+      if (zoom) tmap.setZoom(zoom);
+      setTimeout(() => { suppressMove = false; fetchNearby(lat, lng); }, 0);
+    }
+    function locateCurrent() {
+      if (!navigator.geolocation) { const c = tmap?.getCenter(); if (c) fetchNearby(c.getLat(), c.getLng()); return; }
+      navigator.geolocation.getCurrentPosition((pos) => {
+        setMyLocation(pos.coords.latitude, pos.coords.longitude);
+        locateTo(pos.coords.latitude, pos.coords.longitude, 17);
+      }, () => { const c = tmap?.getCenter(); if (c) fetchNearby(c.getLat(), c.getLng()); }, { enableHighAccuracy: true, timeout: 8000 });
     }
 
     async function openPicker() {
       if (!picker) return;
       hideError('origin-error');
-      try {
-        await ensureTencentMap();
-      } catch (err) { showError('origin-error', err.message); return; }
+      try { await ensureTencentMap(); } catch (err) { showError('origin-error', err.message); return; }
       picker.hidden = false;
       applyPickerRatio();
       selectedPoi = null; nearbyPois = []; confirmBtn.disabled = true;
-      poisEl.innerHTML = '<p class="origin-empty">正在获取附近地点…</p>';
+      if (searchInput) searchInput.value = '';
+      if (searchResults) searchResults.hidden = true;
+      if (poisEl) poisEl.innerHTML = '<p class="origin-empty">正在获取附近地点…</p>';
       if (!tmap) {
         const center = new TMap.LatLng(39.908823, 116.397470);
         tmap = new TMap.Map(mapEl, { center, zoom: 16, viewMode: '2D' });
@@ -4825,21 +4869,14 @@
           }, 300);
         });
       }
-      setTimeout(() => { try { tmap.resize(); } catch {} }, 0);
-      // 定位到当前位置
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition((pos) => {
-          const c = new TMap.LatLng(pos.coords.latitude, pos.coords.longitude);
-          suppressMove = true; tmap.setCenter(c); tmap.setZoom(17); setTimeout(() => { suppressMove = false; fetchNearby(pos.coords.latitude, pos.coords.longitude); }, 0);
-        }, () => { const c = tmap.getCenter(); if (c) fetchNearby(c.getLat(), c.getLng()); }, { enableHighAccuracy: true, timeout: 8000 });
-      } else {
-        const c = tmap.getCenter(); if (c) fetchNearby(c.getLat(), c.getLng());
-      }
+      setTimeout(() => applyPickerRatio(), 0);
+      locateCurrent();
     }
 
     function closePicker() { if (picker) picker.hidden = true; if (searchResults) searchResults.hidden = true; }
     document.getElementById('origin-add')?.addEventListener('click', openPicker);
     document.getElementById('origin-picker-back')?.addEventListener('click', closePicker);
+    locateBtn?.addEventListener('click', locateCurrent);
     confirmBtn?.addEventListener('click', async () => {
       if (!selectedPoi) return;
       const origin = { name: selectedPoi.name || '', address: selectedPoi.address || '', lat: selectedPoi.lat, lng: selectedPoi.lng, province: selectedPoi.province || '', city: selectedPoi.city || '', district: selectedPoi.district || '' };
@@ -4875,12 +4912,10 @@
       if (!btn) return;
       const poi = (searchResults._pois || [])[Number(btn.dataset.searchIndex)];
       if (!poi || !tmap) return;
-      searchResults.hidden = true; searchInput.value = poi.name || '';
+      if (searchResults) searchResults.hidden = true;
+      if (searchInput) searchInput.value = poi.name || '';
       if (Number.isFinite(poi.lat) && Number.isFinite(poi.lng)) {
-        suppressMove = true;
-        tmap.setCenter(new TMap.LatLng(poi.lat, poi.lng));
-        tmap.setZoom(17);
-        setTimeout(() => { suppressMove = false; fetchNearby(poi.lat, poi.lng); }, 0);
+        locateTo(poi.lat, poi.lng, 17);
         selectedPoi = poi;
       }
     });
