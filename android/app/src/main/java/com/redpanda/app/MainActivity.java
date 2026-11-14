@@ -298,14 +298,21 @@ public class MainActivity extends Activity {
     @Override
     public void onBackPressed() {
         if (webView != null) {
-            String currentUrl = webView.getUrl();
-            if (currentUrl != null && currentUrl.contains("#/settings")) {
-                webView.evaluateJavascript("window.__redPandaSystemBack && window.__redPandaSystemBack()", null);
-                return;
-            }
-        }
-        if (webView != null && webView.canGoBack()) {
-            webView.goBack();
+            // 把返回键统一交给 Web 层决定：草稿浮层 / 展开预览 / 子页面 / 设置页。
+            // Web 层返回 false 时，才真正退出应用。
+            webView.evaluateJavascript("window.__redPandaSystemBack && window.__redPandaSystemBack()", new android.webkit.ValueCallback<String>() {
+                @Override
+                public void onReceiveValue(String value) {
+                    boolean handled = "true".equals(value);
+                    if (!handled) {
+                        if (webView != null && webView.canGoBack()) {
+                            webView.goBack();
+                        } else {
+                            finish();
+                        }
+                    }
+                }
+            });
             return;
         }
         super.onBackPressed();

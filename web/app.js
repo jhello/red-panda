@@ -3244,19 +3244,40 @@
 
   /** 压入一条历史，让系统返回键先收起草稿而不是退出应用。 */
   function pushOverlayHistory() {
-    if (overlayPushed) return;
+    if (overlayHistoryCount > 0) return;
     try {
       history.pushState({ redPandaOverlay: true }, '', location.href);
-      overlayPushed = true;
+      overlayHistoryCount = 1;
       historyDepth += 1;
     } catch {
-      overlayPushed = false;
+      overlayHistoryCount = 0;
     }
   }
 
   function dropOverlayHistory() {
-    if (!overlayPushed) return;
-    overlayPushed = false;
+    if (overlayHistoryCount <= 0) return;
+    const count = overlayHistoryCount;
+    overlayHistoryCount = 0;
+    historyDepth = Math.max(0, historyDepth - count);
+    suppressPopCount += 1;
+    history.go(-count);
+  }
+
+  /** 展开某条草稿时再压入一条历史，让返回键先收回预览。 */
+  function pushExpandedHistory() {
+    if (overlayHistoryCount !== 1) return;
+    try {
+      history.pushState({ redPandaOverlay: true, redPandaExpanded: true }, '', location.href);
+      overlayHistoryCount = 2;
+      historyDepth += 1;
+    } catch {
+      // 保持现状；不推进计数。
+    }
+  }
+
+  function dropExpandedHistory() {
+    if (overlayHistoryCount < 2) return;
+    overlayHistoryCount = 1;
     historyDepth = Math.max(0, historyDepth - 1);
     suppressPopCount += 1;
     history.back();
@@ -3303,6 +3324,7 @@
   function collapseExpanded() {
     if (!expandedDraftId) return;
     expandedDraftId = null;
+    if (overlayHistoryCount >= 2) dropExpandedHistory();
     refreshDraftList();
   }
 
@@ -3312,31 +3334,34 @@
    * 跳到子页面时把浮层那条记录改写成目标页面。
    */
   function leaveOverlayTo(hash) {
+    const overlayCount = overlayHistoryCount;
     draftOverlayOpen = false;
     expandedDraftId = null;
     stopCreateCooldown();
     const veil = document.getElementById('draft-layer');
     if (veil) veil.hidden = true;
+    overlayHistoryCount = 0;
     if (isTabHash(hash)) {
-      overlayPushed = false;
       pendingTabHash = hash;
       suppressPopCount += 1;
       history.go(-historyDepth);
       return;
     }
-    if (overlayPushed) {
-      overlayPushed = false;
-      try {
-        history.replaceState({ redPandaOverlay: false }, '', hash);
-      } catch {
-        // 忽略：仍然按普通跳转处理
+    if (overlayCount > 0) {
+      historyDepth = Math.max(0, historyDepth - overlayCount);
+      suppressPopCount += 1;
+      history.go(-overlayCount);
+    }
+    // 等压入的历史条目弹出完成后再跳转，避免落在浮层条目上。
+    const go = () => {
+      if (location.hash === hash) {
+        render();
+      } else {
+        location.hash = hash;
       }
-    }
-    if (location.hash === hash) {
-      render();
-    } else {
-      location.hash = hash;
-    }
+    };
+    if (overlayCount > 0) setTimeout(go, 0);
+    else go();
   }
 
   /** 草稿列表紧贴加号上方（留一点间隙），内容向上生长。 */
@@ -3443,7 +3468,7 @@
   let expandedDraftId = null;
   let createCooldownUntil = 0;
   let cooldownTimer = null;
-  let overlayPushed = false;
+  let overlayHistoryCount = 0;
   let suppressPopCount = 0;
 
   function periodIndexForHour(periods, hour) {
@@ -5345,7 +5370,17 @@
       }
       case 'plan-draft-expand': {
         const id = target.dataset.draftId;
-        expandedDraftId = expandedDraftId === id ? null : id;
+        if (expandedDraftId === id) {
+          expandedDraftId = null;
+          if (overlayHistoryCount >= 2) dropExpandedHistory();
+        } else {
+          if (expandedDraftId && overlayHistoryCount >= 2) {
+            expandedDraftId = null;
+            dropExpandedHistory();
+          }
+          expandedDraftId = id;
+          pushExpandedHistory();
+        }
         refreshDraftList();
         break;
       }
@@ -5434,6 +5469,30 @@
       render();
       return true;
     }
+    if (expandedDraftId) {
+      expandedDraftId = null;
+      refreshDraftList();
+      if (overlayHistoryCount >= 2) {
+        // 交给 popstate 记账；这里只需触发历史回退。
+        try { history.back(); } catch {}
+      }
+      return true;
+    }
+    if (draftOverlayOpen) {
+      draftOverlayOpen = false;
+      expandedDraftId = null;
+      stopCreateCooldown();
+      const veil = document.getElementById('draft-layer');
+      if (veil) veil.hidden = true;
+      if (overlayHistoryCount > 0) {
+        try { history.back(); } catch {}
+      }
+      return true;
+    }
+    if (historyDepth > 0) {
+      try { history.back(); } catch {}
+      return true;
+    }
     return false;
   };
 
@@ -5485,14 +5544,19 @@
     // 用户自己按了返回：历史浅了一层。
     if (historyDepth > 0) historyDepth -= 1;
     if (!draftOverlayOpen) return;
-    overlayPushed = false; // 系统已经弹出了我们压入的那条历史
-    if (expandedDraftId) {
-      expandedDraftId = null;
-      refreshDraftList();
-      pushOverlayHistory(); // 继续把返回留在应用内
+    // 系统已经弹出了我们压入的其中一条历史。
+    overlayHistoryCount = Math.max(0, overlayHistoryCount - 1);
+    if (overlayHistoryCount >= 1) {
+      // 展开预览被收回，草稿列表仍然打开，继续留在应用内。
+      if (expandedDraftId) {
+        expandedDraftId = null;
+        refreshDraftList();
+      }
       return;
     }
+    // 草稿列表也被收回，回到下层页面。
     draftOverlayOpen = false;
+    expandedDraftId = null;
     stopCreateCooldown();
     const veil = document.getElementById('draft-layer');
     if (veil) veil.hidden = true;
