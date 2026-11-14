@@ -5317,7 +5317,12 @@
    */
   document.addEventListener('click', (event) => {
     if (!draftOverlayOpen) return;
-    if (event.target.closest('.draft-list')) return;
+    const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+    const insideDraft = path.some((node) => {
+      if (!node || node.nodeType !== 1) return false;
+      return node.id === 'draft-list' || node.id === 'draft-layer';
+    });
+    if (insideDraft || event.target.closest('.draft-list')) return;
     if (event.target.closest('.nav-bar')) return;
     if (expandedDraftId) {
       collapseExpanded();
