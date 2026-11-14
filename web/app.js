@@ -4846,6 +4846,7 @@
       if (!tmap) return;
       if (moveToKnown && currentPos) {
         locateTo(currentPos.lat, currentPos.lng, 17);
+        toast('已回到当前位置');
         return;
       }
       if (!navigator.geolocation) { toast('当前环境不支持定位', 'error'); return; }
@@ -4858,8 +4859,12 @@
         locateTo(pos.coords.latitude, pos.coords.longitude, 17);
       }, (err) => {
         locating = false;
-        if (currentPos) { locateTo(currentPos.lat, currentPos.lng, 17); }
-        else { toast('无法获取当前位置，请检查定位权限', 'error'); }
+        if (currentPos) {
+          locateTo(currentPos.lat, currentPos.lng, 17);
+          toast('已回到当前位置');
+        } else {
+          toast('无法获取当前位置，请检查定位权限', 'error');
+        }
       }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 });
     }
 
@@ -4891,16 +4896,18 @@
 
     function closePicker() { if (picker) picker.hidden = true; if (searchResults) searchResults.hidden = true; }
     document.getElementById('origin-add')?.addEventListener('click', openPicker);
-    document.getElementById('origin-picker-back')?.addEventListener('click', closePicker);
-    locateBtn?.addEventListener('click', () => locateCurrent(true));
-    confirmBtn?.addEventListener('click', async () => {
-      if (!selectedPoi) return;
-      const origin = { name: selectedPoi.name || '', address: selectedPoi.address || '', lat: selectedPoi.lat, lng: selectedPoi.lng, province: selectedPoi.province || '', city: selectedPoi.city || '', district: selectedPoi.district || '' };
-      try {
-        await saveOrigins([...currentOrigins(), origin]);
-        toast(t('settings.originSaved') || '常用地址已保存');
-        closePicker();
-      } catch (err) { toast(err.message, 'error'); }
+    picker?.addEventListener('click', async (e) => {
+      if (e.target.closest('#origin-picker-back')) { closePicker(); return; }
+      if (e.target.closest('#origin-picker-locate')) { locateCurrent(true); return; }
+      if (e.target.closest('#origin-picker-confirm')) {
+        if (!selectedPoi) { toast('请先选择一个地址'); return; }
+        const origin = { name: selectedPoi.name || '', address: selectedPoi.address || '', lat: selectedPoi.lat, lng: selectedPoi.lng, province: selectedPoi.province || '', city: selectedPoi.city || '', district: selectedPoi.district || '' };
+        try {
+          await saveOrigins([...currentOrigins(), origin]);
+          toast(t('settings.originSaved') || '常用地址已保存');
+          closePicker();
+        } catch (err) { toast(err.message, 'error'); }
+      }
     });
 
     searchInput?.addEventListener('input', () => {
