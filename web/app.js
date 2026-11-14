@@ -4554,6 +4554,7 @@
   function renderSettings({ publicView = false, refreshProfile = true } = {}) {
     const route = parseRoute();
     const section = route.section || '';
+    if (section === 'data') { navigate('#/database'); return; }
     if (publicView) {
       const emailChanged = route.query.emailChanged === '1';
       app.innerHTML = `<div class="screen settings-screen"><main class="page settings-page email-result-page"><section class="email-verified-result" role="status"><span class="email-result-check" aria-hidden="true">✓</span><h1>${emailChanged ? t('settings.emailUpdated') : t('settings.title')}</h1><p>${emailChanged ? t('settings.emailUpdatedBody') : t('settings.publicSub')}</p>${emailChanged ? `<p class="email-result-note">${t('settings.returnToApp')}</p>` : ''}<button class="btn primary block" data-action="login">${emailChanged ? t('settings.goSignIn') : t('settings.goLogin')}</button></section></main></div>`;
