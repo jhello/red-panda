@@ -2150,7 +2150,7 @@
   }
   async function refreshDatabaseStats(){databaseSnapshotCache=await databaseSnapshot();drawDatabaseSummary(databaseSnapshotCache);drawDatabaseTypes();}
   async function renderDatabase(){
-    app.innerHTML=`<div class="screen">${topbar({title:t('backup.title'),back:true})}<main class="page database-page">
+    app.innerHTML=`<div class="screen"><main class="page database-page">
       <div id="database-summary" class="database-summary"><div class="skeleton-block"></div></div>
       <div class="database-actions"><button class="btn ghost" data-action="backup-export">${t('backup.exportData')}</button><label class="btn ghost" for="backup-file">${t('backup.chooseFile')}</label><input id="backup-file" type="file" accept=".rpd,.json,application/json,application/gzip" hidden /></div>
       <div id="database-status" class="backup-status" role="status" aria-live="polite"></div>
@@ -4570,7 +4570,7 @@
         if (icon === 'about') return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 10v6M12 7h.01"/></svg>';
         return icon;
       };
-      app.innerHTML = `<div class="screen settings-screen">${topbar({ title: t('settings.title'), back: true, backAction: 'me' })}<main class="page settings-page"><div class="settings-group">${entries.map(([id,label,icon])=>`<button class="system-row" data-action="settings-section" data-section="${id}"><span class="system-icon">${iconSvg(icon)}</span><span>${label}</span><b>›</b></button>`).join('')}</div></main></div>`;
+      app.innerHTML = `<div class="screen settings-screen"><main class="page settings-page"><div class="settings-group">${entries.map(([id,label,icon])=>`<button class="system-row" data-action="settings-section" data-section="${id}"><span class="system-icon">${iconSvg(icon)}</span><span>${label}</span><b>›</b></button>`).join('')}</div></main></div>`;
       return;
     }
     const sectionTitles = {
@@ -4586,7 +4586,6 @@
     const emailChangedNotice = section === 'account-security' && route.query.emailChanged === '1';
     app.innerHTML = `
       <div class="screen settings-screen">
-        ${topbar({ title: sectionTitles[section] || t('settings.title'), back: true, backAction: 'settings-home' })}
         <main class="page settings-page settings-detail${section === 'account-security' ? ' account-security-page' : ''}">
           ${emailChangedNotice ? `<div class="email-updated-banner" role="status"><strong>${t('settings.emailUpdated')}</strong><span>${t('settings.emailUpdatedShort')}</span></div>` : ''}
           ${section === 'account-security' ? `<div class="account-refresh-status" id="account-refresh-status" role="status" hidden></div>` : ''}
