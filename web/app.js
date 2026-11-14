@@ -5264,7 +5264,8 @@
         break;
       }
       case 'me':
-        navigateTab('#/me');
+        if (draftOverlayOpen) leaveOverlayTo('#/me');
+        else navigateTab('#/me');
         break;
       case 'new': {
         const drafts = sortedDrafts();
