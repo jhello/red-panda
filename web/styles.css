@@ -105,6 +105,11 @@ code {
   animation: screen-in 0.35s ease both;
 }
 
+/* 切换语言时只替换页面文案，不重播入场动画，避免整页闪一下。 */
+html.is-locale-switching .screen {
+  animation: none;
+}
+
 /* ---- language switch ---------------------------------------------------- */
 
 .lang-switch {
