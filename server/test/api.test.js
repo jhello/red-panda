@@ -302,12 +302,34 @@ test('忘记密码与重置密码', async () => {
     body: { email: 'nobody@example.com' },
   });
   assert.equal(unknown.status, 200);
+  assert.equal(unknown.data.status, 'not_registered');
+  assert.equal(unknown.data.email, 'nobody@example.com');
+  assert.equal(outbox.filter((message) => message.to === 'nobody@example.com').length, 0);
 
   const forgot = await request('/api/auth/forgot-password', {
     method: 'POST',
     body: { email },
   });
   assert.equal(forgot.status, 200);
+  assert.equal(forgot.data.status, 'ok');
+  assert.equal(forgot.data.email, email);
+  assert.ok(Date.parse(forgot.data.pendingResetExpiresAt) > Date.now());
+
+  // Unverified accounts get the activation email again instead of a reset link.
+  const unverifiedEmail = 'forgot-pending@example.com';
+  const created = await request('/api/auth/register', {
+    method: 'POST',
+    body: { email: unverifiedEmail, password },
+  });
+  assert.equal(created.status, 201);
+  const pendingForgot = await request('/api/auth/forgot-password', {
+    method: 'POST',
+    body: { email: unverifiedEmail, locale: 'zh' },
+  });
+  assert.equal(pendingForgot.status, 200);
+  assert.equal(pendingForgot.data.status, 'unverified');
+  assert.equal(pendingForgot.data.email, unverifiedEmail);
+  lastMail(unverifiedEmail, '激活');
 
   const initialLink = linkFrom(lastMail(email, '重置'));
   assert.match(initialLink, /\/app\/#\/reset-password\?token=/);

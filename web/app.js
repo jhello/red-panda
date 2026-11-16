@@ -564,12 +564,17 @@
         title: '重置密码',
         sub: '输入注册邮箱，我们会发送一封重置密码的邮件。',
         submit: '发送重置邮件',
-        sentFallback: '如果该邮箱已注册，重置邮件已发送',
+        notRegistered: '该邮箱尚未注册，请先注册账户。',
+        goRegister: '去注册',
         sent: '重置邮件已发送',
         sentTo: '重置邮件已发送至 {email}',
         expires: '请在 24 小时内点击邮件中的链接。链接有效期至 {date}。',
         notReceived: '如果未收到，请点击重新发送按钮。',
         resend: '重新发送重置邮件',
+        unverifiedTo: '该邮箱尚未验证',
+        unverifiedDetail: '我们已向 {email} 重新发送验证邮件。请先点击邮件中的链接激活账户，再回来重置密码。',
+        resendVerification: '重新发送验证邮件',
+        resentToast: '邮件已重新发送',
         sending: '发送中…',
       },
 
@@ -1011,12 +1016,17 @@
         title: 'Reset password',
         sub: "Enter your registered email and we'll send you a reset link.",
         submit: 'Send reset email',
-        sentFallback: 'If that address is registered, the reset email is on its way',
+        notRegistered: 'That email is not registered yet. Create an account first.',
+        goRegister: 'Create an account',
         sent: 'Password reset email sent',
         sentTo: 'Password reset email sent to {email}',
         expires: 'Open the link in the email within 24 hours. It expires at {date}.',
         notReceived: 'If it does not arrive, tap Resend email.',
         resend: 'Resend reset email',
+        unverifiedTo: 'Email not verified yet',
+        unverifiedDetail: "We've resent the verification email to {email}. Tap the link in it to activate your account, then come back to reset your password.",
+        resendVerification: 'Resend verification email',
+        resentToast: 'Email resent',
         sending: 'Sending…',
       },
 
@@ -1465,12 +1475,17 @@
         title: 'Passwort zurücksetzen',
         sub: 'Gib deine registrierte E-Mail-Adresse ein und wir senden dir einen Reset-Link.',
         submit: 'Reset-E-Mail senden',
-        sentFallback: 'Falls die Adresse registriert ist, ist die Reset-E-Mail unterwegs',
+        notRegistered: 'Diese E-Mail-Adresse ist noch nicht registriert. Erstelle zuerst ein Konto.',
+        goRegister: 'Konto erstellen',
         sent: 'E-Mail zum Zurücksetzen des Passworts wurde gesendet',
         sentTo: 'E-Mail zum Zurücksetzen gesendet an {email}',
         expires: 'Öffne den Link in der E-Mail innerhalb von 24 Stunden. Er ist gültig bis {date}.',
         notReceived: 'Falls sie nicht ankommt, tippe auf „Erneut senden“.',
         resend: 'Reset-E-Mail erneut senden',
+        unverifiedTo: 'E-Mail noch nicht bestätigt',
+        unverifiedDetail: 'Wir haben die Bestätigungs-E-Mail erneut an {email} gesendet. Tippe auf den Link, um dein Konto zu aktivieren, und setze danach dein Passwort zurück.',
+        resendVerification: 'Bestätigungs-E-Mail erneut senden',
+        resentToast: 'E-Mail erneut gesendet',
         sending: 'Wird gesendet…',
       },
 
@@ -2871,9 +2886,17 @@
                 placeholder="you@example.com" autocapitalize="off" spellcheck="false" required />
             </label>
             <p class="form-error" id="forgot-error" hidden></p>
-            <p class="form-ok" id="forgot-ok" hidden></p>
             <button class="btn primary block" type="submit">${t('forgot.submit')}</button>
           </form>
+          <div class="pending-email-status forgot-status" id="forgot-status" hidden>
+            <strong id="forgot-status-title"></strong>
+            <p id="forgot-status-detail"></p>
+            <small id="forgot-status-hint">${t('forgot.notReceived')}</small>
+            <button class="btn ghost block account-action" type="button" id="forgot-resend">${t('forgot.resend')}</button>
+          </div>
+          <p class="auth-foot" id="forgot-register-row" hidden>
+            <button class="link" data-action="register">${t('forgot.goRegister')}</button>
+          </p>
           <p class="auth-foot">
             <button class="link" data-action="login">${t('pending.backLogin')}</button>
           </p>
@@ -2882,29 +2905,83 @@
       </div>`;
 
     const form = document.getElementById('forgot-form');
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      hideError('forgot-error');
-      const ok = document.getElementById('forgot-ok');
-      ok.hidden = true;
-      const email = form.email.value.trim();
-      if (!email) return showError('forgot-error', t('auth.errEmail'));
-      const button = form.querySelector('button[type="submit"]');
-      setBusy(button, true, t('pending.sending'));
+    const errorBox = document.getElementById('forgot-error');
+    const registerRow = document.getElementById('forgot-register-row');
+    const statusBox = document.getElementById('forgot-status');
+    const statusTitle = document.getElementById('forgot-status-title');
+    const statusDetail = document.getElementById('forgot-status-detail');
+    const statusHint = document.getElementById('forgot-status-hint');
+    const resendButton = document.getElementById('forgot-resend');
+    const submitButton = form.querySelector('button[type="submit"]');
+    let lastEmail = '';
+
+    function clearFeedback() {
+      errorBox.hidden = true;
+      statusBox.hidden = true;
+      registerRow.hidden = true;
+    }
+
+    function showResult(data) {
+      const unverified = data.status === 'unverified';
+      const sentEmail = data.email || lastEmail;
+      statusTitle.textContent = unverified
+        ? t('forgot.unverifiedTo')
+        : t('forgot.sentTo', { email: sentEmail });
+      statusDetail.textContent = unverified
+        ? t('forgot.unverifiedDetail', { email: sentEmail })
+        : t('forgot.expires', { date: fmtDate(data.pendingResetExpiresAt) });
+      statusHint.hidden = unverified;
+      resendButton.textContent = unverified ? t('forgot.resendVerification') : t('forgot.resend');
+      errorBox.hidden = true;
+      registerRow.hidden = true;
+      statusBox.hidden = false;
+    }
+
+    async function sendEmail(email, button, isResend = false) {
+      setBusy(button, true, t('forgot.sending'));
+      errorBox.hidden = true;
       try {
-        if (!(await ensureServer())) { setBusy(button, false); return; }
+        if (!(await ensureServer())) return;
         const data = await api('/api/auth/forgot-password', {
           method: 'POST',
           auth: false,
           body: { email, locale: getLocale() },
         });
-        ok.textContent = data.message || t('forgot.sentFallback');
-        ok.hidden = false;
+        if (data.status === 'not_registered') {
+          lastEmail = '';
+          clearFeedback();
+          registerRow.hidden = false;
+          showError('forgot-error', t('forgot.notRegistered'));
+          return;
+        }
+        lastEmail = data.email || email;
+        showResult(data);
+        if (isResend) toast(t('forgot.resentToast'));
       } catch (error) {
         showError('forgot-error', error.message);
       } finally {
         setBusy(button, false);
       }
+    }
+
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const email = form.email.value.trim();
+      if (!email) return showError('forgot-error', t('auth.errEmail'));
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showError('forgot-error', t('auth.errEmailInvalid'));
+      sendEmail(email, submitButton);
+    });
+
+    resendButton.addEventListener('click', () => {
+      if (!lastEmail) return;
+      sendEmail(lastEmail, resendButton, true);
+    });
+
+    // A new address needs a fresh request; do not let Resend target the old one.
+    form.email.addEventListener('input', () => {
+      if (form.email.value.trim() === lastEmail) return;
+      lastEmail = '';
+      clearFeedback();
     });
   }
 

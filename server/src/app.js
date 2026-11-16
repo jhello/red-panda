@@ -769,21 +769,42 @@ export function createApp(config, options = {}) {
     checkEmailRate(ip);
     const email = normalizeEmail(body.email);
     const user = db.findUserByEmail(email);
-    if (user) {
-      try {
-        if (user.email_verified) await sendResetEmail(user, { body, req });
-        else await sendVerificationEmail(user, { body, req });
-      } catch (error) {
-        console.error('[red-panda] 邮件发送失败:', error);
-      }
+    if (!user) {
+      return {
+        status: 200,
+        body: {
+          status: 'not_registered',
+          email,
+          message: '该邮箱尚未注册',
+        },
+      };
     }
-    return {
-      status: 200,
-      body: {
-        status: 'ok',
-        message: '如果该邮箱已注册，重置邮件已发送',
-      },
-    };
+    try {
+      if (user.email_verified) {
+        const pending = await sendResetEmail(user, { body, req });
+        return {
+          status: 200,
+          body: {
+            status: 'ok',
+            email,
+            pendingResetExpiresAt: pending.pendingResetExpiresAt,
+            message: '重置邮件已发送',
+          },
+        };
+      }
+      await sendVerificationEmail(user, { body, req });
+      return {
+        status: 200,
+        body: {
+          status: 'unverified',
+          email,
+          message: '该邮箱已注册但尚未验证，验证邮件已发送',
+        },
+      };
+    } catch (error) {
+      console.error('[red-panda] 邮件发送失败:', error);
+      throw new HttpError(502, '邮件发送失败，请稍后重试', 'mail_failed');
+    }
   });
 
   route('POST', /^\/api\/auth\/reset-password$/, async ({ body, req }) => {

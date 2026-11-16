@@ -144,12 +144,39 @@ application/json; charset=utf-8`），`204` 响应无正文。
 { "email": "you@example.com" }
 ```
 
-已注册且已验证的账户会收到重置密码邮件；未验证的账户会收到验证邮件。
-无论邮箱是否存在都返回 `200`：
+已注册且已验证的账户会收到重置密码邮件，返回 `200`：
 
 ```json
-{ "status": "ok", "message": "如果该邮箱已注册，重置邮件已发送" }
+{
+  "status": "ok",
+  "email": "you@example.com",
+  "pendingResetExpiresAt": "2026-12-11T13:47:23.000Z",
+  "message": "重置邮件已发送"
+}
 ```
+
+已注册但尚未验证的账户会收到验证邮件，返回 `200`：
+
+```json
+{
+  "status": "unverified",
+  "email": "you@example.com",
+  "message": "该邮箱已注册但尚未验证，验证邮件已发送"
+}
+```
+
+邮箱不存在时返回 `200`，并明确提示未注册：
+
+```json
+{
+  "status": "not_registered",
+  "email": "nobody@example.com",
+  "message": "该邮箱尚未注册"
+}
+```
+
+邮件发送失败时返回 `502`（`mail_failed`）。该接口按 IP 限流，客户端可以
+直接重发，用于“重新发送”按钮。
 
 ### `POST /api/auth/reset-password`
 
