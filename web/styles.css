@@ -989,10 +989,6 @@ html.is-offline .auth-screen {
   margin-top: 12px;
 }
 
-.forgot-status small[hidden] {
-  display: none;
-}
-
 .setup-title {
   margin: 0 0 8px;
   font-family: var(--serif);

@@ -175,8 +175,7 @@ application/json; charset=utf-8`），`204` 响应无正文。
 }
 ```
 
-邮件发送失败时返回 `502`（`mail_failed`）。该接口按 IP 限流，客户端可以
-直接重发，用于“重新发送”按钮。
+邮件发送失败时返回 `502`（`mail_failed`）。该接口按 IP 限流。
 
 ### `POST /api/auth/reset-password`
 
