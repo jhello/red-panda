@@ -2262,6 +2262,8 @@ input#plan-input::placeholder {
 .settings-detail .form.compact{margin-top:12px}
 
 /* Android-like language choices and a clearer account/security flow */
+/* The choice list is already a card, so its detail wrapper adds no padding. */
+.settings-detail .settings-choice-panel{padding:0}
 .language-choice-list{width:100%;border:1px solid var(--line);border-radius:16px;background:var(--card);overflow:hidden}
 .language-choice{width:100%;min-height:58px;padding:0 18px;border:0;border-bottom:1px solid var(--line);background:transparent;display:flex;align-items:center;justify-content:space-between;text-align:left;color:var(--ink);font-size:15px}
 .language-choice:last-child{border-bottom:0}

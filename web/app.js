@@ -4855,8 +4855,8 @@
         <main class="page settings-page settings-detail${section === 'account-security' ? ' account-security-page' : ''}${section === 'about' ? ' about-page' : ''}">
           ${emailChangedNotice ? `<div class="email-updated-banner" role="status"><strong>${t('settings.emailUpdated')}</strong><span>${t('settings.emailUpdatedShort')}</span></div>` : ''}
           ${section === 'account-security' ? `<div class="account-refresh-status" id="account-refresh-status" role="status" hidden></div>` : ''}
-          ${panel('language', `<section class="card panel"><div class="lang-panel">${languageSwitcher()}</div></section>`)}
-          ${panel('theme', `<section class="card panel theme-panel">${themeSwitcher()}</section>`)}
+          ${panel('language', `<section class="card panel settings-choice-panel"><div class="lang-panel">${languageSwitcher()}</div></section>`)}
+          ${panel('theme', `<section class="card panel settings-choice-panel theme-panel">${themeSwitcher()}</section>`)}
           ${panel('origin', `<section class="card panel origin-panel">
             <div id="origin-list" class="origin-address-list"></div>
             <button class="btn primary block" type="button" id="origin-add">＋ ${esc(t('settings.originAdd') || '新增地点')}</button>
