@@ -2554,8 +2554,7 @@
 
   function renderSetup() {
     app.innerHTML = `
-      <div class="screen setup-screen">
-        ${languageSwitcher()}
+      <div class="screen setup-screen auth-screen auth-login-screen">
         <div class="auth-hero">
           <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
           <h1 class="auth-title">${t('brand.big')}</h1>
@@ -2575,6 +2574,7 @@
           </form>
           <p class="hint">${t('setup.hint')}</p>
         </div>
+        ${authLanguageSwitcher()}
       </div>`;
 
     const form = document.getElementById('setup-form');
@@ -2855,8 +2855,7 @@
 
   function renderForgot() {
     app.innerHTML = `
-      <div class="screen auth-screen">
-        ${languageSwitcher()}
+      <div class="screen auth-screen auth-login-screen">
         <div class="auth-hero">
           <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
           <h1 class="auth-title">${t('brand.big')}</h1>
@@ -2879,6 +2878,7 @@
             <button class="link" data-action="login">${t('pending.backLogin')}</button>
           </p>
         </div>
+        ${authLanguageSwitcher()}
       </div>`;
 
     const form = document.getElementById('forgot-form');
@@ -2912,8 +2912,7 @@
     const token = query.token || '';
     if (!token) {
       app.innerHTML = `
-        <div class="screen auth-screen">
-          ${languageSwitcher()}
+        <div class="screen auth-screen auth-login-screen">
           <div class="auth-hero">
             <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
             <h1 class="auth-title">${t('brand.big')}</h1>
@@ -2925,13 +2924,13 @@
             <button class="btn primary block" data-action="forgot">${t('reset.reapply')}</button>
             <p class="auth-foot"><button class="link" data-action="login">${t('pending.backLogin')}</button></p>
           </div>
+          ${authLanguageSwitcher()}
         </div>`;
       return;
     }
 
     app.innerHTML = `
-      <div class="screen auth-screen">
-        ${languageSwitcher()}
+      <div class="screen auth-screen auth-login-screen">
         <div class="auth-hero">
           <img class="seal seal-lg" src="logo.png" alt="${t('brand.alt')}" />
           <h1 class="auth-title">${t('brand.big')}</h1>
@@ -2955,6 +2954,7 @@
           </form>
           <p class="auth-foot"><button class="link" data-action="login">${t('pending.backLogin')}</button></p>
         </div>
+        ${authLanguageSwitcher()}
       </div>`;
 
     const form = document.getElementById('reset-form');
