@@ -708,7 +708,6 @@
         updatedToast: '密码已更新',
         languageTitle: '语言',
         themeTitle: '夜间模式',
-        themeSub: '选择小熊猫的显示外观；跟随系统会随手机深浅色自动切换。',
         themeSystem: '跟随系统',
         themeLight: '白天模式',
         themeDark: '夜间模式',
@@ -752,7 +751,10 @@
         resetPassword: '忘记密码',
         resetPasswordSub: '点击下方按钮，我们会向当前账户邮箱发送密码重置邮件。',
         aboutTitle: '关于',
-        aboutBody: '小熊猫 · Red Panda {version}',
+        aboutName: '小熊猫',
+        projectHome: '项目主页',
+        contactAuthor: '联系作者',
+        aboutBody: '小熊猫 {version}',
         aboutData: '数据保存在你自己的服务器上。',
         connectedOk: '连接成功 · {name} v{version}',
         serverChangedToast: '服务器已切换，请重新登录',
@@ -1167,7 +1169,6 @@
         updatedToast: 'Password updated',
         languageTitle: 'Language',
         themeTitle: 'Dark mode',
-        themeSub: 'Choose how Red Panda looks. Follow system switches with your device appearance.',
         themeSystem: 'Follow system',
         themeLight: 'Light mode',
         themeDark: 'Dark mode',
@@ -1190,7 +1191,10 @@
         resetPassword: 'Forgot password',
         resetPasswordSub: 'Use the button below to send a password reset email to your account address.',
         aboutTitle: 'About',
-        aboutBody: 'Red Panda · 小熊猫 {version}',
+        aboutName: 'Red Panda',
+        projectHome: 'Project home',
+        contactAuthor: 'Contact author',
+        aboutBody: 'Red Panda {version}',
         aboutData: 'Your data lives on your own server.',
         connectedOk: 'Connected · {name} v{version}',
         serverChangedToast: 'Server changed — please log in again',
@@ -1629,7 +1633,6 @@
         updatedToast: 'Passwort aktualisiert',
         languageTitle: 'Sprache',
         themeTitle: 'Dunkelmodus',
-        themeSub: 'Wähle das Erscheinungsbild von Red Panda. „Systemeinstellung“ folgt deinem Gerät.',
         themeSystem: 'Systemeinstellung',
         themeLight: 'Heller Modus',
         themeDark: 'Dunkler Modus',
@@ -1673,7 +1676,10 @@
         resetPassword: 'Passwort vergessen',
         resetPasswordSub: 'Mit der Schaltfläche unten senden wir einen Link an deine Konto-E-Mail-Adresse.',
         aboutTitle: 'Über',
-        aboutBody: 'Red Panda · 小熊猫 {version}',
+        aboutName: 'Roter Panda',
+        projectHome: 'Projektseite',
+        contactAuthor: 'Autor kontaktieren',
+        aboutBody: 'Roter Panda {version}',
         aboutData: 'Deine Daten liegen auf deinem eigenen Server.',
         connectedOk: 'Verbunden · {name} v{version}',
         serverChangedToast: 'Server gewechselt – bitte neu anmelden',
@@ -4847,7 +4853,7 @@
           ${emailChangedNotice ? `<div class="email-updated-banner" role="status"><strong>${t('settings.emailUpdated')}</strong><span>${t('settings.emailUpdatedShort')}</span></div>` : ''}
           ${section === 'account-security' ? `<div class="account-refresh-status" id="account-refresh-status" role="status" hidden></div>` : ''}
           ${panel('language', `<section class="card panel"><div class="lang-panel">${languageSwitcher()}</div></section>`)}
-          ${panel('theme', `<section class="card panel theme-panel"><p class="panel-sub">${t('settings.themeSub')}</p>${themeSwitcher()}</section>`)}
+          ${panel('theme', `<section class="card panel theme-panel">${themeSwitcher()}</section>`)}
           ${panel('origin', `<section class="card panel origin-panel">
             <div id="origin-list" class="origin-address-list"></div>
             <button class="btn primary block" type="button" id="origin-add">＋ ${esc(t('settings.originAdd') || '新增地点')}</button>
@@ -4877,7 +4883,7 @@
           ${publicView ? `<section class="card panel"><p class="panel-sub">${t('settings.publicSub')}</p><button class="btn primary block" data-action="login">${t('settings.goLogin')}</button></section>` : ''}
           ${panel('account-security', `<section class="account-settings-group account-profile-group"><h2 class="settings-group-heading">${t('settings.accountInfo')}</h2><div class="current-email-block"><span class="account-field-title">${t('settings.email')}</span><strong>${esc(state.user.email || '—')}</strong></div><form id="email-form" class="account-edit-form" novalidate><label class="account-edit-field"><span>${t('settings.newEmail')}</span><input name="email" type="email" maxlength="254" inputmode="email" autocomplete="email" placeholder="${t('settings.newEmailPlaceholder')}" required /></label><p class="form-error" id="email-error" hidden></p><button class="btn primary account-action" type="submit">${t('settings.sendVerificationEmail')}</button></form><div id="pending-email-status" class="pending-email-status" ${pendingEmailActive?'':'hidden'}><button class="status-close-btn" type="button" data-dismiss-status="pending-email-status" aria-label="${t('settings.close')}">×</button><strong>${t('settings.verificationSentTo')} ${esc(pendingEmailActive ? state.user.pendingEmail : '')}</strong><p>${t('settings.verificationHint', { date: pendingEmailActive ? fmtDate(state.user.pendingEmailExpiresAt) : '' })}</p><small>${t('settings.verificationNote')}</small><p>${t('pending.resendHint')}</p><button class="btn ghost block account-action" id="resend-email-btn" type="button">${t('pending.resend')}</button></div></section><section class="account-settings-group"><h2 class="settings-group-heading">${t('settings.passwordTitle')}</h2><p class="panel-sub">${t('settings.passwordSub')}</p><form id="password-form" class="form compact" novalidate><label class="field"><span>${t('settings.currentPassword')}</span><input name="currentPassword" type="password" maxlength="128" autocomplete="current-password" placeholder="${t('settings.currentPlaceholder')}" required /></label><label class="field"><span>${t('reset.newPasswordLabel')}</span><input name="newPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" placeholder="${t('auth.passwordPlaceholderRegister')}" required /></label><label class="field"><span>${t('reset.confirmLabel')}</span><input name="confirm" type="password" maxlength="128" autocomplete="new-password" placeholder="${t('auth.confirmPlaceholder')}" required /></label><p class="form-error" id="password-error" hidden></p><p class="form-ok" id="password-ok" hidden></p><button class="btn primary block account-action" type="submit">${t('settings.updatePassword')}</button></form></section><section class="account-settings-group"><h2 class="settings-group-heading">${t('settings.resetPassword')}</h2><p class="panel-sub">${t('settings.resetPasswordSub')}</p><div id="pending-reset-status" class="pending-email-status pending-reset-status" ${pendingResetActive?'':'hidden'}><button class="status-close-btn" type="button" data-dismiss-status="pending-reset-status" aria-label="${t('settings.close')}">×</button><strong>${t('forgot.sentTo',{email:state.user.email || ''})}</strong><p>${t('forgot.expires',{date:fmtDate(state.user.pendingResetExpiresAt)})}</p><small>${t('forgot.notReceived')}</small><button class="btn ghost block account-action" id="resend-reset-btn" type="button">${t('forgot.resend')}</button></div><button class="btn ghost block account-action" id="reset-password-btn" type="button">${t('forgot.submit')}</button></section><section class="account-settings-group account-logout-group"><button class="btn account-logout block" data-action="logout">${t('home.logout')}</button></section>`) }
           ${panel('data', `<section class="card panel"><p class="panel-sub">${t('settings.dataSub')}</p><button class="btn ghost block" data-action="database-open">${t('settings.openDatabase')}</button></section>`)}
-          ${panel('about', `<section class="card panel about-panel"><img class="about-icon" src="logo.png" alt="${esc(t('settings.aboutTitle'))}" /><h2 class="about-name">小熊猫 · Red Panda</h2><p class="about-tagline">出门带只小熊猫</p><p class="about-meta">v${esc(window.REDPANDA_CONFIG?.version || '1.0.0')}</p><div class="about-links"><span class="about-link-label">项目主页</span><a class="about-link-value about-link-open" href="https://github.com/jhello/red-panda" target="_blank" rel="noopener noreferrer">https://github.com/jhello/red-panda</a><span class="about-link-label">联系作者</span><button class="about-link-value about-link-copy" type="button" data-action="copy-text" data-value="jianghang2020@gmail.com">jianghang2020@gmail.com</button></div></section>`)}
+          ${panel('about', `<section class="card panel about-panel"><img class="about-icon" src="logo.png" alt="${esc(t('settings.aboutTitle'))}" /><h2 class="about-name">${esc(t('settings.aboutName'))}</h2><p class="about-tagline">${esc(t('auth.tagline'))}</p><p class="about-meta">v${esc(window.REDPANDA_CONFIG?.version || '1.0.0')}</p><div class="about-links"><span class="about-link-label">${esc(t('settings.projectHome'))}</span><a class="about-link-value about-link-open" href="https://github.com/jhello/red-panda" target="_blank" rel="noopener noreferrer">https://github.com/jhello/red-panda</a><span class="about-link-label">${esc(t('settings.contactAuthor'))}</span><button class="about-link-value about-link-copy" type="button" data-action="copy-text" data-value="jianghang2020@gmail.com">jianghang2020@gmail.com</button></div></section>`)}
         </main>
       </div>`;
 
