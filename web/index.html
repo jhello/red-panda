@@ -4,12 +4,35 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>小熊猫 · Red Panda</title>
-    <meta name="theme-color" content="#f7f2e8" />
+    <meta name="theme-color" id="theme-color" content="#f7f2e8" />
     <meta name="description" content="小熊猫 Red Panda — 记录属于你的山海旅程" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="小熊猫" />
+    <script>
+      (function () {
+        try {
+          var mode = localStorage.getItem('red-panda.theme') || 'system';
+          if (mode !== 'light' && mode !== 'dark') mode = 'system';
+          var dark = mode === 'dark';
+          if (mode === 'system') {
+            if (window.AndroidTheme && window.AndroidTheme.isSystemDark) {
+              dark = Boolean(window.AndroidTheme.isSystemDark());
+            } else if (window.matchMedia) {
+              dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            }
+          }
+          var root = document.documentElement;
+          root.setAttribute('data-theme', dark ? 'dark' : 'light');
+          root.setAttribute('data-theme-mode', mode);
+          root.style.colorScheme = dark ? 'dark' : 'light';
+          root.style.backgroundColor = dark ? '#14191a' : '#f7f2e8';
+          var meta = document.getElementById('theme-color');
+          if (meta) meta.setAttribute('content', dark ? '#14191a' : '#f7f2e8');
+        } catch (error) {}
+      })();
+    </script>
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon-192.png" type="image/png" />
     <link rel="apple-touch-icon" href="icon-192.png" />

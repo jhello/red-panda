@@ -6,6 +6,7 @@
     server: 'red-panda.server',
     user: 'red-panda.user',
     lang: 'red-panda.lang',
+    theme: 'red-panda.theme',
     drafts: 'red-panda.drafts',
   };
 
@@ -706,6 +707,11 @@
         updatedOk: '密码已更新，其他设备已退出登录。',
         updatedToast: '密码已更新',
         languageTitle: '语言',
+        themeTitle: '夜间模式',
+        themeSub: '选择小熊猫的显示外观；跟随系统会随手机深浅色自动切换。',
+        themeSystem: '跟随系统',
+        themeLight: '白天模式',
+        themeDark: '夜间模式',
         originTitle: '常用地址',
         originName: '名称',
         originCountry: '国家 / 地区',
@@ -1160,6 +1166,11 @@
         updatedOk: 'Password updated; other devices were signed out.',
         updatedToast: 'Password updated',
         languageTitle: 'Language',
+        themeTitle: 'Dark mode',
+        themeSub: 'Choose how Red Panda looks. Follow system switches with your device appearance.',
+        themeSystem: 'Follow system',
+        themeLight: 'Light mode',
+        themeDark: 'Dark mode',
         originTitle: 'Usual departure place',
         originName: 'Name',
         originCountry: 'Country / region',
@@ -1617,6 +1628,11 @@
         updatedOk: 'Passwort aktualisiert; andere Geräte wurden abgemeldet.',
         updatedToast: 'Passwort aktualisiert',
         languageTitle: 'Sprache',
+        themeTitle: 'Dunkelmodus',
+        themeSub: 'Wähle das Erscheinungsbild von Red Panda. „Systemeinstellung“ folgt deinem Gerät.',
+        themeSystem: 'Systemeinstellung',
+        themeLight: 'Heller Modus',
+        themeDark: 'Dunkler Modus',
         originTitle: 'Üblicher Abfahrtsort',
         originName: 'Name',
         originCountry: 'Land / Region',
@@ -1782,6 +1798,80 @@
     document.title = dict.documentTitle;
   }
 
+  // ---- theme --------------------------------------------------------------
+
+  const THEME_MODES = ['system', 'light', 'dark'];
+  const THEME_META = { light: '#f7f2e8', dark: '#14191a' };
+  const systemThemeQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+  function normalizeThemeMode(mode) {
+    return THEME_MODES.includes(mode) ? mode : 'system';
+  }
+
+  function getThemeMode() {
+    return normalizeThemeMode(localStorage.getItem(STORAGE.theme));
+  }
+
+  function systemPrefersDark() {
+    try {
+      if (window.AndroidTheme?.isSystemDark) return Boolean(window.AndroidTheme.isSystemDark());
+    } catch {
+      // Fall through to the Web API when the native bridge is unavailable.
+    }
+    return Boolean(systemThemeQuery?.matches);
+  }
+
+  function resolvedTheme() {
+    const mode = getThemeMode();
+    return mode === 'system' ? (systemPrefersDark() ? 'dark' : 'light') : mode;
+  }
+
+  /** Apply the saved appearance to the document, status bar and HTML meta tag. */
+  function applyTheme() {
+    const mode = getThemeMode();
+    const theme = resolvedTheme();
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    root.dataset.themeMode = mode;
+    root.style.colorScheme = theme;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', THEME_META[theme]);
+    try {
+      window.AndroidTheme?.apply?.(mode, theme === 'dark');
+    } catch {
+      // A missing or older native bridge must never break the web UI.
+    }
+  }
+
+  function setThemeMode(mode) {
+    if (!THEME_MODES.includes(mode) || mode === getThemeMode()) return;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const focusedMode = document.activeElement?.dataset?.themeChoice || '';
+    localStorage.setItem(STORAGE.theme, mode);
+    applyTheme();
+    // 主题切换只换配色，不需要播放页面入场动画，也不应该丢失滚动位置。
+    render({ animate: false });
+    window.scrollTo(scrollX, scrollY);
+    if (focusedMode) {
+      app.querySelector(`[data-theme-choice="${focusedMode}"]`)?.focus({ preventScroll: true });
+    }
+  }
+
+  if (systemThemeQuery) {
+    const onSystemThemeChange = () => {
+      if (getThemeMode() === 'system') applyTheme();
+    };
+    if (systemThemeQuery.addEventListener) systemThemeQuery.addEventListener('change', onSystemThemeChange);
+    else if (systemThemeQuery.addListener) systemThemeQuery.addListener(onSystemThemeChange);
+  }
+
+  // Android tells the page when the system switches between light and dark while
+  // the app stays alive (the activity keeps uiMode in configChanges).
+  window.__redPandaSystemThemeChanged = () => {
+    if (getThemeMode() === 'system') applyTheme();
+  };
+
   function setLocale(locale) {
     if (!LOCALE_KEYS.includes(locale) || locale === getLocale()) return;
     const scrollX = window.scrollX;
@@ -1825,6 +1915,19 @@
   function authLanguageSwitcher() {
     const active = getLocale();
     return `<div class="lang-switch auth-language-switch" role="group" aria-label="${t('lang.label')}">${LOCALE_KEYS.map((key) => `<button type="button" class="lang-opt${key === active ? ' active' : ''}" data-lang="${key}" aria-pressed="${key === active}">${I18N[key].langName}</button>`).join('')}</div>`;
+  }
+
+  function themeSwitcher() {
+    const active = getThemeMode();
+    const options = [
+      ['system', t('settings.themeSystem')],
+      ['light', t('settings.themeLight')],
+      ['dark', t('settings.themeDark')],
+    ];
+    return `
+      <div class="language-choice-list" role="radiogroup" aria-label="${t('settings.themeTitle')}">
+        ${options.map(([mode, label]) => `<button type="button" class="language-choice${mode === active ? ' is-selected' : ''}" data-theme-choice="${mode}" role="radio" aria-checked="${mode === active}"><span class="language-choice-name">${label}</span><span class="language-radio" aria-hidden="true"></span></button>`).join('')}
+      </div>`;
   }
 
   // ---- utilities ----------------------------------------------------------
@@ -4713,9 +4816,10 @@
       return;
     }
     if (!publicView && !section) {
-      const entries = [['language',t('settings.languageTitle'),'globe'],['account-security',t('settings.accountSecurity'),'person'],['origin',t('settings.originTitle'),'origin'],['data',t('settings.dataBackup'),'data'],['about',t('settings.aboutTitle'),'about']];
+      const entries = [['language',t('settings.languageTitle'),'globe'],['theme',t('settings.themeTitle'),'theme'],['account-security',t('settings.accountSecurity'),'person'],['origin',t('settings.originTitle'),'origin'],['data',t('settings.dataBackup'),'data'],['about',t('settings.aboutTitle'),'about']];
       const iconSvg = (icon) => {
         if (icon === 'globe') return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>';
+        if (icon === 'theme') return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z"/></svg>';
         if (icon === 'person') return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c.6-4 3.2-6 7.5-6s6.9 2 7.5 6"/></svg>';
         if (icon === 'origin') return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></svg>';
         if (icon === 'data') return '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>';
@@ -4727,6 +4831,7 @@
     }
     const sectionTitles = {
       language: t('settings.languageTitle'),
+      theme: t('settings.themeTitle'),
       'account-security': t('settings.accountSecurity'),
       origin: t('settings.originTitle'),
       data: t('settings.dataBackup'),
@@ -4742,6 +4847,7 @@
           ${emailChangedNotice ? `<div class="email-updated-banner" role="status"><strong>${t('settings.emailUpdated')}</strong><span>${t('settings.emailUpdatedShort')}</span></div>` : ''}
           ${section === 'account-security' ? `<div class="account-refresh-status" id="account-refresh-status" role="status" hidden></div>` : ''}
           ${panel('language', `<section class="card panel"><div class="lang-panel">${languageSwitcher()}</div></section>`)}
+          ${panel('theme', `<section class="card panel theme-panel"><p class="panel-sub">${t('settings.themeSub')}</p>${themeSwitcher()}</section>`)}
           ${panel('origin', `<section class="card panel origin-panel">
             <div id="origin-list" class="origin-address-list"></div>
             <button class="btn primary block" type="button" id="origin-add">＋ ${esc(t('settings.originAdd') || '新增地点')}</button>
@@ -5279,6 +5385,11 @@
       setLocale(langTarget.dataset.lang);
       return;
     }
+    const themeTarget = event.target.closest('[data-theme-choice]');
+    if (themeTarget) {
+      setThemeMode(themeTarget.dataset.themeChoice);
+      return;
+    }
     const target = event.target.closest('[data-action]');
     if (!target) return;
     switch (target.dataset.action) {
@@ -5644,6 +5755,7 @@
     }
   }
 
+  applyTheme();
   applyDocumentLocale();
   init();
 })();

@@ -5,10 +5,12 @@ import android.app.AlertDialog;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.content.ClipboardManager;
 import android.content.ClipData;
 import android.content.Context;
 import android.database.Cursor;
+import android.graphics.drawable.ColorDrawable;
 import android.provider.OpenableColumns;
 import android.util.Base64;
 import android.graphics.Color;
@@ -44,10 +46,15 @@ import java.io.OutputStream;
 public class MainActivity extends Activity {
     private static final String START_URL = "file:///android_asset/www/index.html";
     private static final int PAPER_COLOR = Color.rgb(247, 242, 232);
+    private static final int DARK_PAPER_COLOR = Color.rgb(20, 25, 26);
+    private static final String PREFS_NAME = "red-panda";
+    private static final String PREF_THEME = "theme_mode";
     private static final int GEOLOCATION_REQUEST_CODE = 7101;
 
     private WebView webView;
     private FrameLayout root;
+    private String themeMode = "system";
+    private boolean darkMode = false;
     private GeolocationPermissions.Callback geolocationCallback;
     private String geolocationOrigin;
     private ValueCallback<Uri[]> fileChooserCallback;
@@ -59,15 +66,23 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // Remember the appearance chosen inside the web UI so the next launch
+        // does not flash the light paper background before the page loads.
+        themeMode = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getString(PREF_THEME, "system");
+        if (!"light".equals(themeMode) && !"dark".equals(themeMode)) themeMode = "system";
+        darkMode = "dark".equals(themeMode) || ("system".equals(themeMode) && isSystemDarkMode());
+        int paperColor = darkMode ? DARK_PAPER_COLOR : PAPER_COLOR;
+        getWindow().setBackgroundDrawable(new ColorDrawable(paperColor));
+
         // Allows chrome://inspect debugging while developing over adb.
         WebView.setWebContentsDebuggingEnabled(true);
 
         // Wrap the WebView in a container that owns the system-bar and
         // display-cutout insets (see configureSystemBars).
         root = new FrameLayout(this);
-        root.setBackgroundColor(PAPER_COLOR);
+        root.setBackgroundColor(paperColor);
         webView = new WebView(this);
-        webView.setBackgroundColor(PAPER_COLOR);
+        webView.setBackgroundColor(paperColor);
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
         WebSettings settings = webView.getSettings();
@@ -100,7 +115,7 @@ public class MainActivity extends Activity {
             }
             @Override
             public boolean onJsAlert(WebView view, String url, String message, JsResult result) {
-                new AlertDialog.Builder(MainActivity.this)
+                dialogBuilder()
                     .setMessage(message)
                     .setPositiveButton(android.R.string.ok, (dialog, which) -> result.confirm())
                     .setOnCancelListener(dialog -> result.cancel())
@@ -110,7 +125,7 @@ public class MainActivity extends Activity {
 
             @Override
             public boolean onJsConfirm(WebView view, String url, String message, JsResult result) {
-                new AlertDialog.Builder(MainActivity.this)
+                dialogBuilder()
                     .setMessage(message)
                     .setPositiveButton(android.R.string.ok, (dialog, which) -> result.confirm())
                     .setNegativeButton(android.R.string.cancel, (dialog, which) -> result.cancel())
@@ -135,6 +150,7 @@ public class MainActivity extends Activity {
         });
         webView.addJavascriptInterface(new BackupBridge(), "AndroidBackup");
         webView.addJavascriptInterface(new ClipboardBridge(), "AndroidClipboard");
+        webView.addJavascriptInterface(new ThemeBridge(), "AndroidTheme");
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -155,6 +171,7 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
         configureSystemBars();
+        applyWindowTheme();
         webView.loadUrl(START_URL);
     }
 
@@ -188,6 +205,83 @@ public class MainActivity extends Activity {
                 if (clipboard == null) return;
                 clipboard.setPrimaryClip(ClipData.newPlainText("Red Panda", text));
             });
+        }
+    }
+
+    /** Bridges the web appearance setting to the Android window and system bars. */
+    private class ThemeBridge {
+        @JavascriptInterface
+        public boolean isSystemDark() {
+            return isSystemDarkMode();
+        }
+
+        @JavascriptInterface
+        public void apply(String mode, boolean dark) {
+            String normalized = "light".equals(mode) || "dark".equals(mode) ? mode : "system";
+            runOnUiThread(() -> {
+                themeMode = normalized;
+                darkMode = dark;
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                        .putString(PREF_THEME, normalized).apply();
+                applyWindowTheme();
+            });
+        }
+    }
+
+    private boolean isSystemDarkMode() {
+        int night = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+        return night == Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    private AlertDialog.Builder dialogBuilder() {
+        int theme = darkMode
+                ? android.R.style.Theme_Material_Dialog_Alert
+                : android.R.style.Theme_Material_Light_Dialog_Alert;
+        return new AlertDialog.Builder(this, theme);
+    }
+
+    /** Repaint the native layers to match the web theme. */
+    private void applyWindowTheme() {
+        int paperColor = darkMode ? DARK_PAPER_COLOR : PAPER_COLOR;
+        if (root != null) root.setBackgroundColor(paperColor);
+        if (webView != null) webView.setBackgroundColor(paperColor);
+        Window window = getWindow();
+        if (window != null) window.setBackgroundDrawable(new ColorDrawable(paperColor));
+        applySystemBarAppearance();
+    }
+
+    private void applySystemBarAppearance() {
+        Window window = getWindow();
+        if (window == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = window.getInsetsController();
+            if (controller == null) return;
+            int lightAppearance = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                    | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+            int appearance = darkMode ? 0 : lightAppearance;
+            controller.setSystemBarsAppearance(appearance, lightAppearance);
+        } else {
+            int flags = 0;
+            if (!darkMode) {
+                flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                }
+            }
+            window.getDecorView().setSystemUiVisibility(flags);
+        }
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if ("system".equals(themeMode)) {
+            darkMode = isSystemDarkMode();
+            applyWindowTheme();
+            if (webView != null) {
+                webView.evaluateJavascript(
+                        "window.__redPandaSystemThemeChanged && window.__redPandaSystemThemeChanged()", null);
+            }
         }
     }
 
