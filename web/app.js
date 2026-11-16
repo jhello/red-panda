@@ -3962,6 +3962,7 @@
   function renderConnectionBanner() {
     if (!statusHost) return;
     const offline = state.online === false;
+    document.documentElement.classList.toggle('is-offline', offline);
     statusHost.hidden = !offline;
     if (!offline) {
       statusHost.innerHTML = '';

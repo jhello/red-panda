@@ -918,9 +918,15 @@ img.seal {
   align-items: center;
   justify-content: center;
   gap: 22px;
-  padding: max(30px, env(safe-area-inset-top)) 24px calc(28px + env(safe-area-inset-bottom));
+  /* 离线提示条贴在底部时，为它让位，避免和底部的语言切换胶囊叠在一起。 */
+  padding: max(30px, env(safe-area-inset-top)) 24px calc(28px + env(safe-area-inset-bottom) + var(--offline-h, 0px));
   /* 与系统通知栏（#f7f2e8）保持一致，盖住 body 的渐变纹理 */
   background: var(--paper);
+}
+
+/* 离线提示条占掉底部空间时，整体内容略微上移，让语言胶囊和提示条拉开距离。 */
+html.is-offline .auth-screen {
+  padding-top: max(20px, env(safe-area-inset-top));
 }
 
 .auth-login-screen{justify-content:space-between;gap:14px}
