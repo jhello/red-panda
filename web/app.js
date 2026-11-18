@@ -3288,12 +3288,15 @@
         </div>`;
     }
     return `
-      <div class="draft-row" data-draft-id="${esc(draft.id)}">
-        <button class="draft-open" type="button" data-action="plan-draft" data-draft-id="${esc(draft.id)}">
-          ${esc(draftTitle(draft))}
+      <div class="draft-swipe" data-draft-id="${esc(draft.id)}">
+        <button class="draft-swipe-delete" type="button" data-action="plan-draft-delete" data-draft-id="${esc(draft.id)}">
+          ${t('draft.delete')}
         </button>
-        <button class="draft-x" type="button" data-action="plan-draft-expand" data-draft-id="${esc(draft.id)}"
-          aria-label="${t('draft.expand')}">×</button>
+        <div class="draft-row">
+          <button class="draft-open" type="button" data-action="plan-draft-expand" data-draft-id="${esc(draft.id)}">
+            ${esc(draftTitle(draft))}
+          </button>
+        </div>
       </div>`;
   }
 
@@ -3444,11 +3447,55 @@
     history.back();
   }
 
+  // ---- draft swipe-to-delete ---------------------------------------------
+  let openSwipeEl = null;
+  let swipeTracking = null;
+  let suppressSwipeClick = false;
+
+  function draftSwipeRow(el) {
+    return el?.querySelector?.('.draft-row') || null;
+  }
+
+  function closeDraftSwipe(el = openSwipeEl, animate = true) {
+    if (!el) return;
+    const row = draftSwipeRow(el);
+    if (row) {
+      if (!animate) row.style.transition = 'none';
+      row.style.transform = '';
+      if (!animate) {
+        void row.offsetWidth;
+        row.style.transition = '';
+      }
+    }
+    el.classList.remove('is-open');
+    if (openSwipeEl === el) openSwipeEl = null;
+  }
+
+  function openDraftSwipe(el) {
+    if (!el) return;
+    if (openSwipeEl && openSwipeEl !== el) closeDraftSwipe(openSwipeEl);
+    const row = draftSwipeRow(el);
+    if (row) row.style.transform = '';
+    el.classList.add('is-open');
+    openSwipeEl = el;
+  }
+
+  function resetDraftSwipe() {
+    if (openSwipeEl) {
+      const row = draftSwipeRow(openSwipeEl);
+      if (row) row.style.transform = '';
+      openSwipeEl.classList.remove('is-open');
+      openSwipeEl = null;
+    }
+    swipeTracking = null;
+  }
+
   /**
    * 草稿浮层：悬浮在任意页面之上（不随页面重绘消失），
    * 所以四个标签页点加号都能就地浮出草稿列表。
    */
   function renderDraftOverlay() {
+    resetDraftSwipe();
     if (!overlayHost) return;
     const drafts = sortedDrafts();
     overlayHost.innerHTML = `
@@ -3475,6 +3522,7 @@
   function closeDraftOverlay() {
     draftOverlayOpen = false;
     expandedDraftId = null;
+    resetDraftSwipe();
     stopCreateCooldown();
     const veil = document.getElementById('draft-layer');
     if (veil) veil.hidden = true;
@@ -3544,6 +3592,7 @@
   }
 
   function refreshDraftList() {
+    resetDraftSwipe();
     const list = document.getElementById('draft-list');
     if (!list) return;
     const drafts = sortedDrafts();
@@ -5600,6 +5649,107 @@
   // 草稿浮层在 #app 之外，列表里的打开 / 展开 / 删除都要能触发动作。
   overlayHost?.addEventListener('click', handleAction);
 
+  function swipePoint(event) {
+    if (event.touches && event.touches[0]) return event.touches[0];
+    if (event.changedTouches && event.changedTouches[0]) return event.changedTouches[0];
+    return event;
+  }
+
+  function onSwipeStart(event) {
+    if (!draftOverlayOpen) return;
+    const swipe = event.target.closest('.draft-swipe');
+    if (!swipe) {
+      if (openSwipeEl) closeDraftSwipe(openSwipeEl);
+      return;
+    }
+    // 点在已展开的删除按钮上，交给点击处理。
+    if (event.target.closest('.draft-swipe-delete')) return;
+    if (openSwipeEl && openSwipeEl !== swipe) closeDraftSwipe(openSwipeEl);
+    const pt = swipePoint(event);
+    swipeTracking = {
+      el: swipe,
+      startX: pt.clientX,
+      startY: pt.clientY,
+      dx: 0,
+      dy: 0,
+      moved: false,
+      locked: '', // 'x' | 'y'
+      startedOpen: swipe.classList.contains('is-open'),
+    };
+  }
+
+  function onSwipeMove(event) {
+    if (!swipeTracking) return;
+    const pt = swipePoint(event);
+    const dx = pt.clientX - swipeTracking.startX;
+    const dy = pt.clientY - swipeTracking.startY;
+    swipeTracking.dx = dx;
+    swipeTracking.dy = dy;
+    if (!swipeTracking.locked) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      swipeTracking.locked = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    }
+    if (swipeTracking.locked !== 'x') return;
+    swipeTracking.moved = true;
+    if (event.cancelable) event.preventDefault();
+    const row = draftSwipeRow(swipeTracking.el);
+    if (!row) return;
+    swipeTracking.el.classList.add('is-swiping');
+    const base = swipeTracking.startedOpen ? -88 : 0;
+    let offset = base + dx;
+    if (offset > 0) offset = 0;
+    if (offset < -96) offset = -96;
+    row.style.transform = `translateX(${offset}px)`;
+  }
+
+  function onSwipeEnd() {
+    if (!swipeTracking) return;
+    const { el, dx, moved, locked, startedOpen } = swipeTracking;
+    const row = draftSwipeRow(el);
+    el.classList.remove('is-swiping');
+    if (row) row.style.transform = '';
+    if (locked === 'x' && moved) {
+      const base = startedOpen ? -88 : 0;
+      const final = base + dx;
+      if (final < -44) openDraftSwipe(el);
+      else closeDraftSwipe(el);
+      // 吞掉紧随其后的 click，避免把滑动当成展开。
+      suppressSwipeClick = true;
+      setTimeout(() => {
+        suppressSwipeClick = false;
+      }, 350);
+    } else if (!moved && startedOpen) {
+      // 已展开时轻点标题区域：收起滑动，不展开预览。
+      closeDraftSwipe(el);
+      suppressSwipeClick = true;
+      setTimeout(() => {
+        suppressSwipeClick = false;
+      }, 350);
+    }
+    swipeTracking = null;
+  }
+
+  overlayHost?.addEventListener('touchstart', onSwipeStart, { passive: true });
+  overlayHost?.addEventListener('touchmove', onSwipeMove, { passive: false });
+  overlayHost?.addEventListener('touchend', onSwipeEnd);
+  overlayHost?.addEventListener('touchcancel', onSwipeEnd);
+  overlayHost?.addEventListener('mousedown', onSwipeStart);
+  document.addEventListener('mousemove', onSwipeMove);
+  document.addEventListener('mouseup', onSwipeEnd);
+
+  overlayHost?.addEventListener(
+    'click',
+    (event) => {
+      if (!suppressSwipeClick) return;
+      if (event.target.closest('.draft-swipe')) {
+        event.preventDefault();
+        event.stopPropagation();
+        suppressSwipeClick = false;
+      }
+    },
+    true,
+  );
+
   /**
    * 点空白处收起草稿浮层：展开的草稿先收回列表，否则收起整个浮层。
    * 浮层浮在任意页面之上，所以这里监听整个文档。
@@ -5615,7 +5765,15 @@
       if (!node || node.nodeType !== 1) return false;
       return node.id === 'draft-layer';
     }) || Boolean(event.target.closest('#draft-layer'));
-    if (insideList) return;
+    if (insideList) {
+      if (openSwipeEl && !event.target.closest('.draft-swipe-delete') && !event.target.closest('.draft-swipe.is-open .draft-swipe-delete')) {
+        // 点列表内其他地方时收起已展开的滑动删除。
+        if (!event.target.closest('.draft-swipe') || event.target.closest('.draft-swipe') !== openSwipeEl) {
+          closeDraftSwipe(openSwipeEl);
+        }
+      }
+      return;
+    }
     if (event.target.closest('.nav-bar')) return;
     if (insideLayer) {
       if (expandedDraftId) {
@@ -5625,6 +5783,7 @@
       closeDraftOverlay();
       return;
     }
+    if (openSwipeEl) closeDraftSwipe(openSwipeEl);
     if (expandedDraftId) {
       collapseExpanded();
       return;

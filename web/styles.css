@@ -715,15 +715,57 @@ img.seal {
   text-align: center;
 }
 
+.draft-swipe {
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  box-shadow: var(--shadow-soft);
+}
+
+.draft-swipe-delete {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 0 999px 999px 0;
+  background: rgba(168, 58, 44, 0.16);
+  color: var(--seal-dark);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.draft-swipe-delete:active {
+  background: rgba(168, 58, 44, 0.28);
+}
+
 .draft-row {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 6px 4px 16px;
+  padding: 4px 16px;
   border: 1px dashed rgba(168, 58, 44, 0.4);
   border-radius: 999px;
   background: var(--glass-card);
-  box-shadow: var(--shadow-soft);
+  transition: transform 0.18s ease;
+  will-change: transform;
+}
+
+.draft-swipe.is-swiping .draft-row {
+  transition: none;
+}
+
+.draft-swipe.is-open .draft-row {
+  transform: translateX(-88px);
 }
 
 .draft-open {
@@ -740,26 +782,6 @@ img.seal {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.draft-x {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  flex: 0 0 auto;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: rgba(168, 58, 44, 0.08);
-  color: var(--seal-dark);
-  font-size: 17px;
-  line-height: 1;
-  transition: background 0.18s ease, transform 0.14s ease;
-}
-
-.draft-x:active {
-  transform: scale(0.92);
 }
 
 /* 展开后的圆角矩形：轮廓与标题一致用虚线，上半预览，下半删除 */
