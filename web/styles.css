@@ -724,16 +724,16 @@ img.seal {
 
 .draft-swipe-delete {
   position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  top: 5px;
+  right: 5px;
+  bottom: 5px;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 64px;
+  min-width: 54px;
   padding: 0 14px;
   border: 0;
-  border-radius: 0 999px 999px 0;
+  border-radius: 999px;
   background: rgba(168, 58, 44, 0.16);
   color: var(--seal-dark);
   font-size: 13px;
