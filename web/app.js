@@ -3959,7 +3959,7 @@
     }
 
     app.innerHTML = `
-      <div class="screen">
+      <div class="screen plan-screen">
         ${isDraftEdit ? '' : topbar({
           title: '',
           back: true,

@@ -1689,6 +1689,10 @@ input#plan-input::placeholder {
   flex-wrap: nowrap;
 }
 
+.plan-screen {
+  background: var(--paper);
+}
+
 .plan-row {
   cursor: pointer;
 }
