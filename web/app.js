@@ -637,8 +637,10 @@
         create: '创建旅程',
         save: '保存旅程',
         saveDraft: '保存草稿',
+        deleteDraft: '删除草稿',
         savedToast: '旅程已保存',
         draftSavedToast: '草稿已保存',
+        draftDeletedToast: '草稿已删除',
       },
 
       journeys: {
@@ -1099,8 +1101,10 @@
         create: 'Create journey',
         save: 'Save journey',
         saveDraft: 'Save draft',
+        deleteDraft: 'Delete draft',
         savedToast: 'Journey saved',
         draftSavedToast: 'Draft saved',
+        draftDeletedToast: 'Draft deleted',
       },
 
       journeys: {
@@ -1564,8 +1568,10 @@
         create: 'Reise erstellen',
         save: 'Reise speichern',
         saveDraft: 'Entwurf speichern',
+        deleteDraft: 'Entwurf löschen',
         savedToast: 'Reise gespeichert',
         draftSavedToast: 'Entwurf gespeichert',
+        draftDeletedToast: 'Entwurf gelöscht',
       },
 
       journeys: {
@@ -3910,9 +3916,21 @@
             </tbody>
           </table>
         </section>
-        <div class="row plan-actions">
-          <button class="btn primary" type="button" data-action="plan-save">${t('plan.save')}</button>
-          <button class="btn ghost" type="button" data-action="plan-save-draft">${t('plan.saveDraft')}</button>
+        <div class="plan-actions${isDraftEdit ? ' is-draft-edit' : ''}">
+          ${
+            isDraftEdit
+              ? `
+          <button class="btn primary block" type="button" data-action="plan-save">${t('plan.save')}</button>
+          <div class="row plan-actions-sub">
+            <button class="btn ghost" type="button" data-action="plan-save-draft">${t('plan.saveDraft')}</button>
+            <button class="btn danger" type="button" data-action="plan-delete-draft">${t('plan.deleteDraft')}</button>
+          </div>`
+              : `
+          <div class="row">
+            <button class="btn primary" type="button" data-action="plan-save">${t('plan.save')}</button>
+            <button class="btn ghost" type="button" data-action="plan-save-draft">${t('plan.saveDraft')}</button>
+          </div>`
+          }
         </div>
         ${plan.error ? `<p class="form-error">${esc(plan.error)}</p>` : ''}`;
     } else if (plan.locked) {
@@ -5590,6 +5608,12 @@
         break;
       case 'plan-save-draft':
         savePlanAsDraft();
+        break;
+      case 'plan-delete-draft':
+        removeDraft(planState.draftId);
+        resetPlanState();
+        toast(t('plan.draftDeletedToast'));
+        navigateTab('#/');
         break;
       case 'plan-draft': {
         const draft = loadDrafts().find((entry) => entry.id === target.dataset.draftId);

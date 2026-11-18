@@ -1680,6 +1680,15 @@ input#plan-input::placeholder {
   margin-top: 24px;
 }
 
+.plan-actions.is-draft-edit {
+  display: grid;
+  gap: 12px;
+}
+
+.plan-actions-sub {
+  flex-wrap: nowrap;
+}
+
 .plan-row {
   cursor: pointer;
 }
