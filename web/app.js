@@ -3456,9 +3456,14 @@
     return el?.querySelector?.('.draft-row') || null;
   }
 
+  function draftSwipeDelete(el) {
+    return el?.querySelector?.('.draft-swipe-delete') || null;
+  }
+
   function closeDraftSwipe(el = openSwipeEl, animate = true) {
     if (!el) return;
     const row = draftSwipeRow(el);
+    const del = draftSwipeDelete(el);
     if (row) {
       if (!animate) row.style.transition = 'none';
       row.style.transform = '';
@@ -3467,6 +3472,7 @@
         row.style.transition = '';
       }
     }
+    if (del) del.style.opacity = '';
     el.classList.remove('is-open');
     if (openSwipeEl === el) openSwipeEl = null;
   }
@@ -3475,7 +3481,9 @@
     if (!el) return;
     if (openSwipeEl && openSwipeEl !== el) closeDraftSwipe(openSwipeEl);
     const row = draftSwipeRow(el);
+    const del = draftSwipeDelete(el);
     if (row) row.style.transform = '';
+    if (del) del.style.opacity = '';
     el.classList.add('is-open');
     openSwipeEl = el;
   }
@@ -3483,7 +3491,9 @@
   function resetDraftSwipe() {
     if (openSwipeEl) {
       const row = draftSwipeRow(openSwipeEl);
+      const del = draftSwipeDelete(openSwipeEl);
       if (row) row.style.transform = '';
+      if (del) del.style.opacity = '';
       openSwipeEl.classList.remove('is-open');
       openSwipeEl = null;
     }
@@ -5700,14 +5710,21 @@
     if (offset > 0) offset = 0;
     if (offset < -72) offset = -72;
     row.style.transform = `translateX(${offset}px)`;
+    const del = draftSwipeDelete(swipeTracking.el);
+    if (del) {
+      const p = Math.max(0, Math.min(1, -offset / 64));
+      del.style.opacity = String(p);
+    }
   }
 
   function onSwipeEnd() {
     if (!swipeTracking) return;
     const { el, dx, moved, locked, startedOpen } = swipeTracking;
     const row = draftSwipeRow(el);
+    const del = draftSwipeDelete(el);
     el.classList.remove('is-swiping');
     if (row) row.style.transform = '';
+    if (del) del.style.opacity = '';
     if (locked === 'x' && moved) {
       const base = startedOpen ? -64 : 0;
       const final = base + dx;

@@ -740,6 +740,18 @@ img.seal {
   font-weight: 600;
   letter-spacing: 0.03em;
   white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.draft-swipe.is-open .draft-swipe-delete {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.draft-swipe.is-swiping .draft-swipe-delete {
+  transition: none;
 }
 
 .draft-swipe-delete:active {
