@@ -3960,13 +3960,6 @@
 
     app.innerHTML = `
       <div class="screen plan-screen">
-        ${isDraftEdit ? '' : topbar({
-          title: '',
-          back: true,
-          right: plan.items.length > 0
-            ? `<button class="topbar-text-btn" type="button" data-action="plan-save">${t('plan.save')}</button>`
-            : '',
-        })}
         <main class="page">
           ${body}
         </main>
