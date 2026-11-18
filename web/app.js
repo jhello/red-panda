@@ -456,7 +456,7 @@
         untimed: '未定时间',
         undestined: '未定目的地',
         expand: '展开草稿',
-        delete: '删除这个草稿',
+        delete: '删除',
         none: '没有草稿',
         previewEmpty: '还没有提取出行程',
       },
@@ -914,7 +914,7 @@
         untimed: 'no time yet',
         undestined: 'no destination yet',
         expand: 'Expand draft',
-        delete: 'Delete this draft',
+        delete: 'Delete',
         none: 'No drafts',
         previewEmpty: 'No trip extracted yet',
       },
@@ -1376,7 +1376,7 @@
         untimed: 'noch keine Zeit',
         undestined: 'noch kein Ziel',
         expand: 'Entwurf öffnen',
-        delete: 'Diesen Entwurf löschen',
+        delete: 'Löschen',
         none: 'Keine Entwürfe',
         previewEmpty: 'Noch keine Reise geplant',
       },
@@ -3289,7 +3289,7 @@
     }
     return `
       <div class="draft-swipe" data-draft-id="${esc(draft.id)}">
-        <button class="draft-swipe-delete" type="button" data-action="plan-draft-delete" data-draft-id="${esc(draft.id)}">
+        <button class="draft-swipe-delete" type="button" data-action="plan-draft-expand" data-draft-id="${esc(draft.id)}">
           ${t('draft.delete')}
         </button>
         <div class="draft-row">
@@ -5695,10 +5695,10 @@
     const row = draftSwipeRow(swipeTracking.el);
     if (!row) return;
     swipeTracking.el.classList.add('is-swiping');
-    const base = swipeTracking.startedOpen ? -88 : 0;
+    const base = swipeTracking.startedOpen ? -64 : 0;
     let offset = base + dx;
     if (offset > 0) offset = 0;
-    if (offset < -96) offset = -96;
+    if (offset < -72) offset = -72;
     row.style.transform = `translateX(${offset}px)`;
   }
 
@@ -5709,9 +5709,9 @@
     el.classList.remove('is-swiping');
     if (row) row.style.transform = '';
     if (locked === 'x' && moved) {
-      const base = startedOpen ? -88 : 0;
+      const base = startedOpen ? -64 : 0;
       const final = base + dx;
-      if (final < -44) openDraftSwipe(el);
+      if (final < -32) openDraftSwipe(el);
       else closeDraftSwipe(el);
       // 吞掉紧随其后的 click，避免把滑动当成展开。
       suppressSwipeClick = true;
