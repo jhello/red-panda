@@ -1884,6 +1884,17 @@
     if (getThemeMode() === 'system') applyTheme();
   };
 
+  // Android reports the status-bar height when the plan page goes full bleed.
+  window.__redPandaTopInset = (dp) => {
+    const value = Math.max(0, Number(dp) || 0);
+    document.documentElement.style.setProperty('--status-h', `${value}px`);
+  };
+
+  /** Let the native shell know whether the current page needs edge-to-edge background. */
+  function syncNativeBars(fullBleed) {
+    if (window.AndroidBars?.setFullBleed) window.AndroidBars.setFullBleed(fullBleed);
+  }
+
   function setLocale(locale) {
     if (!LOCALE_KEYS.includes(locale) || locale === getLocale()) return;
     const scrollX = window.scrollX;
@@ -2565,6 +2576,7 @@
     }
 
     const route = parseRoute();
+    syncNativeBars(route.name === 'new' && Boolean(state.user));
 
     // Entering "create journey" from another page always starts a fresh plan,
     // unless the user picked one of the cached drafts.
@@ -4140,7 +4152,7 @@
   function renderNavBar() {
     if (!navHost) return;
     const route = parseRoute();
-    if (['database', 'settings'].includes(route.name) || (route.name === 'new' && Boolean(planState.draftId))) {
+    if (['database', 'settings', 'new'].includes(route.name)) {
       navHost.innerHTML = '';
       navHost.hidden = true;
     } else {

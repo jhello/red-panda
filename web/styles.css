@@ -16,6 +16,8 @@
   --sans: "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif;
   --serif: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", Georgia, serif;
+  /* 状态栏高度（Android 注入）：计划页背景延伸到状态栏下面，内容仍要避让 */
+  --status-h: 0px;
   /* 底部导航栏高度（JS 实测），离线提示条就贴在它上边 */
   --nav-h: 84px;
   /* 离线提示条的高度，页面和浮层据此让位 */
@@ -1649,6 +1651,11 @@ input#plan-input::placeholder {
   position: relative;
   isolation: isolate;
   background: var(--paper);
+}
+
+/* 背景铺到状态栏下面，但输入卡片要从状态栏下方开始 */
+.plan-screen .page {
+  padding-top: calc(10px + var(--status-h));
 }
 
 /* 随机提示对应的那一幅油画铺满整个页面；薄纱保证文字不被画面吃掉 */

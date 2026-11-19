@@ -53,6 +53,13 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private FrameLayout root;
+    // 创建计划页让油画背景延伸到状态栏下面，其余页面保持原来的避让。
+    private boolean fullBleedTop = false;
+    private int barsLeft;
+    private int barsTop;
+    private int barsRight;
+    private int barsBottom;
+    private int imeBottom;
     private String themeMode = "system";
     private boolean darkMode = false;
     private GeolocationPermissions.Callback geolocationCallback;
@@ -151,6 +158,7 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new BackupBridge(), "AndroidBackup");
         webView.addJavascriptInterface(new ClipboardBridge(), "AndroidClipboard");
         webView.addJavascriptInterface(new ThemeBridge(), "AndroidTheme");
+        webView.addJavascriptInterface(new BarsBridge(), "AndroidBars");
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -224,6 +232,17 @@ public class MainActivity extends Activity {
                 getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
                         .putString(PREF_THEME, normalized).apply();
                 applyWindowTheme();
+            });
+        }
+    }
+
+    /** Lets the plan page opt out of the top inset so its background goes under the status bar. */
+    private class BarsBridge {
+        @JavascriptInterface
+        public void setFullBleed(boolean value) {
+            runOnUiThread(() -> {
+                fullBleedTop = value;
+                applyRootPadding();
             });
         }
     }
@@ -335,6 +354,21 @@ public class MainActivity extends Activity {
         return segment == null ? "" : segment;
     }
 
+    /** The root container owns the insets; the WebView itself never pads twice. */
+    private void applyRootPadding() {
+        if (root == null) return;
+        root.setPadding(barsLeft, fullBleedTop ? 0 : barsTop, barsRight, Math.max(barsBottom, imeBottom));
+        if (fullBleedTop) publishTopInset(barsTop);
+    }
+
+    /** Tell the page how much top padding its content still needs (dp). */
+    private void publishTopInset(int topPx) {
+        if (webView == null) return;
+        float topDp = topPx / getResources().getDisplayMetrics().density;
+        webView.evaluateJavascript(
+                "window.__redPandaTopInset && window.__redPandaTopInset(" + topDp + ")", null);
+    }
+
     private void configureSystemBars() {
         Window window = getWindow();
         window.setStatusBarColor(Color.TRANSPARENT);
@@ -360,7 +394,12 @@ public class MainActivity extends Activity {
                 Insets bars = insets.getInsets(
                         WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
                 Insets ime = insets.getInsets(WindowInsets.Type.ime());
-                view.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
+                barsLeft = bars.left;
+                barsTop = bars.top;
+                barsRight = bars.right;
+                barsBottom = bars.bottom;
+                imeBottom = ime.bottom;
+                applyRootPadding();
                 // Consume the insets so the WebView does not apply them a second
                 // time (which would double-pad or scroll content).
                 return WindowInsets.CONSUMED;
