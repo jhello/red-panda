@@ -59,6 +59,9 @@
   --tint: rgba(120, 96, 60, 0.08);
   --bg: var(--paper);
   --accent: #b97042;
+  /* 计划页全屏背景上的薄纱：浅色主题也要能读清页面文字 */
+  --plan-bg-veil-top: rgba(247, 242, 232, 0.34);
+  --plan-bg-veil-bottom: rgba(247, 242, 232, 0.72);
   color-scheme: light;
 }
 
@@ -114,6 +117,8 @@
   --tint: rgba(255, 255, 255, 0.06);
   --accent: #e2a06e;
   --bg: #14191a;
+  --plan-bg-veil-top: rgba(20, 25, 26, 0.42);
+  --plan-bg-veil-bottom: rgba(20, 25, 26, 0.78);
 }
 
 *,
@@ -1467,55 +1472,6 @@ input#plan-input::placeholder {
   color: var(--placeholder-soft);
 }
 
-/* 印象派油画：随机提示对应的那一幅 */
-.plan-art {
-  position: relative;
-  margin: 0 0 16px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  background: var(--paper-deep);
-  box-shadow: var(--shadow-soft);
-  animation: plan-art-in 0.55s ease both;
-}
-
-.plan-art img {
-  display: block;
-  width: 100%;
-  height: 176px;
-  object-fit: cover;
-}
-
-.plan-art.is-out {
-  animation: plan-art-out 0.6s ease forwards;
-}
-
-@keyframes plan-art-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(1.02);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes plan-art-out {
-  from {
-    opacity: 1;
-    max-height: 240px;
-    margin-bottom: 16px;
-    transform: none;
-  }
-  to {
-    opacity: 0;
-    max-height: 0;
-    margin-bottom: 0;
-    transform: translateY(-10px);
-  }
-}
-
 /* 固化后的文字向上升起 */
 .plan-card-text.is-rising,
 .panel.is-rising {
@@ -1690,7 +1646,21 @@ input#plan-input::placeholder {
 }
 
 .plan-screen {
+  position: relative;
+  isolation: isolate;
   background: var(--paper);
+}
+
+/* 随机提示对应的那一幅油画铺满整个页面；薄纱保证文字不被画面吃掉 */
+.plan-screen.has-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: linear-gradient(var(--plan-bg-veil-top), var(--plan-bg-veil-bottom)), var(--plan-bg);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
 }
 
 .plan-row {

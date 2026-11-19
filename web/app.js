@@ -619,7 +619,6 @@
 
       plan: {
         placeholders: ['我想去雅典卫城', '下周去卢浮宫和橘园美术馆', '去看新天鹅堡的雪景'],
-        artAlt: ['黄昏中的雅典卫城', '暮色里的卢浮宫', '雪中的新天鹅堡'],
         confirm: '先这样',
         thinking: '我想想',
         edit: '编辑',
@@ -1083,7 +1082,6 @@
           'Louvre and the Musée de l’Orangerie next week',
           'To see the snow at Neuschwanstein Castle',
         ],
-        artAlt: ['The Acropolis at dusk', 'The Louvre at twilight', 'Neuschwanstein in the snow'],
         confirm: "Let's go with that",
         thinking: 'Thinking…',
         edit: 'Edit',
@@ -1550,7 +1548,6 @@
           'Louvre und Orangemuseum nächste Woche',
           'Um den Schnee am Neuschwanstein zu sehen',
         ],
-        artAlt: ['Die Akropolis in der Dämmerung', 'Der Louvre im Abendlicht', 'Neuschwanstein im Schnee'],
         confirm: 'So machen wir’s',
         thinking: 'Ich überlege…',
         edit: 'Bearbeiten',
@@ -3666,13 +3663,12 @@
     error: '',
     items: [],
     suggestion: '',
-    artIndex: -1,
     draftId: '',
     draftCreatedAt: '',
   };
 
-  /** Impressionist painting for each suggestion, in the same order. */
-  const PLAN_ART = ['paintings/athens.jpg', 'paintings/louvre.jpg', 'paintings/neuschwanstein.jpg'];
+  /** Full-screen painting behind the plan page, in the same order as the suggestions. */
+  const PLAN_BACKGROUNDS = ['paintings/athens.jpg', 'paintings/louvre.jpg', 'paintings/neuschwanstein.jpg'];
 
   function resetPlanState() {
     planState.text = '';
@@ -3683,7 +3679,6 @@
     planState.error = '';
     planState.items = [];
     planState.suggestion = '';
-    planState.artIndex = -1;
     planState.draftId = '';
     planState.draftCreatedAt = '';
   }
@@ -3717,12 +3712,6 @@
     const dict = I18N[getLocale()] || I18N.zh;
     const list = Array.isArray(dict.plan?.placeholders) ? dict.plan.placeholders : [];
     return list.length ? list : I18N.zh.plan.placeholders;
-  }
-
-  function planArtAlts() {
-    const dict = I18N[getLocale()] || I18N.zh;
-    const list = Array.isArray(dict.plan?.artAlt) ? dict.plan.artAlt : [];
-    return list.length ? list : I18N.zh.plan.artAlt;
   }
 
   /** Local drafts keep a plan alive when the user leaves the page. */
@@ -3798,18 +3787,8 @@
     }
 
     const placeholder = esc(plan.suggestion || (plan.suggestion = randomPlanPlaceholder()));
-    plan.artIndex = planPlaceholders().indexOf(plan.suggestion);
-    const artFile = plan.artIndex >= 0 ? PLAN_ART[plan.artIndex] : null;
-    const artAlt = plan.artIndex >= 0 ? (planArtAlts()[plan.artIndex] || '') : '';
-
-    /** The painting above the card; `fading` plays the fade-out after confirming. */
-    const art = (fading) =>
-      artFile
-        ? `
-        <figure class="plan-art${fading ? ' is-out' : ''}">
-          <img src="${artFile}" alt="${esc(artAlt)}" />
-        </figure>`
-        : '';
+    const backgroundIndex = planPlaceholders().indexOf(plan.suggestion);
+    const background = backgroundIndex >= 0 ? PLAN_BACKGROUNDS[backgroundIndex] : '';
 
     const tools = (withResend) => `
       <div class="plan-tools">
@@ -3947,7 +3926,6 @@
         ${plan.error ? `<p class="form-error">${esc(plan.error)}</p>` : ''}`;
     } else {
       body = `
-        ${art(false)}
         <div class="plan-card">
           <div class="plan-card-top">
             <input id="plan-input" maxlength="300" placeholder="${placeholder}" value="${esc(plan.text)}" />
@@ -3959,7 +3937,7 @@
     }
 
     app.innerHTML = `
-      <div class="screen plan-screen">
+      <div class="screen plan-screen${background ? ' has-bg' : ''}"${background ? ` style="--plan-bg: url('${background}')"` : ''}>
         <main class="page">
           ${body}
         </main>
@@ -4034,9 +4012,7 @@
     const text = (planState.text || planState.suggestion || '').trim();
     if (!text) return;
 
-    // 原地过渡：油画淡出并收起，输入框就地变成固化文字，按钮变成「我想想」
-    const art = document.querySelector('.plan-art');
-    if (art) art.classList.add('is-out');
+    // 原地过渡：输入框就地变成固化文字，按钮变成「我想想」
     const input = document.getElementById('plan-input');
     if (input) {
       const frozen = document.createElement('p');
