@@ -1647,6 +1647,19 @@ input#plan-input::placeholder {
   flex-wrap: nowrap;
 }
 
+/* 这两个按钮直接压在油画背景上，半透明磨砂底保证文字可读 */
+.plan-actions .btn.ghost,
+.plan-actions .btn.danger {
+  background: var(--glass-card);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.plan-actions .btn.ghost:hover,
+.plan-actions .btn.danger:hover {
+  background: var(--glass-card-strong);
+}
+
 .plan-screen {
   position: relative;
   isolation: isolate;
