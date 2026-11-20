@@ -2093,7 +2093,6 @@
   let historyDepth = 0;
   let pendingTabHash = '';
   let pendingTabAfter = null;
-  let pendingLeaveHash = '';
 
   const TAB_HASHES = ['#/', '#/memories', '#/discover', '#/me'];
   const TAB_HASH_BY_NAME = { home: '#/', memories: '#/memories', discover: '#/discover', me: '#/me' };
@@ -3468,46 +3467,9 @@
     navigate('#/new');
   }
 
-  /** 压入一条历史，让系统返回键先收起草稿而不是退出应用。 */
-  function pushOverlayHistory() {
-    if (overlayHistoryCount > 0) return;
-    try {
-      history.pushState({ redPandaOverlay: true }, '', location.href);
-      overlayHistoryCount = 1;
-      historyDepth += 1;
-    } catch {
-      overlayHistoryCount = 0;
-    }
-  }
-
-  function dropOverlayHistory() {
-    if (overlayHistoryCount <= 0) return;
-    const count = overlayHistoryCount;
-    overlayHistoryCount = 0;
-    historyDepth = Math.max(0, historyDepth - count);
-    suppressPopCount += 1;
-    history.go(-count);
-  }
-
-  /** 展开某条草稿时再压入一条历史，让返回键先收回预览。 */
-  function pushExpandedHistory() {
-    if (overlayHistoryCount !== 1) return;
-    try {
-      history.pushState({ redPandaOverlay: true, redPandaExpanded: true }, '', location.href);
-      overlayHistoryCount = 2;
-      historyDepth += 1;
-    } catch {
-      // 保持现状；不推进计数。
-    }
-  }
-
-  function dropExpandedHistory() {
-    if (overlayHistoryCount < 2) return;
-    overlayHistoryCount = 1;
-    historyDepth = Math.max(0, historyDepth - 1);
-    suppressPopCount += 1;
-    history.back();
-  }
+  // 草稿浮层只是 UI 状态，系统返回键由 window.__redPandaSystemBack 直接处理，
+  // 不需要往浏览器历史里压条目。压条目会让 back()/pushState() 异步打架，
+  // 把浮层下面的主页面历史记录弄乱（例如切换预览后主页面莫名跟着切换）。
 
   // ---- draft swipe-to-delete ---------------------------------------------
   let openSwipeEl = null;
@@ -3587,7 +3549,6 @@
     draftOverlayOpen = true;
     renderDraftOverlay();
     flashDraftLabel();
-    pushOverlayHistory();
   }
 
   function closeDraftOverlay() {
@@ -3597,46 +3558,24 @@
     resetDraftLabel();
     const veil = document.getElementById('draft-layer');
     if (veil) veil.hidden = true;
-    dropOverlayHistory();
   }
 
   /** 展开的草稿收回成列表（浮层保持打开）。 */
   function collapseExpanded() {
     if (!expandedDraftId) return;
     expandedDraftId = null;
-    if (overlayHistoryCount >= 2) dropExpandedHistory();
     refreshDraftList();
   }
 
-  /**
-   * 从浮层跳到别的路由。
-   * 跳到主页面时退回主页面那条历史记录（返回键仍然是直接退出应用），
-   * 跳到子页面时把浮层那条记录改写成目标页面。
-   */
+  /** 从浮层跳到别的路由：浮层没有历史记录，直接按普通导航处理。 */
   function leaveOverlayTo(hash) {
-    const overlayCount = overlayHistoryCount;
     draftOverlayOpen = false;
     expandedDraftId = null;
     resetDraftLabel();
     const veil = document.getElementById('draft-layer');
     if (veil) veil.hidden = true;
-    overlayHistoryCount = 0;
-    if (isTabHash(hash)) {
-      pendingTabHash = hash;
-      suppressPopCount += 1;
-      history.go(-historyDepth);
-      return;
-    }
-    if (overlayCount > 0) {
-      // 等历史条目真正弹出后再改写地址，避免 history.go 与 hash 赋值互相打架。
-      historyDepth = Math.max(0, historyDepth - overlayCount);
-      suppressPopCount += 1;
-      pendingLeaveHash = hash;
-      history.go(-overlayCount);
-      return;
-    }
-    if (location.hash === hash) render();
-    else location.hash = hash;
+    if (isTabHash(hash)) navigateTab(hash);
+    else navigate(hash);
   }
 
   /** 草稿列表紧贴加号上方（留一点间隙），内容向上生长。 */
@@ -3744,7 +3683,6 @@
   let pendingDraft = null;
   let draftOverlayOpen = false;
   let expandedDraftId = null;
-  let overlayHistoryCount = 0;
   let suppressPopCount = 0;
 
   function periodIndexForHour(periods, hour) {
@@ -5663,17 +5601,8 @@
       }
       case 'plan-draft-expand': {
         const id = target.dataset.draftId;
-        if (expandedDraftId === id) {
-          expandedDraftId = null;
-          if (overlayHistoryCount >= 2) dropExpandedHistory();
-        } else {
-          if (expandedDraftId && overlayHistoryCount >= 2) {
-            expandedDraftId = null;
-            dropExpandedHistory();
-          }
-          expandedDraftId = id;
-          pushExpandedHistory();
-        }
+        // 再点同一条就收起，点别的就换预览；都只是浮层 UI 状态，不碰浏览器历史。
+        expandedDraftId = expandedDraftId === id ? null : id;
         refreshDraftList();
         break;
       }
@@ -5972,10 +5901,6 @@
     if (expandedDraftId) {
       expandedDraftId = null;
       refreshDraftList();
-      if (overlayHistoryCount >= 2) {
-        // 交给 popstate 记账；这里只需触发历史回退。
-        try { history.back(); } catch {}
-      }
       return true;
     }
     if (draftOverlayOpen) {
@@ -5984,9 +5909,6 @@
       resetDraftLabel();
       const veil = document.getElementById('draft-layer');
       if (veil) veil.hidden = true;
-      if (overlayHistoryCount > 0) {
-        try { history.back(); } catch {}
-      }
       return true;
     }
     if (historyDepth > 0) {
@@ -6023,11 +5945,7 @@
     updateNavHeight();
   });
 
-  /**
-   * 系统返回：
-   * - 草稿浮层展开时先收回列表，浮层打开时收起草稿列表，都不会退出应用；
-   * - 主页面（行程 / 回忆 / 发现 / 我）没有多余的历史记录，返回即退出应用。
-   */
+  /** 浏览器历史回退：只维护子页面深度，浮层状态由 __redPandaSystemBack 处理。 */
   window.addEventListener('popstate', () => {
     if (suppressPopCount > 0) {
       suppressPopCount -= 1;
@@ -6038,34 +5956,11 @@
         replaceHash(hash);
         render();
         runPendingTabAfter();
-      } else if (pendingLeaveHash) {
-        // 浮层历史已弹出，此时改写当前条目，不会再被异步回退弹回去。
-        const hash = pendingLeaveHash;
-        pendingLeaveHash = '';
-        if (location.hash !== hash) replaceHash(hash);
-        render();
       }
       return;
     }
-    // 用户自己按了返回：历史浅了一层。
+    // 用户自己按了返回：历史浅了一层。浮层状态由 __redPandaSystemBack 处理。
     if (historyDepth > 0) historyDepth -= 1;
-    if (!draftOverlayOpen) return;
-    // 系统已经弹出了我们压入的其中一条历史。
-    overlayHistoryCount = Math.max(0, overlayHistoryCount - 1);
-    if (overlayHistoryCount >= 1) {
-      // 展开预览被收回，草稿列表仍然打开，继续留在应用内。
-      if (expandedDraftId) {
-        expandedDraftId = null;
-        refreshDraftList();
-      }
-      return;
-    }
-    // 草稿列表也被收回，回到下层页面。
-    draftOverlayOpen = false;
-    expandedDraftId = null;
-    resetDraftLabel();
-    const veil = document.getElementById('draft-layer');
-    if (veil) veil.hidden = true;
   });
 
   // ---- boot ---------------------------------------------------------------
