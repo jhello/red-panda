@@ -1231,16 +1231,23 @@ html.is-offline .auth-screen {
 
 .origin-panel { padding: 4px 0; }
 .origin-address-list { display: grid; gap: 0; margin: 0 0 12px; }
-.origin-swipe { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); }
+.origin-address-list:has(.origin-swipe) {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  overflow: hidden;
+}
+.origin-swipe { position: relative; overflow: hidden; background: var(--card); }
+.origin-swipe + .origin-swipe { border-top: 1px solid var(--line); }
 .origin-swipe-delete {
   position: absolute;
-  top: 6px;
-  right: 4px;
-  bottom: 6px;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 54px;
+  min-width: 56px;
   padding: 0 14px;
   border: 0;
   border-radius: 10px;
@@ -1262,18 +1269,18 @@ html.is-offline .auth-screen {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 4px;
-  background: var(--bg);
+  padding: 14px 16px;
+  background: var(--card);
   transition: transform 0.18s ease;
   will-change: transform;
 }
 .origin-swipe.is-swiping .origin-swipe-row { transition: none; }
-.origin-swipe.is-open .origin-swipe-row { transform: translateX(-64px); }
+.origin-swipe.is-open .origin-swipe-row { transform: translateX(-72px); }
 .origin-item { display: flex; align-items: center; gap: 12px; padding: 14px 4px; border-bottom: 1px solid var(--line); }
 .origin-item-main { flex: 1; min-width: 0; display: grid; gap: 4px; }
 .origin-item-main strong { font-size: 15px; font-weight: 600; color: var(--ink); }
 .origin-item-main small { color: var(--muted); font-size: 12px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.origin-empty { margin: 16px 4px; color: var(--muted); font-size: 13px; text-align: center; }
+.origin-empty { margin: 24px 4px; color: var(--muted); font-size: 13px; text-align: center; }
 
 /* 腾讯地图选点（仿微信发送位置） */
 .origin-picker { position: fixed; inset: 0; z-index: 1200; display: flex; flex-direction: column; background: var(--bg); }

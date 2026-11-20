@@ -5060,7 +5060,7 @@
       if (openOriginSwipeEl && openOriginSwipeEl !== el) closeOriginSwipe(openOriginSwipeEl);
       const row = originSwipeRow(el);
       const del = originSwipeDelete(el);
-      if (row) row.style.transform = 'translateX(-64px)';
+      if (row) row.style.transform = 'translateX(-72px)';
       if (del) { del.style.opacity = '1'; del.style.pointerEvents = 'auto'; }
       el.classList.add('is-open');
       openOriginSwipeEl = el;
@@ -5163,14 +5163,14 @@
       const row = originSwipeRow(originSwipeTracking.el);
       if (!row) return;
       originSwipeTracking.el.classList.add('is-swiping');
-      const base = originSwipeTracking.startedOpen ? -64 : 0;
+      const base = originSwipeTracking.startedOpen ? -72 : 0;
       let offset = base + dx;
       if (offset > 0) offset = 0;
-      if (offset < -72) offset = -72;
+      if (offset < -80) offset = -80;
       row.style.transform = `translateX(${offset}px)`;
       const del = originSwipeDelete(originSwipeTracking.el);
       if (del) {
-        const p = Math.max(0, Math.min(1, -offset / 64));
+        const p = Math.max(0, Math.min(1, -offset / 72));
         del.style.opacity = String(p);
       }
     };
@@ -5184,9 +5184,9 @@
       if (row) row.style.transform = '';
       if (del) del.style.opacity = '';
       if (locked === 'x' && moved) {
-        const base = startedOpen ? -64 : 0;
+        const base = startedOpen ? -72 : 0;
         const final = base + dx;
-        if (final < -32) openOriginSwipe(el);
+        if (final < -36) openOriginSwipe(el);
         else closeOriginSwipe(el);
         suppressOriginSwipeClick = true;
         setTimeout(() => { suppressOriginSwipeClick = false; }, 350);
@@ -5969,7 +5969,7 @@
     if (row) row.style.transform = '';
     if (del) del.style.opacity = '';
     if (locked === 'x' && moved) {
-      const base = startedOpen ? -64 : 0;
+      const base = startedOpen ? -72 : 0;
       const final = base + dx;
       if (final < -32) openDraftSwipe(el);
       else closeDraftSwipe(el);
