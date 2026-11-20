@@ -1060,8 +1060,8 @@ img.seal {
   gap: 22px;
   /* 离线提示条贴在底部时，为它让位，避免和底部的语言切换胶囊叠在一起。 */
   padding: 30px 24px calc(28px + env(safe-area-inset-bottom) + var(--offline-h, 0px));
-  /* 与系统通知栏（#f7f2e8）保持一致，盖住 body 的渐变纹理 */
-  background: var(--paper);
+  /* 背景保持透明，让通知栏到页面是同一层纸纹渐变，和行程 / 回忆一致 */
+  background: transparent;
 }
 
 /* 离线提示条占掉底部空间时，整体内容略微上移，让语言胶囊和提示条拉开距离。 */
