@@ -403,6 +403,7 @@
       nav: {
         current: '行程',
         memories: '回忆',
+        drafts: '草稿',
         discover: '发现',
         discoverSoon: '更多目的地正在路上，敬请期待',
         me: '我',
@@ -862,6 +863,7 @@
       nav: {
         current: 'Journeys',
         memories: 'Memories',
+        drafts: 'Drafts',
         discover: 'Discover',
         discoverSoon: 'More destinations are on the way — stay tuned',
         me: 'Me',
@@ -1325,6 +1327,7 @@
       nav: {
         current: 'Reisen',
         memories: 'Erinnerungen',
+        drafts: 'Entwürfe',
         discover: 'Entdecken',
         discoverSoon: 'Weitere Ziele sind unterwegs — bald verfügbar',
         me: 'Ich',
@@ -3375,47 +3378,85 @@
     });
   }
 
-  /**
-   * 倒计时只由 createCooldownUntil 决定，渲染导航栏后重新贴到新按钮上，
-   * 避免重建 DOM 时把倒计时状态丢掉。
-   */
-  function applyCooldownButton() {
+  // ---- 加号：草稿标签与手势 ------------------------------------------------
+  const CREATE_DOUBLE_TAP_MS = 300;
+  const CREATE_LONG_PRESS_MS = 500;
+
+  let draftLabelActive = false;
+  let draftLabelTimer = null;
+  let createPressTimer = null;
+  let createTapTimer = null;
+  let createLongPressed = false;
+  let createPressStart = null;
+  let lastCreateDownAt = 0;
+
+  /** 导航栏重建后把「草稿 / ＋」状态重新贴到新按钮上。 */
+  function paintCreateLabel() {
     const button = document.querySelector('.nav-create');
     if (!button) return;
-    const left = Math.ceil((createCooldownUntil - Date.now()) / 1000);
-    if (left > 0) {
-      button.disabled = true;
-      button.classList.add('is-cooling');
-      button.textContent = String(left);
-    } else {
-      button.disabled = false;
-      button.classList.remove('is-cooling');
-      button.textContent = '＋';
+    button.classList.toggle('is-draft', draftLabelActive);
+    button.textContent = draftLabelActive ? t('nav.drafts') : '＋';
+    button.setAttribute('aria-label', draftLabelActive ? t('nav.drafts') : t('new.title'));
+  }
+
+  /** 点加号浮出草稿列表：标签变「草稿」，一秒后恢复加号，列表继续保留。 */
+  function flashDraftLabel() {
+    if (draftLabelTimer) clearTimeout(draftLabelTimer);
+    draftLabelActive = true;
+    paintCreateLabel();
+    draftLabelTimer = setTimeout(() => {
+      draftLabelTimer = null;
+      draftLabelActive = false;
+      paintCreateLabel();
+    }, 1000);
+  }
+
+  /** 浮层收起或离开时立刻恢复加号。 */
+  function resetDraftLabel() {
+    if (draftLabelTimer) {
+      clearTimeout(draftLabelTimer);
+      draftLabelTimer = null;
+    }
+    draftLabelActive = false;
+    paintCreateLabel();
+  }
+
+  function cancelCreatePress() {
+    if (createPressTimer) {
+      clearTimeout(createPressTimer);
+      createPressTimer = null;
+    }
+    createPressStart = null;
+  }
+
+  function cancelCreateTap() {
+    if (createTapTimer) {
+      clearTimeout(createTapTimer);
+      createTapTimer = null;
     }
   }
 
-  /** 有草稿时加号先冷却两秒，避免误触丢下草稿。 */
-  function startCreateCooldown() {
-    createCooldownUntil = Date.now() + 2000;
-    applyCooldownButton();
-    if (cooldownTimer) return;
-    cooldownTimer = setInterval(() => {
-      if (Date.now() >= createCooldownUntil) {
-        stopCreateCooldown();
-        return;
-      }
-      applyCooldownButton();
-    }, 250);
+  /** 长按 / 双击：丢开草稿列表，直接进入全新旅程草稿页。 */
+  function openFreshDraftPage() {
+    cancelCreateTap();
+    resetDraftLabel();
+    resetPlanState();
+    if (draftOverlayOpen) leaveOverlayTo('#/new');
+    else navigate('#/new');
   }
 
-  /** 收起浮层时立刻停掉倒计时。 */
-  function stopCreateCooldown() {
-    if (cooldownTimer) {
-      clearInterval(cooldownTimer);
-      cooldownTimer = null;
+  /** 普通单击：有草稿就浮出列表，列表已开则收起，没草稿直接新建。 */
+  function handleCreateTap() {
+    if (draftOverlayOpen) {
+      closeDraftOverlay();
+      return;
     }
-    createCooldownUntil = 0;
-    applyCooldownButton();
+    if (sortedDrafts().length > 0) {
+      openDraftOverlay();
+      return;
+    }
+    resetPlanState();
+    navigate('#/new');
   }
 
   /** 压入一条历史，让系统返回键先收起草稿而不是退出应用。 */
@@ -3535,9 +3576,8 @@
 
   function openDraftOverlay() {
     draftOverlayOpen = true;
-    createCooldownUntil = Date.now() + 2000;
     renderDraftOverlay();
-    startCreateCooldown();
+    flashDraftLabel();
     pushOverlayHistory();
   }
 
@@ -3545,7 +3585,7 @@
     draftOverlayOpen = false;
     expandedDraftId = null;
     resetDraftSwipe();
-    stopCreateCooldown();
+    resetDraftLabel();
     const veil = document.getElementById('draft-layer');
     if (veil) veil.hidden = true;
     dropOverlayHistory();
@@ -3568,7 +3608,7 @@
     const overlayCount = overlayHistoryCount;
     draftOverlayOpen = false;
     expandedDraftId = null;
-    stopCreateCooldown();
+    resetDraftLabel();
     const veil = document.getElementById('draft-layer');
     if (veil) veil.hidden = true;
     overlayHistoryCount = 0;
@@ -3698,8 +3738,6 @@
   let pendingDraft = null;
   let draftOverlayOpen = false;
   let expandedDraftId = null;
-  let createCooldownUntil = 0;
-  let cooldownTimer = null;
   let overlayHistoryCount = 0;
   let suppressPopCount = 0;
 
@@ -4182,8 +4220,8 @@
       const show = Boolean(state.user);
       navHost.hidden = !show;
       navHost.innerHTML = show ? navBar() : '';
-      // 导航栏是重建的，重新贴一次倒计时状态。
-      applyCooldownButton();
+      // 导航栏是重建的，重新贴一次「草稿 / ＋」标签状态。
+      paintCreateLabel();
     }
     updateNavHeight();
   }
@@ -5518,17 +5556,9 @@
         else navigateTab('#/me');
         break;
       case 'new': {
-        const drafts = sortedDrafts();
-        if (drafts.length > 0 && !draftOverlayOpen) {
-          // 有草稿：就地在当前页面浮出草稿列表，加号冷却两秒，不切换页面。
-          openDraftOverlay();
-          break;
-        }
-        if (draftOverlayOpen) {
-          if (Date.now() < createCooldownUntil) break;
-          // 冷却结束：创建全新旅程。
-          resetPlanState();
-          leaveOverlayTo('#/new');
+        if (target.classList.contains('nav-create')) {
+          // 加号由手势逻辑接管（单击 / 双击 / 长按）。这里只兜底键盘触发。
+          if (event.detail === 0) handleCreateTap();
           break;
         }
         resetPlanState();
@@ -5681,6 +5711,91 @@
     event.target.value='';
   });
   navHost?.addEventListener('click', handleAction);
+
+  // ---- 加号手势：单击浮出草稿，双击 / 长按直接新建 ------------------------
+  function navCreateFrom(event) {
+    const el = event.target;
+    return el && typeof el.closest === 'function' ? el.closest('.nav-create') : null;
+  }
+
+  function createPointerPoint(event) {
+    if (event.touches && event.touches[0]) return event.touches[0];
+    if (event.changedTouches && event.changedTouches[0]) return event.changedTouches[0];
+    return event;
+  }
+
+  function onNavCreateDown(event) {
+    if (!navCreateFrom(event)) {
+      // 按下别处就放弃这次加号单击 / 长按，避免随后误浮出草稿列表。
+      cancelCreateTap();
+      cancelCreatePress();
+      lastCreateDownAt = 0;
+      return;
+    }
+    const now = Date.now();
+    const isDouble = now - lastCreateDownAt <= CREATE_DOUBLE_TAP_MS;
+    lastCreateDownAt = now;
+    cancelCreateTap();
+    cancelCreatePress();
+    if (isDouble) {
+      // 第二下按下时立刻改道，草稿列表来不及浮出。
+      createLongPressed = true;
+      openFreshDraftPage();
+      return;
+    }
+    createLongPressed = false;
+    const pt = createPointerPoint(event);
+    createPressStart = { x: pt.clientX, y: pt.clientY };
+    createPressTimer = setTimeout(() => {
+      createPressTimer = null;
+      createPressStart = null;
+      createLongPressed = true;
+      if (navigator.vibrate) {
+        try { navigator.vibrate(12); } catch { /* ignore */ }
+      }
+      openFreshDraftPage();
+    }, CREATE_LONG_PRESS_MS);
+  }
+
+  function onNavCreateMove(event) {
+    if (!createPressStart) return;
+    const pt = createPointerPoint(event);
+    if (Math.abs(pt.clientX - createPressStart.x) > 12 || Math.abs(pt.clientY - createPressStart.y) > 12) {
+      // 手指滑动不当成长按，也不当成单击。
+      cancelCreatePress();
+      createLongPressed = true;
+    }
+  }
+
+  function onNavCreateUp() {
+    if (!createPressStart && !createLongPressed) return;
+    cancelCreatePress();
+    if (createLongPressed) return;
+    // 稍等一下，确认不是双击的第一下。
+    cancelCreateTap();
+    createTapTimer = setTimeout(() => {
+      createTapTimer = null;
+      handleCreateTap();
+    }, CREATE_DOUBLE_TAP_MS);
+  }
+
+  document.addEventListener('pointerdown', onNavCreateDown);
+  document.addEventListener('pointermove', onNavCreateMove);
+  document.addEventListener('pointerup', onNavCreateUp);
+  document.addEventListener('pointercancel', onNavCreateUp);
+  navHost?.addEventListener('contextmenu', (event) => {
+    if (navCreateFrom(event)) event.preventDefault();
+  });
+  // 指针点击交给上面的计时器处理，避免第一下先把草稿列表浮出来。
+  navHost?.addEventListener(
+    'click',
+    (event) => {
+      if (!navCreateFrom(event)) return;
+      event.stopImmediatePropagation();
+    },
+    true,
+  );
+
   // 离线提示条在 #app 之外，它的「重试」按钮也要能触发动作。
   statusHost?.addEventListener('click', handleAction);
   // 草稿浮层在 #app 之外，列表里的打开 / 展开 / 删除都要能触发动作。
@@ -5855,7 +5970,7 @@
     if (draftOverlayOpen) {
       draftOverlayOpen = false;
       expandedDraftId = null;
-      stopCreateCooldown();
+      resetDraftLabel();
       const veil = document.getElementById('draft-layer');
       if (veil) veil.hidden = true;
       if (overlayHistoryCount > 0) {
@@ -5931,7 +6046,7 @@
     // 草稿列表也被收回，回到下层页面。
     draftOverlayOpen = false;
     expandedDraftId = null;
-    stopCreateCooldown();
+    resetDraftLabel();
     const veil = document.getElementById('draft-layer');
     if (veil) veil.hidden = true;
   });

@@ -311,6 +311,10 @@ code {
   font-size: 28px;
   line-height: 1;
   box-shadow: 0 12px 26px rgba(140, 47, 35, 0.22);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
 }
 
 .nav-btn.nav-create:active {
@@ -879,15 +883,12 @@ img.seal {
   background: rgba(168, 58, 44, 0.16);
 }
 
-/* 有草稿时加号进入 2 秒冷却 */
-.nav-btn.nav-create:disabled,
-.nav-btn.nav-create.is-cooling {
-  cursor: wait;
-  background: var(--paper-deep);
-  color: var(--muted);
-  box-shadow: none;
-  font-size: 20px;
+/* 点加号浮出草稿列表时，按钮临时显示「草稿」 */
+.nav-btn.nav-create.is-draft {
+  font-size: 17px;
   font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 /* ---- page --------------------------------------------------------------- */
