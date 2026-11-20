@@ -53,8 +53,6 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private FrameLayout root;
-    // 创建计划页让油画背景延伸到状态栏下面，其余页面保持原来的避让。
-    private boolean fullBleedTop = false;
     private int barsLeft;
     private int barsTop;
     private int barsRight;
@@ -173,6 +171,13 @@ public class MainActivity extends Activity {
                 }
                 return true;
             }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                // The first insets callback may arrive before the page defines
+                // __redPandaTopInset, so repeat it once the document is ready.
+                publishTopInset(barsTop);
+            }
         });
 
         root.addView(webView, new FrameLayout.LayoutParams(
@@ -216,6 +221,14 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Gives the page the top inset synchronously, before the first paint. */
+    private class BarsBridge {
+        @JavascriptInterface
+        public int getTopInsetDp() {
+            return Math.round(barsTop / getResources().getDisplayMetrics().density);
+        }
+    }
+
     /** Bridges the web appearance setting to the Android window and system bars. */
     private class ThemeBridge {
         @JavascriptInterface
@@ -232,17 +245,6 @@ public class MainActivity extends Activity {
                 getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
                         .putString(PREF_THEME, normalized).apply();
                 applyWindowTheme();
-            });
-        }
-    }
-
-    /** Lets the plan page opt out of the top inset so its background goes under the status bar. */
-    private class BarsBridge {
-        @JavascriptInterface
-        public void setFullBleed(boolean value) {
-            runOnUiThread(() -> {
-                fullBleedTop = value;
-                applyRootPadding();
             });
         }
     }
@@ -354,11 +356,16 @@ public class MainActivity extends Activity {
         return segment == null ? "" : segment;
     }
 
-    /** The root container owns the insets; the WebView itself never pads twice. */
+    /**
+     * The root owns bottom/side insets only. The WebView always extends under the
+     * status bar and the page adds the top inset itself, so navigating to the
+     * full-bleed plan page never resizes the viewport (and never makes the old
+     * page jump before the new one appears).
+     */
     private void applyRootPadding() {
         if (root == null) return;
-        root.setPadding(barsLeft, fullBleedTop ? 0 : barsTop, barsRight, Math.max(barsBottom, imeBottom));
-        if (fullBleedTop) publishTopInset(barsTop);
+        root.setPadding(barsLeft, 0, barsRight, Math.max(barsBottom, imeBottom));
+        publishTopInset(barsTop);
     }
 
     /** Tell the page how much top padding its content still needs (dp). */

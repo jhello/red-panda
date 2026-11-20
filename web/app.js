@@ -1890,11 +1890,6 @@
     document.documentElement.style.setProperty('--status-h', `${value}px`);
   };
 
-  /** Let the native shell know whether the current page needs edge-to-edge background. */
-  function syncNativeBars(fullBleed) {
-    if (window.AndroidBars?.setFullBleed) window.AndroidBars.setFullBleed(fullBleed);
-  }
-
   function setLocale(locale) {
     if (!LOCALE_KEYS.includes(locale) || locale === getLocale()) return;
     const scrollX = window.scrollX;
@@ -2576,7 +2571,6 @@
     }
 
     const route = parseRoute();
-    syncNativeBars(route.name === 'new' && Boolean(state.user));
 
     // Entering "create journey" from another page always starts a fresh plan,
     // unless the user picked one of the cached drafts.
@@ -3611,8 +3605,8 @@
     const bottom = Math.round(window.innerHeight - navRect.top + bannerHeight);
     layer.style.top = 'auto';
     layer.style.bottom = `${bottom}px`;
-    // 允许列表使用到屏幕顶部可用范围，避免顶部/底部被额外间距截断。
-    const topSafe = 0;
+    // 允许列表使用到状态栏以下的可用范围，避免浮层顶部钻到状态栏里。
+    const topSafe = Math.max(0, document.getElementById('app')?.getBoundingClientRect().top || 0);
     layer.style.maxHeight = `${Math.max(120, Math.round(window.innerHeight - bottom - topSafe))}px`;
   }
 

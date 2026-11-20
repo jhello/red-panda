@@ -16,8 +16,10 @@
   --sans: "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif;
   --serif: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", Georgia, serif;
-  /* 状态栏高度（Android 注入）：计划页背景延伸到状态栏下面，内容仍要避让 */
+  /* 状态栏高度（Android 注入）：WebView 始终延伸到状态栏下面，由页面自己避让 */
   --status-h: 0px;
+  --top-inset: var(--status-h);
+  --top-inset: max(var(--status-h), env(safe-area-inset-top, 0px));
   /* 底部导航栏高度（JS 实测），离线提示条就贴在它上边 */
   --nav-h: 84px;
   /* 离线提示条的高度，页面和浮层据此让位 */
@@ -194,13 +196,15 @@ code {
   width: 100%;
   max-width: 620px;
   margin: 0 auto;
+  padding-top: var(--top-inset);
   min-height: 100vh;
   min-height: 100dvh;
 }
 
 .screen {
   position: relative;
-  min-height: inherit;
+  min-height: calc(100vh - var(--top-inset));
+  min-height: calc(100dvh - var(--top-inset));
   display: flex;
   flex-direction: column;
 }
@@ -400,7 +404,7 @@ img.seal {
 
 .topbar {
   position: sticky;
-  top: 0;
+  top: var(--top-inset);
   z-index: 20;
   display: flex;
   align-items: center;
@@ -1054,14 +1058,14 @@ img.seal {
   justify-content: center;
   gap: 22px;
   /* 离线提示条贴在底部时，为它让位，避免和底部的语言切换胶囊叠在一起。 */
-  padding: max(30px, env(safe-area-inset-top)) 24px calc(28px + env(safe-area-inset-bottom) + var(--offline-h, 0px));
+  padding: 30px 24px calc(28px + env(safe-area-inset-bottom) + var(--offline-h, 0px));
   /* 与系统通知栏（#f7f2e8）保持一致，盖住 body 的渐变纹理 */
   background: var(--paper);
 }
 
 /* 离线提示条占掉底部空间时，整体内容略微上移，让语言胶囊和提示条拉开距离。 */
 html.is-offline .auth-screen {
-  padding-top: max(20px, env(safe-area-inset-top));
+  padding-top: 20px;
 }
 
 .auth-login-screen{justify-content:space-between;gap:14px}
@@ -1237,7 +1241,7 @@ html.is-offline .auth-screen {
 /* 腾讯地图选点（仿微信发送位置） */
 .origin-picker { position: fixed; inset: 0; z-index: 1200; display: flex; flex-direction: column; background: var(--bg); }
 .origin-picker[hidden] { display: none; }
-.origin-picker-head { position: absolute; top: 0; left: 0; right: 0; z-index: 2000; display: flex; align-items: center; justify-content: space-between; padding: calc(10px + env(safe-area-inset-top)) 12px 10px; background: linear-gradient(to bottom, var(--map-head-top), var(--map-head-mid) 70%, var(--map-head-end)); pointer-events: none; }
+.origin-picker-head { position: absolute; top: 0; left: 0; right: 0; z-index: 2000; display: flex; align-items: center; justify-content: space-between; padding: calc(10px + var(--top-inset)) 12px 10px; background: linear-gradient(to bottom, var(--map-head-top), var(--map-head-mid) 70%, var(--map-head-end)); pointer-events: none; }
 .origin-picker-head .btn { pointer-events: auto; min-width: 64px; min-height: 40px; padding: 0 16px; font-size: 15px; border-radius: 14px; position: relative; z-index: 2001; }
 .origin-picker-head .btn.ghost { background: var(--map-ghost); }
 .origin-picker-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -1663,12 +1667,12 @@ input#plan-input::placeholder {
 .plan-screen {
   position: relative;
   isolation: isolate;
+  /* 背景一直铺到状态栏下面；负外边距抵消 #app 的顶部避让，内容高度保持不变 */
+  margin-top: calc(-1 * var(--top-inset));
+  padding-top: var(--top-inset);
+  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--paper);
-}
-
-/* 背景铺到状态栏下面，但输入卡片要从状态栏下方开始 */
-.plan-screen .page {
-  padding-top: calc(10px + var(--status-h));
 }
 
 /* 随机提示对应的那一幅油画铺满整个页面；薄纱保证文字不被画面吃掉 */
@@ -2221,7 +2225,8 @@ input#plan-input::placeholder {
   }
 
   .screen {
-    min-height: inherit;
+    min-height: calc(100vh - 56px - var(--top-inset));
+    min-height: calc(100dvh - 56px - var(--top-inset));
   }
 
   /* 宽屏时导航栏贴住卡片底边，而不是视口最底部 */
@@ -2266,7 +2271,7 @@ input#plan-input::placeholder {
 }
 
 /* Me tab and Android-style settings, using the app's warm travel palette */
-.me-screen,.settings-screen{min-height:100vh;background:var(--paper);color:var(--ink)}
+.me-screen,.settings-screen{min-height:calc(100vh - var(--top-inset));min-height:calc(100dvh - var(--top-inset));background:var(--paper);color:var(--ink)}
 .me-head{height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 22px}
 .me-name-edit{min-width:0;max-width:calc(100% - 70px);padding:6px 0;border:0;background:transparent;text-align:left;color:var(--ink);font:inherit;font-size:24px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .me-name-edit:focus-visible{outline:2px solid var(--seal);outline-offset:3px;border-radius:4px}
@@ -2281,7 +2286,7 @@ input#plan-input::placeholder {
 .footprint-pin{position:absolute;color:var(--seal);font-size:24px;text-shadow:var(--map-shadow)}
 .pin-0{left:22%;top:37%}.pin-1{left:50%;top:35%}.pin-2{left:70%;top:45%}.pin-3{left:38%;top:58%}.pin-4{left:83%;top:32%}.pin-5{left:62%;top:61%}
 .settings-screen{background:var(--paper)}
-.settings-page{padding-top:calc(12px + env(safe-area-inset-top))}.settings-detail .card{background:var(--card);border-color:var(--line)}.settings-page.about-page{display:flex;flex-direction:column;justify-content:center;align-items:stretch;padding:0}
+.settings-page{padding-top:12px}.settings-detail .card{background:var(--card);border-color:var(--line)}.settings-page.about-page{display:flex;flex-direction:column;justify-content:center;align-items:stretch;padding:0}
 .settings-group{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--shadow-soft)}
 .system-row{width:100%;min-height:62px;padding:0 18px;border:0;border-bottom:1px solid var(--line);background:var(--card);display:flex;align-items:center;gap:16px;text-align:left;color:var(--ink);font-size:15px}
 .system-row:last-child{border-bottom:0}.system-icon{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--paper-deep);color:var(--seal);font-size:17px}
@@ -2309,7 +2314,7 @@ input#plan-input::placeholder {
 .language-radio{width:20px;height:20px;border:2px solid var(--line-strong);border-radius:50%;display:grid;place-items:center}
 .language-choice.is-selected .language-radio{border-color:var(--seal)}
 .language-choice.is-selected .language-radio::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--seal)}
-.settings-detail.account-security-page{padding-top:calc(12px + env(safe-area-inset-top))}
+.settings-detail.account-security-page{padding-top:12px}
 .account-settings-group{padding:15px 0 22px;margin:0 0 10px;border-bottom:1px solid var(--line)}
 .account-settings-group:last-child{border-bottom:0}
 .settings-group-heading{margin:0 0 12px;color:var(--ink);font-size:16px;font-weight:650;letter-spacing:.02em}

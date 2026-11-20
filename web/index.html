@@ -28,6 +28,11 @@
           root.setAttribute('data-theme-mode', mode);
           root.style.colorScheme = dark ? 'dark' : 'light';
           root.style.backgroundColor = dark ? '#14191a' : '#f7f2e8';
+          // Android 的 WebView 延伸到状态栏下面，首屏就要拿到顶部留白，避免内容先被遮住再跳下来。
+          if (window.AndroidBars && window.AndroidBars.getTopInsetDp) {
+            var top = window.AndroidBars.getTopInsetDp();
+            if (top > 0) root.style.setProperty('--status-h', top + 'px');
+          }
           var meta = document.getElementById('theme-color');
           if (meta) meta.setAttribute('content', dark ? '#14191a' : '#f7f2e8');
         } catch (error) {}
