@@ -2096,6 +2096,7 @@
   let pendingLeaveHash = '';
 
   const TAB_HASHES = ['#/', '#/memories', '#/discover', '#/me'];
+  const TAB_HASH_BY_NAME = { home: '#/', memories: '#/memories', discover: '#/discover', me: '#/me' };
 
   function isTabHash(hash) {
     return TAB_HASHES.includes(String(hash ?? '').split('?')[0]);
@@ -2596,6 +2597,7 @@
       }
     }
     currentRouteName = route.name;
+    if (TAB_HASH_BY_NAME[route.name] && !route.id) lastTabHash = TAB_HASH_BY_NAME[route.name];
 
     if (!state.server) {
       renderSetup();
@@ -3737,6 +3739,8 @@
   }
 
   let currentRouteName = '';
+  // 记下最近的主页面，创建草稿页没有底部导航，返回键要能回到这里。
+  let lastTabHash = '#/';
   let pendingDraft = null;
   let draftOverlayOpen = false;
   let expandedDraftId = null;
@@ -5958,6 +5962,11 @@
       if (route.section) replaceHash('#/settings');
       else replaceHash('#/me');
       render();
+      return true;
+    }
+    if (route.name === 'new') {
+      // 创建草稿页没有底部导航，也不该退出应用：回到最近的主页面。
+      navigateTab(lastTabHash);
       return true;
     }
     if (expandedDraftId) {
