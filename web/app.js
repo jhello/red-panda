@@ -453,7 +453,7 @@
       },
 
       draft: {
-        title: '草稿：{time}，{destination}，{created}',
+        title: '{time}，{destination}，{created}',
         untimed: '未定时间',
         undestined: '未定目的地',
         expand: '展开草稿',
@@ -913,7 +913,7 @@
       },
 
       draft: {
-        title: 'Draft: {time}, {destination}, {created}',
+        title: '{time}, {destination}, {created}',
         untimed: 'no time yet',
         undestined: 'no destination yet',
         expand: 'Expand draft',
@@ -1377,7 +1377,7 @@
       },
 
       draft: {
-        title: 'Entwurf: {time}, {destination}, {created}',
+        title: '{time}, {destination}, {created}',
         untimed: 'noch keine Zeit',
         undestined: 'noch kein Ziel',
         expand: 'Entwurf öffnen',
@@ -2093,6 +2093,7 @@
   let historyDepth = 0;
   let pendingTabHash = '';
   let pendingTabAfter = null;
+  let pendingLeaveHash = '';
 
   const TAB_HASHES = ['#/', '#/memories', '#/discover', '#/me'];
 
@@ -3445,10 +3446,16 @@
     else navigate('#/new');
   }
 
-  /** 普通单击：有草稿就浮出列表，列表已开则收起，没草稿直接新建。 */
+  /** 普通单击：有草稿就浮出列表，变回加号后再点则新建，没草稿直接新建。 */
   function handleCreateTap() {
     if (draftOverlayOpen) {
-      closeDraftOverlay();
+      if (draftLabelActive) {
+        // 「草稿」还亮着时再点一次：收起列表。
+        closeDraftOverlay();
+      } else {
+        // 标签已变回加号：丢开列表，创建全新草稿。
+        openFreshDraftPage();
+      }
       return;
     }
     if (sortedDrafts().length > 0) {
@@ -3619,20 +3626,15 @@
       return;
     }
     if (overlayCount > 0) {
+      // 等历史条目真正弹出后再改写地址，避免 history.go 与 hash 赋值互相打架。
       historyDepth = Math.max(0, historyDepth - overlayCount);
       suppressPopCount += 1;
+      pendingLeaveHash = hash;
       history.go(-overlayCount);
+      return;
     }
-    // 等压入的历史条目弹出完成后再跳转，避免落在浮层条目上。
-    const go = () => {
-      if (location.hash === hash) {
-        render();
-      } else {
-        location.hash = hash;
-      }
-    };
-    if (overlayCount > 0) setTimeout(go, 0);
-    else go();
+    if (location.hash === hash) render();
+    else location.hash = hash;
   }
 
   /** 草稿列表紧贴加号上方（留一点间隙），内容向上生长。 */
@@ -3644,8 +3646,8 @@
     // 离线提示条贴在导航栏上边，草稿浮层要再往上让一让。
     const banner = document.getElementById('app-status');
     const bannerHeight = banner && !banner.hidden ? banner.getBoundingClientRect().height : 0;
-    // 贴紧导航栏上边，避免底部留白。
-    const bottom = Math.round(window.innerHeight - navRect.top + bannerHeight);
+    // 贴着导航栏上边再让出一点，最后一条标题不要挨着「行程 / 回忆」。
+    const bottom = Math.round(window.innerHeight - navRect.top + bannerHeight) + 12;
     layer.style.top = 'auto';
     layer.style.bottom = `${bottom}px`;
     // 允许列表使用到状态栏以下的可用范围，避免浮层顶部钻到状态栏里。
@@ -6027,6 +6029,12 @@
         replaceHash(hash);
         render();
         runPendingTabAfter();
+      } else if (pendingLeaveHash) {
+        // 浮层历史已弹出，此时改写当前条目，不会再被异步回退弹回去。
+        const hash = pendingLeaveHash;
+        pendingLeaveHash = '';
+        if (location.hash !== hash) replaceHash(hash);
+        render();
       }
       return;
     }

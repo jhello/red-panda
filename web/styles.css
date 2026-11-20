@@ -883,11 +883,11 @@ img.seal {
   background: rgba(168, 58, 44, 0.16);
 }
 
-/* 点加号浮出草稿列表时，按钮临时显示「草稿」 */
+/* 点加号浮出草稿列表时，按钮临时显示「草稿」，字形与其他导航文字一致 */
 .nav-btn.nav-create.is-draft {
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
