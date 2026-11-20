@@ -5033,15 +5033,84 @@
       localStorage.setItem(STORAGE.user, JSON.stringify(state.user));
       renderOrigins();
     };
+
+    let openOriginSwipeEl = null;
+    let originSwipeTracking = null;
+    let suppressOriginSwipeClick = false;
+
+    const originSwipeRow = (el) => el?.querySelector?.('.origin-swipe-row') || null;
+    const originSwipeDelete = (el) => el?.querySelector?.('.origin-swipe-delete') || null;
+
+    function closeOriginSwipe(el = openOriginSwipeEl, animate = true) {
+      if (!el) return;
+      const row = originSwipeRow(el);
+      const del = originSwipeDelete(el);
+      if (row) {
+        if (!animate) row.style.transition = 'none';
+        row.style.transform = '';
+        if (!animate) { void row.offsetWidth; row.style.transition = ''; }
+      }
+      if (del) { del.style.opacity = ''; del.style.pointerEvents = ''; }
+      el.classList.remove('is-open');
+      if (openOriginSwipeEl === el) openOriginSwipeEl = null;
+    }
+
+    function openOriginSwipe(el) {
+      if (!el) return;
+      if (openOriginSwipeEl && openOriginSwipeEl !== el) closeOriginSwipe(openOriginSwipeEl);
+      const row = originSwipeRow(el);
+      const del = originSwipeDelete(el);
+      if (row) row.style.transform = 'translateX(-64px)';
+      if (del) { del.style.opacity = '1'; del.style.pointerEvents = 'auto'; }
+      el.classList.add('is-open');
+      openOriginSwipeEl = el;
+    }
+
+    function resetOriginSwipe() {
+      if (openOriginSwipeEl) {
+        const row = originSwipeRow(openOriginSwipeEl);
+        const del = originSwipeDelete(openOriginSwipeEl);
+        if (row) row.style.transform = '';
+        if (del) { del.style.opacity = ''; del.style.pointerEvents = ''; }
+        openOriginSwipeEl.classList.remove('is-open');
+        openOriginSwipeEl = null;
+      }
+      originSwipeTracking = null;
+    }
+
     const renderOrigins = () => {
+      resetOriginSwipe();
       const list = document.getElementById('origin-list');
       if (!list) return;
       const origins = currentOrigins();
-      list.innerHTML = origins.map((o, i) => `<div class="origin-item"><div class="origin-item-main"><strong>${esc(o.name || o.address || '—')}</strong><small>${esc(o.address || [o.district,o.city,o.province].filter(Boolean).join('') || '')}</small></div><button type="button" class="origin-delete" data-origin-delete="${i}" aria-label="删除">×</button></div>`).join('')
+      list.innerHTML = origins.map((o, i) => `<div class="origin-swipe" data-origin-index="${i}">
+        <button type="button" class="origin-swipe-delete" data-origin-delete="${i}" aria-label="${esc(t('draft.delete') || '删除')}">${esc(t('draft.delete') || '删除')}</button>
+        <div class="origin-swipe-row">
+          <div class="origin-item-main"><strong>${esc(o.name || o.address || '—')}</strong><small>${esc(o.address || [o.district,o.city,o.province].filter(Boolean).join('') || '')}</small></div>
+        </div>
+      </div>`).join('')
         || `<p class="origin-empty">${esc(t('settings.originEmpty') || '还没有常用地址')}</p>`;
     };
     renderOrigins();
-    document.getElementById('origin-list')?.addEventListener('click', async (e) => {
+
+    const originList = document.getElementById('origin-list');
+    originList?.addEventListener('click', async (e) => {
+      if (suppressOriginSwipeClick) {
+        if (e.target.closest('.origin-swipe')) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        suppressOriginSwipeClick = false;
+        return;
+      }
+      if (openOriginSwipeEl && !e.target.closest('.origin-swipe-delete')) {
+        if (!e.target.closest('.origin-swipe') || e.target.closest('.origin-swipe') !== openOriginSwipeEl) {
+          closeOriginSwipe(openOriginSwipeEl);
+        } else {
+          closeOriginSwipe(openOriginSwipeEl);
+        }
+        return;
+      }
       const btn = e.target.closest('[data-origin-delete]');
       if (!btn) return;
       const idx = Number(btn.dataset.originDelete);
@@ -5049,6 +5118,103 @@
       origins.splice(idx, 1);
       try { await saveOrigins(origins); } catch (err) { showError('origin-error', err.message); }
     });
+
+    const originSwipePoint = (event) => {
+      if (event.touches && event.touches[0]) return event.touches[0];
+      if (event.changedTouches && event.changedTouches[0]) return event.changedTouches[0];
+      return event;
+    };
+
+    const onOriginSwipeStart = (event) => {
+      const swipe = event.target.closest('.origin-swipe');
+      if (!swipe) {
+        if (openOriginSwipeEl) closeOriginSwipe(openOriginSwipeEl);
+        return;
+      }
+      if (event.target.closest('.origin-swipe-delete')) return;
+      if (openOriginSwipeEl && openOriginSwipeEl !== swipe) closeOriginSwipe(openOriginSwipeEl);
+      const pt = originSwipePoint(event);
+      originSwipeTracking = {
+        el: swipe,
+        startX: pt.clientX,
+        startY: pt.clientY,
+        dx: 0,
+        dy: 0,
+        moved: false,
+        locked: '',
+        startedOpen: swipe.classList.contains('is-open'),
+      };
+    };
+
+    const onOriginSwipeMove = (event) => {
+      if (!originSwipeTracking) return;
+      const pt = originSwipePoint(event);
+      const dx = pt.clientX - originSwipeTracking.startX;
+      const dy = pt.clientY - originSwipeTracking.startY;
+      originSwipeTracking.dx = dx;
+      originSwipeTracking.dy = dy;
+      if (!originSwipeTracking.locked) {
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+        originSwipeTracking.locked = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+      }
+      if (originSwipeTracking.locked !== 'x') return;
+      originSwipeTracking.moved = true;
+      if (event.cancelable) event.preventDefault();
+      const row = originSwipeRow(originSwipeTracking.el);
+      if (!row) return;
+      originSwipeTracking.el.classList.add('is-swiping');
+      const base = originSwipeTracking.startedOpen ? -64 : 0;
+      let offset = base + dx;
+      if (offset > 0) offset = 0;
+      if (offset < -72) offset = -72;
+      row.style.transform = `translateX(${offset}px)`;
+      const del = originSwipeDelete(originSwipeTracking.el);
+      if (del) {
+        const p = Math.max(0, Math.min(1, -offset / 64));
+        del.style.opacity = String(p);
+      }
+    };
+
+    const onOriginSwipeEnd = () => {
+      if (!originSwipeTracking) return;
+      const { el, dx, moved, locked, startedOpen } = originSwipeTracking;
+      const row = originSwipeRow(el);
+      const del = originSwipeDelete(el);
+      el.classList.remove('is-swiping');
+      if (row) row.style.transform = '';
+      if (del) del.style.opacity = '';
+      if (locked === 'x' && moved) {
+        const base = startedOpen ? -64 : 0;
+        const final = base + dx;
+        if (final < -32) openOriginSwipe(el);
+        else closeOriginSwipe(el);
+        suppressOriginSwipeClick = true;
+        setTimeout(() => { suppressOriginSwipeClick = false; }, 350);
+      } else if (!moved && startedOpen) {
+        closeOriginSwipe(el);
+        suppressOriginSwipeClick = true;
+        setTimeout(() => { suppressOriginSwipeClick = false; }, 350);
+      }
+      originSwipeTracking = null;
+    };
+
+    originList?.addEventListener('touchstart', onOriginSwipeStart, { passive: true });
+    originList?.addEventListener('touchmove', onOriginSwipeMove, { passive: false });
+    originList?.addEventListener('touchend', onOriginSwipeEnd);
+    originList?.addEventListener('touchcancel', onOriginSwipeEnd);
+    originList?.addEventListener('mousedown', onOriginSwipeStart);
+    originList?.addEventListener(
+      'click',
+      (e) => {
+        if (!suppressOriginSwipeClick) return;
+        if (e.target.closest('.origin-swipe')) {
+          e.preventDefault();
+          e.stopPropagation();
+          suppressOriginSwipeClick = false;
+        }
+      },
+      true,
+    );
 
     let tmap = null, tmapReady = null, pickerMapRatio = 0.55, myLocationMarker = null, currentPos = null;
     const MAP_RATIO_MIN = 0.3; // 列表最多 70%

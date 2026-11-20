@@ -1231,12 +1231,48 @@ html.is-offline .auth-screen {
 
 .origin-panel { padding: 4px 0; }
 .origin-address-list { display: grid; gap: 0; margin: 0 0 12px; }
+.origin-swipe { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); }
+.origin-swipe-delete {
+  position: absolute;
+  top: 6px;
+  right: 4px;
+  bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(168, 58, 44, 0.14);
+  color: var(--seal-dark);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+.origin-swipe.is-open .origin-swipe-delete { opacity: 1; pointer-events: auto; }
+.origin-swipe.is-swiping .origin-swipe-delete { transition: none; }
+.origin-swipe-delete:active { background: rgba(168, 58, 44, 0.26); }
+.origin-swipe-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 4px;
+  background: var(--bg);
+  transition: transform 0.18s ease;
+  will-change: transform;
+}
+.origin-swipe.is-swiping .origin-swipe-row { transition: none; }
+.origin-swipe.is-open .origin-swipe-row { transform: translateX(-64px); }
 .origin-item { display: flex; align-items: center; gap: 12px; padding: 14px 4px; border-bottom: 1px solid var(--line); }
 .origin-item-main { flex: 1; min-width: 0; display: grid; gap: 4px; }
 .origin-item-main strong { font-size: 15px; font-weight: 600; color: var(--ink); }
-.origin-item-main small { color: var(--muted); font-size: 12px; line-height: 1.4; }
-.origin-delete { flex: 0 0 32px; width: 32px; height: 32px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; }
-.origin-delete:hover { background: var(--surface-hover); color: var(--ink); }
+.origin-item-main small { color: var(--muted); font-size: 12px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .origin-empty { margin: 16px 4px; color: var(--muted); font-size: 13px; text-align: center; }
 
 /* 腾讯地图选点（仿微信发送位置） */
