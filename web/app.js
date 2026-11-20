@@ -2584,6 +2584,9 @@
         planState.locked = true;
         planState.draftId = draft.id || '';
         planState.draftCreatedAt = draft.createdAt || '';
+        // 背景跟着草稿走，重新打开时不能再随机换一张。
+        planState.backgroundIndex = backgroundIndexForDraft(draft);
+        planState.suggestion = draft.suggestion || planPlaceholders()[planState.backgroundIndex] || '';
       } else if (currentRouteName !== 'new') {
         resetPlanState();
       }
@@ -3669,6 +3672,7 @@
     error: '',
     items: [],
     suggestion: '',
+    backgroundIndex: -1,
     draftId: '',
     draftCreatedAt: '',
   };
@@ -3685,6 +3689,7 @@
     planState.error = '';
     planState.items = [];
     planState.suggestion = '';
+    planState.backgroundIndex = -1;
     planState.draftId = '';
     planState.draftCreatedAt = '';
   }
@@ -3708,10 +3713,24 @@
     return index;
   }
 
-  /** The hint inside the input box changes on every visit. */
-  function randomPlanPlaceholder() {
+  /**
+   * 旧草稿没有保存背景序号，按草稿 ID 推导出固定的一张，
+   * 这样首次重新打开也不会换来换去。
+   */
+  function backgroundIndexForDraft(draft) {
+    const saved = draft?.backgroundIndex;
+    if (Number.isInteger(saved) && saved >= 0 && saved < PLAN_BACKGROUNDS.length) return saved;
+    const seed = String(draft?.id || draft?.createdAt || '');
+    let hash = 0;
+    for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+    return hash % PLAN_BACKGROUNDS.length;
+  }
+
+  /** Pick a fresh hint together with the painting that goes with it. */
+  function pickPlanSuggestion() {
     const pool = planPlaceholders();
-    return pool[Math.floor(Math.random() * pool.length)];
+    const index = Math.floor(Math.random() * pool.length);
+    return { index, text: pool[index] || '' };
   }
 
   function planPlaceholders() {
@@ -3765,6 +3784,8 @@
       departTime: depart,
       destination,
       createdAt: planState.draftCreatedAt || new Date().toISOString(),
+      suggestion: planState.suggestion,
+      backgroundIndex: planState.backgroundIndex,
     };
     const list = loadDrafts().filter((entry) => entry.id !== draft.id);
     list.unshift(draft);
@@ -3792,9 +3813,16 @@
       plan.editingItem = null;
     }
 
-    const placeholder = esc(plan.suggestion || (plan.suggestion = randomPlanPlaceholder()));
-    const backgroundIndex = planPlaceholders().indexOf(plan.suggestion);
-    const background = backgroundIndex >= 0 ? PLAN_BACKGROUNDS[backgroundIndex] : '';
+    if (!plan.suggestion) {
+      const picked = pickPlanSuggestion();
+      plan.suggestion = picked.text;
+      plan.backgroundIndex = picked.index;
+    } else if (plan.backgroundIndex < 0) {
+      // 旧草稿没存背景序号，按当时的提示语找回对应那张。
+      plan.backgroundIndex = planPlaceholders().indexOf(plan.suggestion);
+    }
+    const placeholder = esc(plan.suggestion);
+    const background = PLAN_BACKGROUNDS[plan.backgroundIndex] || '';
 
     const tools = (withResend) => `
       <div class="plan-tools">
