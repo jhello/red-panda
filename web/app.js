@@ -628,6 +628,9 @@
           '你是「小熊猫」旅程应用的旅行向导。用亲切、简洁的中文和用户对话，帮他把零散的想法变成一段可出发的旅程：询问目的地、出发与返回时间、想做的事，并在信息足够时给出简短的行程建议。不要输出 JSON 或代码块，每次回复不超过 120 字。',
         send: '发送',
         replyHint: '回复小熊猫',
+        editTitle: '修改标题',
+        titlePlaceholder: '给旅程起个名字',
+        saveTitle: '保存标题',
         thinking: '我想想',
         chatNoReply: '小熊猫一时没想好，请再说一遍。',
         title: '旅程计划',
@@ -1098,6 +1101,9 @@
           'You are a travel guide for the Red Panda journey app. Chat warmly and briefly in the user’s language, helping turn scattered ideas into a trip: ask about the destination, departure and return dates, and what they want to do. When you have enough information, suggest a short itinerary. Never output JSON or code blocks. Keep each reply under 120 words.',
         send: 'Send',
         replyHint: 'Reply to Red Panda',
+        editTitle: 'Edit title',
+        titlePlaceholder: 'Name this journey',
+        saveTitle: 'Save title',
         thinking: 'Thinking…',
         chatNoReply: 'Red Panda could not think of a reply. Please try again.',
         title: 'Trip plan',
@@ -1571,6 +1577,9 @@
           'Du bist ein Reiseführer der Reise-App „Red Panda“. Sprich freundlich und kurz in der Sprache des Nutzers und hilf ihm, aus lose gesammelten Ideen eine Reise zu machen: Frage nach Ziel, Abreise- und Rückkehrdatum und geplanten Aktivitäten. Wenn genug Informationen da sind, schlage eine kurze Reiseroute vor. Keine JSON-Ausgabe, keine Codeblöcke, maximal 120 Wörter pro Antwort.',
         send: 'Senden',
         replyHint: 'Dem kleinen Panda antworten',
+        editTitle: 'Titel bearbeiten',
+        titlePlaceholder: 'Reise benennen',
+        saveTitle: 'Titel speichern',
         thinking: 'Ich überlege…',
         chatNoReply: 'Der kleine Panda hat gerade keine Antwort gefunden. Bitte versuche es noch einmal.',
         title: 'Reiseplan',
@@ -2613,6 +2622,7 @@
         // 背景跟着草稿走，重新打开时不能再随机换一张。
         planState.backgroundIndex = backgroundIndexForDraft(draft);
         planState.suggestion = draft.suggestion || planPlaceholders()[planState.backgroundIndex] || '';
+        planState.title = draft.title || '';
       } else if (currentRouteName !== 'new') {
         resetPlanState();
       }
@@ -3675,6 +3685,8 @@
     busy: false,
     items: [],
     suggestion: '',
+    title: '',
+    editingTitle: false,
     backgroundIndex: -1,
     draftId: '',
     draftCreatedAt: '',
@@ -3694,6 +3706,8 @@
     planState.busy = false;
     planState.items = [];
     planState.suggestion = '';
+    planState.title = '';
+    planState.editingTitle = false;
     planState.backgroundIndex = -1;
     planState.draftId = '';
     planState.draftCreatedAt = '';
@@ -3744,6 +3758,52 @@
     return list.length ? list : I18N.zh.plan.placeholders;
   }
 
+  const PLAN_TITLE_THEMES = [
+    '雪景', '雪山', '樱花', '花海', '海边', '海滩', '美食', '古镇', '古城', '博物馆',
+    '美术馆', '艺术', '徒步', '登山', '滑雪', '日落', '夜景', '温泉', '城堡', '森林',
+    '湖泊', '草原', '星空', '极光', '骑行', '露营', '购物', '咖啡', '酒庄', '雪',
+  ];
+
+  /** 从聊天内容和已提取的目的地里提炼一个短标题。 */
+  function autoPlanTitle() {
+    const items = Array.isArray(planState.items) ? planState.items : [];
+    const destinations = items
+      .map((item) => String(item?.destination ?? '').trim())
+      .filter(Boolean);
+    const userText = planState.messages
+      .filter((message) => message.role === 'user')
+      .map((message) => String(message.content || ''))
+      .join(' ') || String(planState.text || '');
+    const theme = PLAN_TITLE_THEMES.find((word) => userText.includes(word)) || '';
+
+    let base;
+    if (destinations.length) {
+      base = destinations.slice(0, 2).join('·');
+      if (destinations.length > 2) base += '等';
+    } else {
+      base = String(
+        planState.messages.find((message) => message.role === 'user')?.content || planState.text || '',
+      ).trim();
+      base = base
+        .replace(/^(?:我)?(?:想要|想|要|打算|计划|准备)/, '')
+        .replace(/^(?:去|到|前往|看看?|逛逛?|游)/, '')
+        .replace(/[，。！？!?].*$/, '')
+        .trim();
+      if (theme && base.endsWith(theme)) {
+        base = base.slice(0, -theme.length).replace(/的$/, '').trim();
+      }
+      if (base.length > 14) base = `${base.slice(0, 14)}…`;
+    }
+    if (!base) return t('plan.title');
+    const suffix = theme && !base.includes(theme) ? theme : '';
+    const title = `${base}${suffix}之旅`;
+    return title.length > 24 ? `${title.slice(0, 24)}…` : title;
+  }
+
+  function planTitle() {
+    return String(planState.title || '').trim() || autoPlanTitle();
+  }
+
   // 模型偶尔会凭今天的日期编出时间；只有用户真说了日期、星期、相对时间或时刻才保留。
   const PLAN_TIME_CUE = /(?:今天|明天|后天|大后天|昨天|前天|下周|上周|下个?月|这个?月|本月|月初|月底|周[一二三四五六日天]|星期[一二三四五六日天]|上午|下午|中午|晚上|凌晨|早上|\d{1,4}\s*[年/.-]\s*\d{1,2}|\d{1,2}\s*[月/]\s*\d{1,2}|\d{1,2}\s*月|\d{1,2}\s*[号日点]|\d{1,2}:\d{2}|(?:\d+|[一二三四五六七八九十两])\s*(?:天|晚|周|个月|小时)|tomorrow|next\s+(?:week|month)|on\s+(?:mon|tue|wed|thu|fri|sat|sun))/i;
 
@@ -3777,6 +3837,8 @@
   }
 
   function draftTitle(draft) {
+    const named = String(draft?.displayTitle || draft?.title || '').trim();
+    if (named) return named;
     const time = draft.departTime ? fmtDate(draft.departTime) : t('draft.untimed');
     const destination = draft.destination || t('draft.undestined');
     const created = draft.createdAt ? fmtDate(draft.createdAt) : '';
@@ -3806,6 +3868,8 @@
       destination,
       createdAt: planState.draftCreatedAt || new Date().toISOString(),
       suggestion: planState.suggestion,
+      title: planState.title,
+      displayTitle: planTitle(),
       backgroundIndex: planState.backgroundIndex,
     };
     const list = loadDrafts().filter((entry) => entry.id !== draft.id);
@@ -3936,10 +4000,20 @@
       const details = itemCards
         ? `<div class="plan-item-list">${itemCards}</div>`
         : `<p class="plan-empty">${t('plan.planEmpty')}</p>`;
+      const title = esc(planTitle());
+      const titleMarkup = plan.editingTitle
+        ? `<form class="plan-title-form" id="plan-title-form">
+            <input id="plan-title-input" maxlength="40" value="${title}" placeholder="${esc(t('plan.titlePlaceholder'))}" aria-label="${esc(t('plan.editTitle'))}" />
+            <button class="btn primary" type="submit">${t('plan.saveTitle')}</button>
+          </form>`
+        : `<button type="button" class="plan-title-edit" data-action="plan-edit-title" aria-label="${esc(t('plan.editTitle'))}">
+            <span>${title}</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L18 10l-4-4L4 16v4zm12-14 2-2a2 2 0 0 1 3 3l-2 2-3-3z" /></svg>
+          </button>`;
 
       return `
         <section class="card panel">
-          <h2 class="panel-title">${t('plan.title')}</h2>
+          <h2 class="panel-title">${titleMarkup}</h2>
           <p class="panel-sub">${t('plan.sub')}</p>
           ${details}
         </section>`;
@@ -3991,6 +4065,22 @@
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
         event.preventDefault();
         sendChatMessage();
+      }
+    });
+
+    const titleForm = document.getElementById('plan-title-form');
+    const titleInput = document.getElementById('plan-title-input');
+    titleForm?.addEventListener('submit', (event) => {
+      event.preventDefault();
+      planState.title = String(titleInput?.value ?? '').trim();
+      planState.editingTitle = false;
+      storeDraft();
+      renderNewJourney();
+    });
+    titleInput?.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        planState.editingTitle = false;
+        renderNewJourney();
       }
     });
 
@@ -4210,8 +4300,7 @@
   /** Save the extracted plan as a real journey in this device's IndexedDB. */
   async function savePlanAsJourney() {
     const items = Array.isArray(planState.items) ? planState.items : [];
-    const lastUserMessage = [...planState.messages].reverse().find((message) => message.role === 'user');
-    const name = (items[0]?.destination || lastUserMessage?.content || planState.text || '').trim().slice(0, 80);
+    const name = planTitle().trim().slice(0, 80);
     if (!name) {
       toast(t('new.errName'), 'error');
       return;
@@ -5858,6 +5947,11 @@
         break;
       case 'plan-tab':
         paintPlanTab(target.dataset.planTab === 'trip' ? 'trip' : 'chat');
+        break;
+      case 'plan-edit-title':
+        planState.editingTitle = true;
+        renderNewJourney();
+        document.getElementById('plan-title-input')?.focus();
         break;
       case 'plan-chat-retry':
         retryChatTurn();
