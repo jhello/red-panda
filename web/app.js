@@ -3953,7 +3953,7 @@
         </div>
         <div class="plan-pages" id="plan-pages">
           <section class="plan-page plan-chat-page" role="tabpanel" aria-label="${t('plan.tabChat')}">
-            <div class="chat-messages" id="chat-messages">${chatMarkup()}</div>
+            <div class="chat-messages plan-edge-fade" id="chat-messages">${chatMarkup()}</div>
             <form class="chat-composer" id="chat-form">
               <textarea id="chat-input" rows="1" maxlength="500" placeholder="${placeholder}" aria-label="${t('plan.send')}"></textarea>
               <button class="chat-send" type="submit" aria-label="${t('plan.send')}" ${plan.busy ? 'disabled' : ''}>
@@ -3962,14 +3962,14 @@
             </form>
           </section>
           <section class="plan-page plan-trip-page" role="tabpanel" aria-label="${t('plan.tabTrip')}">
-            <div class="plan-trip-inner">
-              <div class="plan-trip-content">${tripMarkup()}</div>
-              <div class="plan-actions">
-                <button class="btn primary block" type="button" data-action="plan-save">${t('plan.save')}</button>
-                <div class="row plan-actions-sub">
-                  <button class="btn ghost" type="button" data-action="plan-save-draft">${t('plan.saveDraft')}</button>
-                  <button class="btn danger" type="button" data-action="plan-delete-draft">${t('plan.deleteDraft')}</button>
-                </div>
+            <div class="plan-trip-scroll plan-edge-fade">
+              ${tripMarkup()}
+            </div>
+            <div class="plan-actions">
+              <button class="btn primary block" type="button" data-action="plan-save">${t('plan.save')}</button>
+              <div class="row plan-actions-sub">
+                <button class="btn ghost" type="button" data-action="plan-save-draft">${t('plan.saveDraft')}</button>
+                <button class="btn danger" type="button" data-action="plan-delete-draft">${t('plan.deleteDraft')}</button>
               </div>
             </div>
           </section>
