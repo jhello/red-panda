@@ -4089,7 +4089,8 @@
   function sendChatMessage() {
     if (planState.busy) return;
     const input = document.getElementById('chat-input');
-    const text = String(input?.value ?? '').trim();
+    // 输入框里的灰色提示语就是一条可直接发送的示例；点发送时把它当作真实输入。
+    const text = String(input?.value ?? '').trim() || String(planState.suggestion ?? '').trim();
     if (!text) {
       input?.focus();
       return;
