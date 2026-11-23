@@ -620,21 +620,26 @@
 
       plan: {
         placeholders: ['我想去雅典卫城', '下周去卢浮宫和橘园美术馆', '去看新天鹅堡的雪景'],
-        confirm: '先这样',
+        tabChat: '聊天',
+        tabTrip: '行程',
+        chatHello: '想去哪里？',
+        chatHelloSub: '和小熊猫聊聊你的旅行想法，它会帮你整理成行程。',
+        chatSystem:
+          '你是「小熊猫」旅程应用的旅行向导。用亲切、简洁的中文和用户对话，帮他把零散的想法变成一段可出发的旅程：询问目的地、出发与返回时间、想做的事，并在信息足够时给出简短的行程建议。不要输出 JSON 或代码块，每次回复不超过 120 字。',
+        send: '发送',
         thinking: '我想想',
-        edit: '编辑',
-        resend: '重发',
-        editTip: '改完点「确定」再出发。',
+        chatNoReply: '小熊猫一时没想好，请再说一遍。',
         title: '旅程计划',
-        sub: '大模型会从你的想法里挑出可以出发的目的地。',
+        sub: '小熊猫会从聊天里挑出可以出发的目的地。',
         fieldDestination: '目的地',
         fieldDepart: '出发时间',
         fieldReturn: '返回时间',
         planEmpty: '这次没有为你挑出合适的旅程。',
         editItem: '修改旅程',
-        editItemSub: '改完直接点「确定」即可。',
+        editItemSub: '改完直接点「保存修改」即可。',
         saveItem: '保存修改',
-        create: '创建旅程',
+        noContent: '还没有内容可以保存',
+        noDraft: '还没有草稿',
         save: '保存旅程',
         saveDraft: '保存草稿',
         deleteDraft: '删除草稿',
@@ -1084,21 +1089,26 @@
           'Louvre and the Musée de l’Orangerie next week',
           'To see the snow at Neuschwanstein Castle',
         ],
-        confirm: "Let's go with that",
+        tabChat: 'Chat',
+        tabTrip: 'Plan',
+        chatHello: 'Where to next?',
+        chatHelloSub: 'Tell Red Panda your travel ideas and it will turn them into a plan.',
+        chatSystem:
+          'You are a travel guide for the Red Panda journey app. Chat warmly and briefly in the user’s language, helping turn scattered ideas into a trip: ask about the destination, departure and return dates, and what they want to do. When you have enough information, suggest a short itinerary. Never output JSON or code blocks. Keep each reply under 120 words.',
+        send: 'Send',
         thinking: 'Thinking…',
-        edit: 'Edit',
-        resend: 'Resend',
-        editTip: 'Edit it and confirm again when you are ready.',
+        chatNoReply: 'Red Panda could not think of a reply. Please try again.',
         title: 'Trip plan',
-        sub: 'The model picks out places worth traveling to from your idea.',
+        sub: 'Red Panda picks out places worth traveling to from your chat.',
         fieldDestination: 'Destination',
         fieldDepart: 'Departure',
         fieldReturn: 'Return',
         planEmpty: "It didn't find a place worth traveling to this time.",
         editItem: 'Edit stop',
-        editItemSub: 'Make your changes, then confirm.',
+        editItemSub: 'Make your changes, then save them.',
         saveItem: 'Save changes',
-        create: 'Create journey',
+        noContent: 'Nothing to save yet',
+        noDraft: 'No draft yet',
         save: 'Save journey',
         saveDraft: 'Save draft',
         deleteDraft: 'Delete draft',
@@ -1551,21 +1561,26 @@
           'Louvre und Orangemuseum nächste Woche',
           'Um den Schnee am Neuschwanstein zu sehen',
         ],
-        confirm: 'So machen wir’s',
+        tabChat: 'Chat',
+        tabTrip: 'Reiseplan',
+        chatHello: 'Wohin geht es?',
+        chatHelloSub: 'Erzähl dem kleinen Panda von deinen Reiseideen – er macht einen Plan daraus.',
+        chatSystem:
+          'Du bist ein Reiseführer der Reise-App „Red Panda“. Sprich freundlich und kurz in der Sprache des Nutzers und hilf ihm, aus lose gesammelten Ideen eine Reise zu machen: Frage nach Ziel, Abreise- und Rückkehrdatum und geplanten Aktivitäten. Wenn genug Informationen da sind, schlage eine kurze Reiseroute vor. Keine JSON-Ausgabe, keine Codeblöcke, maximal 120 Wörter pro Antwort.',
+        send: 'Senden',
         thinking: 'Ich überlege…',
-        edit: 'Bearbeiten',
-        resend: 'Erneut senden',
-        editTip: 'Ändere es und bestätige dann erneut.',
+        chatNoReply: 'Der kleine Panda hat gerade keine Antwort gefunden. Bitte versuche es noch einmal.',
         title: 'Reiseplan',
-        sub: 'Das Modell schlägt Orte vor, die sich lohnen.',
+        sub: 'Der kleine Panda findet Ziele aus eurem Gespräch.',
         fieldDestination: 'Ziel',
         fieldDepart: 'Abreise',
         fieldReturn: 'Rückkehr',
         planEmpty: 'Diesmal hat es keinen passenden Ziel gefunden.',
         editItem: 'Stopp bearbeiten',
-        editItemSub: 'Änderungen übernehmen, dann bestätigen.',
+        editItemSub: 'Änderungen übernehmen und speichern.',
         saveItem: 'Änderungen speichern',
-        create: 'Reise erstellen',
+        noContent: 'Noch nichts zum Speichern',
+        noDraft: 'Noch kein Entwurf',
         save: 'Reise speichern',
         saveDraft: 'Entwurf speichern',
         deleteDraft: 'Entwurf löschen',
@@ -2585,7 +2600,11 @@
         resetPlanState();
         planState.text = draft.text || '';
         planState.items = Array.isArray(draft.items) ? draft.items : [];
-        planState.locked = true;
+        planState.messages = Array.isArray(draft.messages)
+          ? draft.messages.map((message) => ({ role: message.role, content: message.content }))
+          : draft.text
+            ? [{ role: 'user', content: draft.text }]
+            : [];
         planState.draftId = draft.id || '';
         planState.draftCreatedAt = draft.createdAt || '';
         // 背景跟着草稿走，重新打开时不能再随机换一张。
@@ -3646,35 +3665,38 @@
     ],
   };
 
+  let planTabProgrammaticScroll = false;
+
   const planState = {
     text: '',
-    locked: false,
-    editing: false,
+    messages: [],
     editingItem: null,
     busy: false,
-    error: '',
     items: [],
     suggestion: '',
     backgroundIndex: -1,
     draftId: '',
     draftCreatedAt: '',
+    tab: 'chat',
+    // 每次新建或发送都递增，离开页面后丢弃还在路上的 AI 回复。
+    turn: 0,
   };
 
   /** Full-screen painting behind the plan page, in the same order as the suggestions. */
   const PLAN_BACKGROUNDS = ['paintings/athens.jpg', 'paintings/louvre.jpg', 'paintings/neuschwanstein.jpg'];
 
   function resetPlanState() {
+    planState.turn += 1;
     planState.text = '';
-    planState.locked = false;
-    planState.editing = false;
+    planState.messages = [];
     planState.editingItem = null;
     planState.busy = false;
-    planState.error = '';
     planState.items = [];
     planState.suggestion = '';
     planState.backgroundIndex = -1;
     planState.draftId = '';
     planState.draftCreatedAt = '';
+    planState.tab = 'chat';
   }
 
   let currentRouteName = '';
@@ -3762,6 +3784,9 @@
     const draft = {
       id: planState.draftId,
       text: planState.text,
+      messages: planState.messages
+        .filter((message) => !message.error)
+        .map((message) => ({ role: message.role, content: message.content })),
       items,
       departTime: depart,
       destination,
@@ -3789,7 +3814,6 @@
 
   function renderNewJourney() {
     const plan = planState;
-    const isDraftEdit = Boolean(planState.draftId);
 
     if (plan.editingItem !== null && plan.items[plan.editingItem] == null) {
       plan.editingItem = null;
@@ -3806,90 +3830,76 @@
     const placeholder = esc(plan.suggestion);
     const background = PLAN_BACKGROUNDS[plan.backgroundIndex] || '';
 
-    const tools = (withResend) => `
-      <div class="plan-tools">
-        <button class="icon-btn" data-action="plan-edit" aria-label="${t('plan.edit')}">✎</button>
-        ${
-          withResend
-            ? `<button class="icon-btn" data-action="plan-resend" aria-label="${t('plan.resend')}">↻</button>`
-            : ''
-        }
-      </div>`;
+    const chatMarkup = () => {
+      const parts = [];
+      if (!plan.messages.length && !plan.busy) {
+        parts.push(`
+          <div class="chat-empty">
+            <img class="chat-logo" src="logo.png" alt="" />
+            <h2>${t('plan.chatHello')}</h2>
+            <p>${t('plan.chatHelloSub')}</p>
+          </div>`);
+      }
+      plan.messages.forEach((message) => {
+        const isUser = message.role === 'user';
+        parts.push(`
+          <div class="chat-msg ${isUser ? 'is-user' : 'is-assistant'}${message.error ? ' is-error' : ''}">
+            ${isUser ? '' : '<img class="chat-avatar" src="logo.png" alt="" />'}
+            <div class="chat-bubble">${esc(message.content)}${
+              message.error
+                ? `<button class="chat-retry link" type="button" data-action="plan-chat-retry">${t('common.retry')}</button>`
+                : ''
+            }</div>
+          </div>`);
+      });
+      if (plan.busy) {
+        parts.push(`
+          <div class="chat-msg is-assistant is-typing" aria-label="${t('plan.thinking')}">
+            <img class="chat-avatar" src="logo.png" alt="" />
+            <div class="chat-bubble"><span class="chat-dots"><i></i><i></i><i></i></span></div>
+          </div>`);
+      }
+      return parts.join('');
+    };
 
-    let body;
-    if (plan.editing) {
-      body = `
-        <form id="plan-form" novalidate>
-          <div class="plan-card">
-            <div class="plan-card-top">
-              <input id="plan-input" maxlength="300" placeholder="${placeholder}" value="${esc(plan.text)}" />
+    const tripMarkup = () => {
+      if (plan.editingItem !== null) {
+        const item = plan.items[plan.editingItem];
+        const periods = PLAN_PERIODS[getLocale()] || PLAN_PERIODS.zh;
+        const departIndex = periodIndexForHour(periods, Number(localPlanTime(item?.departTime).slice(11, 13) || 9));
+        const returnIndex = periodIndexForHour(periods, Number(localPlanTime(item?.returnTime).slice(11, 13) || 9));
+        const periodOptions = periods
+          .map((p, i) => `<option value="${i}" ${i === departIndex ? 'selected' : ''}>${esc(p.label)}</option>`)
+          .join('');
+        const periodOptionsReturn = periods
+          .map((p, i) => `<option value="${i}" ${i === returnIndex ? 'selected' : ''}>${esc(p.label)}</option>`)
+          .join('');
+        return `
+          <section class="card panel">
+            <h2 class="panel-title">${t('plan.editItem')}</h2>
+            <p class="panel-sub">${t('plan.editItemSub')}</p>
+            <div class="form">
+              <label class="field">
+                <span>${t('plan.fieldDestination')}</span>
+                <input id="plan-item-destination" maxlength="80" value="${esc(item?.destination ?? '')}" />
+              </label>
+              <label class="field">
+                <span>${t('plan.fieldDepart')}</span>
+                <input type="datetime-local" id="plan-item-depart" value="${esc(localPlanTime(item?.departTime))}" />
+                <select class="plan-period" id="plan-item-depart-period">${periodOptions}</select>
+              </label>
+              <label class="field">
+                <span>${t('plan.fieldReturn')}</span>
+                <input type="datetime-local" id="plan-item-return" value="${esc(localPlanTime(item?.returnTime))}" />
+                <select class="plan-period" id="plan-item-return-period">${periodOptionsReturn}</select>
+              </label>
             </div>
-            <div class="plan-card-bottom">
-              <button class="plan-card-btn" type="submit">${t('plan.confirm')}</button>
-            </div>
-          </div>
-          <p class="plan-tip">${t('plan.editTip')}</p>
-        </form>`;
-    } else if (plan.editingItem !== null) {
-      const item = plan.items[plan.editingItem];
-      const periods = PLAN_PERIODS[getLocale()] || PLAN_PERIODS.zh;
-      const departIndex = periodIndexForHour(periods, Number(localPlanTime(item?.departTime).slice(11, 13) || 9));
-      const returnIndex = periodIndexForHour(periods, Number(localPlanTime(item?.returnTime).slice(11, 13) || 9));
-      const periodOptions = periods
-        .map((p, i) => `<option value="${i}" ${i === departIndex ? 'selected' : ''}>${esc(p.label)}</option>`)
-        .join('');
-      const periodOptionsReturn = periods
-        .map((p, i) => `<option value="${i}" ${i === returnIndex ? 'selected' : ''}>${esc(p.label)}</option>`)
-        .join('');
-      body = `
-        <section class="card panel">
-          <h2 class="panel-title">${t('plan.editItem')}</h2>
-          <p class="panel-sub">${t('plan.editItemSub')}</p>
-          <div class="form">
-            <label class="field">
-              <span>${t('plan.fieldDestination')}</span>
-              <input id="plan-item-destination" maxlength="80" value="${esc(item?.destination ?? '')}" />
-            </label>
-            <label class="field">
-              <span>${t('plan.fieldDepart')}</span>
-              <input type="datetime-local" id="plan-item-depart" value="${esc(localPlanTime(item?.departTime))}" />
-              <select class="plan-period" id="plan-item-depart-period">${periodOptions}</select>
-            </label>
-            <label class="field">
-              <span>${t('plan.fieldReturn')}</span>
-              <input type="datetime-local" id="plan-item-return" value="${esc(localPlanTime(item?.returnTime))}" />
-              <select class="plan-period" id="plan-item-return-period">${periodOptionsReturn}</select>
-            </label>
-          </div>
-          <button class="btn primary block" type="button" id="plan-item-save">${t('plan.saveItem')}</button>
-        </section>`;
-    } else if (plan.busy) {
-      body = `
-        <div class="plan-card">
-          <div class="plan-card-top">
-            <p class="plan-card-text">${esc(plan.text)}</p>
-            ${tools(true)}
-          </div>
-          <div class="plan-card-bottom">
-            <button class="plan-card-btn" type="button" disabled>
-              <span>${t('plan.thinking')}</span>
-              <span class="plan-spin" aria-hidden="true"></span>
-            </button>
-          </div>
-        </div>
-        ${plan.error ? `<p class="form-error">${esc(plan.error)}</p>` : ''}`;
-    } else if (plan.items.length > 0) {
-      body = `
-        <div class="plan-card">
-          <div class="plan-card-top">
-            <p class="plan-card-text">${esc(plan.text)}</p>
-            ${tools(true)}
-          </div>
-        </div>
-        <section class="card panel is-rising">
-          <h2 class="panel-title">${t('plan.title')}</h2>
-          <p class="panel-sub">${t('plan.sub')}</p>
-          <table class="plan-table">
+            <button class="btn primary block" type="button" id="plan-item-save">${t('plan.saveItem')}</button>
+          </section>`;
+      }
+
+      const details = plan.items.length
+        ? `<table class="plan-table">
             <thead>
               <tr>
                 <th>${t('plan.fieldDestination')}</th>
@@ -3909,58 +3919,66 @@
                 )
                 .join('')}
             </tbody>
-          </table>
-        </section>
-        <div class="plan-actions${isDraftEdit ? ' is-draft-edit' : ''}">
-          ${
-            isDraftEdit
-              ? `
-          <button class="btn primary block" type="button" data-action="plan-save">${t('plan.save')}</button>
-          <div class="row plan-actions-sub">
-            <button class="btn ghost" type="button" data-action="plan-save-draft">${t('plan.saveDraft')}</button>
-            <button class="btn danger" type="button" data-action="plan-delete-draft">${t('plan.deleteDraft')}</button>
-          </div>`
-              : `
-          <div class="row">
-            <button class="btn primary" type="button" data-action="plan-save">${t('plan.save')}</button>
-            <button class="btn ghost" type="button" data-action="plan-save-draft">${t('plan.saveDraft')}</button>
-          </div>`
-          }
-        </div>
-        ${plan.error ? `<p class="form-error">${esc(plan.error)}</p>` : ''}`;
-    } else if (plan.locked) {
-      body = `
-        <div class="plan-card">
-          <div class="plan-card-top">
-            <p class="plan-card-text">${esc(plan.text)}</p>
-            ${tools(false)}
-          </div>
-          <div class="plan-card-bottom">
-            <button class="plan-card-btn" type="button" data-action="plan-resend">${t('plan.resend')}</button>
-          </div>
-        </div>
-        ${plan.error ? `<p class="form-error">${esc(plan.error)}</p>` : ''}`;
-    } else {
-      body = `
-        <div class="plan-card">
-          <div class="plan-card-top">
-            <input id="plan-input" maxlength="300" placeholder="${placeholder}" value="${esc(plan.text)}" />
-          </div>
-          <div class="plan-card-bottom">
-            <button class="plan-card-btn" type="button" data-action="plan-confirm">${t('plan.confirm')}</button>
-          </div>
-        </div>`;
-    }
+          </table>`
+        : `<p class="plan-empty">${t('plan.planEmpty')}</p>`;
+
+      return `
+        <section class="card panel">
+          <h2 class="panel-title">${t('plan.title')}</h2>
+          <p class="panel-sub">${t('plan.sub')}</p>
+          ${details}
+        </section>`;
+    };
 
     app.innerHTML = `
       <div class="screen plan-screen${background ? ' has-bg' : ''}"${background ? ` style="--plan-bg: url('${background}')"` : ''}>
-        <main class="page">
-          ${body}
-        </main>
+        <div class="plan-switch" id="plan-switch" data-active="${plan.tab}" role="tablist" aria-label="${t('plan.tabChat')} / ${t('plan.tabTrip')}">
+          <span class="plan-switch-thumb" aria-hidden="true"></span>
+          <button type="button" role="tab" class="${plan.tab === 'chat' ? 'active' : ''}" aria-selected="${plan.tab === 'chat'}" data-action="plan-tab" data-plan-tab="chat">${t('plan.tabChat')}</button>
+          <button type="button" role="tab" class="${plan.tab === 'trip' ? 'active' : ''}" aria-selected="${plan.tab === 'trip'}" data-action="plan-tab" data-plan-tab="trip">${t('plan.tabTrip')}</button>
+        </div>
+        <div class="plan-pages" id="plan-pages">
+          <section class="plan-page plan-chat-page" role="tabpanel" aria-label="${t('plan.tabChat')}">
+            <div class="chat-messages" id="chat-messages">${chatMarkup()}</div>
+            <form class="chat-composer" id="chat-form">
+              <textarea id="chat-input" rows="1" maxlength="500" placeholder="${placeholder}" aria-label="${t('plan.send')}"></textarea>
+              <button class="chat-send" type="submit" aria-label="${t('plan.send')}" ${plan.busy ? 'disabled' : ''}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg>
+              </button>
+            </form>
+          </section>
+          <section class="plan-page plan-trip-page" role="tabpanel" aria-label="${t('plan.tabTrip')}">
+            <div class="plan-trip-inner">
+              <div class="plan-trip-content">${tripMarkup()}</div>
+              <div class="plan-actions">
+                <button class="btn primary block" type="button" data-action="plan-save">${t('plan.save')}</button>
+                <div class="row plan-actions-sub">
+                  <button class="btn ghost" type="button" data-action="plan-save-draft">${t('plan.saveDraft')}</button>
+                  <button class="btn danger" type="button" data-action="plan-delete-draft">${t('plan.deleteDraft')}</button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
       </div>`;
 
-    const form = document.getElementById('plan-form');
-    const input = document.getElementById('plan-input');
+    const chatForm = document.getElementById('chat-form');
+    const chatInput = document.getElementById('chat-input');
+    chatForm?.addEventListener('submit', (event) => {
+      event.preventDefault();
+      sendChatMessage();
+    });
+    chatInput?.addEventListener('input', () => {
+      chatInput.style.height = 'auto';
+      chatInput.style.height = `${Math.min(chatInput.scrollHeight, 120)}px`;
+    });
+    chatInput?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        sendChatMessage();
+      }
+    });
+
     const itemSaveButton = document.getElementById('plan-item-save');
     const itemDestination = document.getElementById('plan-item-destination');
     const itemDepart = document.getElementById('plan-item-depart');
@@ -3968,44 +3986,9 @@
     const itemReturn = document.getElementById('plan-item-return');
     const itemReturnPeriod = document.getElementById('plan-item-return-period');
 
-    if (form) {
-      form.addEventListener('submit', (event) => {
-        event.preventDefault();
-        confirmPlanInput();
-      });
-    }
-    if (input) input.addEventListener('input', () => {
-      planState.text = input.value;
-    });
-
-    const bindTimeField = (inputEl, periodEl, key) => {
-      if (!inputEl || !periodEl) return;
-      const saveValue = (value) => {
-        const itemIndex = planState.editingItem;
-        const item = itemIndex !== null ? planState.items[itemIndex] : null;
-        if (item) planState.items[itemIndex] = { ...item, [key]: value };
-      };
-      inputEl.addEventListener('change', () => {
-        const value = inputEl.value;
-        const hour = value ? Number(value.slice(11, 13) || 9) : 9;
-        const periods = PLAN_PERIODS[getLocale()] || PLAN_PERIODS.zh;
-        periodEl.value = String(periodIndexForHour(periods, hour));
-        saveValue(value);
-      });
-      periodEl.addEventListener('change', () => {
-        const value = inputEl.value;
-        if (!value) return;
-        const period = PLAN_PERIODS[getLocale()] || PLAN_PERIODS.zh;
-        const periodDef = period[Number(periodEl.value)];
-        if (!periodDef) return;
-        const next = `${value.slice(0, 10)}T${String(periodDef.hour).padStart(2, '0')}:${value.slice(14, 16) || '00'}`;
-        inputEl.value = next;
-        saveValue(next);
-      });
-    };
-
     if (itemSaveButton) itemSaveButton.addEventListener('click', () => {
       planState.editingItem = null;
+      storeDraft();
       renderNewJourney();
     });
     if (itemDestination) itemDestination.addEventListener('change', () => {
@@ -4013,9 +3996,80 @@
       const item = itemIndex !== null ? planState.items[itemIndex] : null;
       if (item) planState.items[itemIndex] = { ...item, destination: itemDestination.value };
     });
-    bindTimeField(itemDepart, itemDepartPeriod, 'departTime');
-    bindTimeField(itemReturn, itemReturnPeriod, 'returnTime');
+    bindPlanTimeField(itemDepart, itemDepartPeriod, 'departTime');
+    bindPlanTimeField(itemReturn, itemReturnPeriod, 'returnTime');
+
+    const pages = document.getElementById('plan-pages');
+    if (pages) {
+      let settleTimer = null;
+      pages.addEventListener('scroll', () => {
+        if (planTabProgrammaticScroll) return;
+        clearTimeout(settleTimer);
+        settleTimer = setTimeout(() => {
+          const next = pages.scrollLeft > pages.clientWidth / 2 ? 'trip' : 'chat';
+          if (planState.tab !== next) paintPlanTab(next, false);
+        }, 80);
+      }, { passive: true });
+    }
+    paintPlanTab(plan.tab, false);
     renderNavBar();
+  }
+
+  function bindPlanTimeField(inputEl, periodEl, key) {
+    if (!inputEl || !periodEl) return;
+    const saveValue = (value) => {
+      const itemIndex = planState.editingItem;
+      const item = itemIndex !== null ? planState.items[itemIndex] : null;
+      if (item) planState.items[itemIndex] = { ...item, [key]: value };
+    };
+    inputEl.addEventListener('change', () => {
+      const value = inputEl.value;
+      const hour = value ? Number(value.slice(11, 13) || 9) : 9;
+      const periods = PLAN_PERIODS[getLocale()] || PLAN_PERIODS.zh;
+      periodEl.value = String(periodIndexForHour(periods, hour));
+      saveValue(value);
+    });
+    periodEl.addEventListener('change', () => {
+      const value = inputEl.value;
+      if (!value) return;
+      const periods = PLAN_PERIODS[getLocale()] || PLAN_PERIODS.zh;
+      const period = periods[Number(periodEl.value)];
+      if (!period) return;
+      const next = `${value.slice(0, 10)}T${String(period.hour).padStart(2, '0')}:${value.slice(14, 16) || '00'}`;
+      inputEl.value = next;
+      saveValue(next);
+    });
+  }
+
+  /** Keep the top slider and the horizontally swiped pages in sync. */
+  function paintPlanTab(tab, scroll = true) {
+    planState.tab = tab;
+    const switcher = document.getElementById('plan-switch');
+    if (switcher) {
+      switcher.dataset.active = tab;
+      switcher.querySelectorAll('[data-plan-tab]').forEach((button) => {
+        const active = button.dataset.planTab === tab;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-selected', String(active));
+      });
+    }
+    const pages = document.getElementById('plan-pages');
+    if (scroll && pages) {
+      planTabProgrammaticScroll = true;
+      pages.scrollTo({ left: (tab === 'trip' ? 1 : 0) * pages.clientWidth, behavior: 'smooth' });
+      setTimeout(() => {
+        planTabProgrammaticScroll = false;
+      }, 500);
+    }
+    if (tab === 'chat') scrollChatToBottom();
+  }
+
+  function scrollChatToBottom() {
+    const box = document.getElementById('chat-messages');
+    if (!box) return;
+    requestAnimationFrame(() => {
+      box.scrollTop = box.scrollHeight;
+    });
   }
 
   function localPlanTime(value) {
@@ -4023,73 +4077,102 @@
     return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text) ? text.slice(0, 16) : '';
   }
 
-  function confirmPlanInput() {
-    // An empty input falls back to the suggestion shown in the placeholder.
-    const text = (planState.text || planState.suggestion || '').trim();
-    if (!text) return;
-
-    // 原地过渡：输入框就地变成固化文字，按钮变成「我想想」
-    const input = document.getElementById('plan-input');
-    if (input) {
-      const frozen = document.createElement('p');
-      frozen.className = 'plan-card-text is-rising';
-      frozen.textContent = text;
-      input.replaceWith(frozen);
-    }
-    const button = document.querySelector('.plan-card-btn');
-    if (button) {
-      button.innerHTML = `<span>${t('plan.thinking')}</span><span class="plan-spin" aria-hidden="true"></span>`;
-      button.disabled = true;
-      button.removeAttribute('data-action');
-    }
-
-    planState.text = text;
-    planState.locked = true;
-    planState.editing = false;
-    planState.editingItem = null;
-    planState.error = '';
-    planState.items = [];
-    storeDraft();
-
-    // 等过渡走完再发请求，避免画面跳动
-    setTimeout(() => runPlan(text), 360);
-  }
-
-  async function runPlan(text) {
-    const prompt = String(text ?? '').trim();
-    if (!prompt) return;
-    // AI needs the server; check first so the button does not spin for 90s.
-    if (!(await ensureServer())) {
-      planState.busy = false;
-      planState.error = t('offline.error');
-      renderNewJourney();
+  function sendChatMessage() {
+    if (planState.busy) return;
+    const input = document.getElementById('chat-input');
+    const text = String(input?.value ?? '').trim();
+    if (!text) {
+      input?.focus();
       return;
     }
+    planState.turn += 1;
+    planState.messages.push({ role: 'user', content: text });
+    planState.text = text;
+    planState.editingItem = null;
     planState.busy = true;
-    planState.error = '';
-    renderNewJourney();
-    let items = [];
-    try {
-      const data = await api('/api/ai/journey-plan', {
-        method: 'POST',
-        body: { prompt },
-        timeout: 90000,
-      });
-      items = Array.isArray(data?.items) ? data.items : [];
-    } catch (error) {
-      items = [];
-      planState.error = error.message;
+    if (input) {
+      input.value = '';
+      input.style.height = 'auto';
     }
-    planState.items = items;
-    planState.busy = false;
-    if (items.length > 0) storeDraft();
+    storeDraft();
     renderNewJourney();
+    runChatTurn();
   }
 
-  /** Persist the current plan back to its draft without leaving the page. */
+  function retryChatTurn() {
+    if (planState.busy) return;
+    planState.turn += 1;
+    const last = planState.messages[planState.messages.length - 1];
+    if (last?.error) planState.messages.pop();
+    planState.busy = true;
+    renderNewJourney();
+    runChatTurn();
+  }
+
+  async function runChatTurn() {
+    const turn = planState.turn;
+    // AI needs the server; check first so the bubbles do not spin for 90s.
+    if (!(await ensureServer())) {
+      finishChatTurn({ error: t('offline.error') }, turn);
+      return;
+    }
+
+    const history = planState.messages
+      .filter((message) => !message.error && (message.role === 'user' || message.role === 'assistant'))
+      .slice(-20)
+      .map((message) => ({ role: message.role, content: message.content }));
+    // The plan extractor only needs the traveller's own words, not the guide's replies.
+    const planPrompt = planState.messages
+      .filter((message) => message.role === 'user')
+      .map((message) => message.content)
+      .join('\n')
+      .slice(-500);
+
+    const [chatResult, planResult] = await Promise.allSettled([
+      api('/api/ai/chat', {
+        method: 'POST',
+        body: { system: t('plan.chatSystem'), messages: history },
+        timeout: 90000,
+      }),
+      api('/api/ai/journey-plan', {
+        method: 'POST',
+        body: { prompt: planPrompt },
+        timeout: 90000,
+      }),
+    ]);
+
+    const changes = {};
+    if (chatResult.status === 'fulfilled') {
+      const reply = String(chatResult.value?.content ?? '').trim();
+      if (reply) changes.reply = reply;
+      else changes.error = t('plan.chatNoReply');
+    } else {
+      changes.error = chatResult.reason?.message || t('offline.error');
+    }
+    if (planResult.status === 'fulfilled' && Array.isArray(planResult.value?.items)) {
+      changes.items = planResult.value.items;
+    }
+    finishChatTurn(changes, turn);
+  }
+
+  function finishChatTurn({ reply = '', error = '', items = null } = {}, turn) {
+    // 用户已经离开或重新发送过，旧回复就不要再写回当前计划。
+    if (turn !== planState.turn) return;
+    if (reply || error) {
+      planState.messages.push({ role: 'assistant', content: reply || error, error: Boolean(error) });
+    }
+    if (items) planState.items = items;
+    planState.busy = false;
+    storeDraft();
+    if (currentRouteName === 'new') renderNewJourney();
+  }
+
+  /** Persist the current chat and plan back to its draft without leaving the page. */
   function savePlanAsDraft() {
-    const items = Array.isArray(planState.items) ? planState.items : [];
-    if (!items.length) return;
+    if (!planState.messages.length && !planState.items.length) {
+      toast(t('plan.noContent'), 'error');
+      return;
+    }
     storeDraft();
     toast(t('plan.draftSavedToast'));
   }
@@ -4097,8 +4180,8 @@
   /** Save the extracted plan as a real journey in this device's IndexedDB. */
   async function savePlanAsJourney() {
     const items = Array.isArray(planState.items) ? planState.items : [];
-    if (!items.length) return;
-    const name = (items[0]?.destination || planState.text || '').trim().slice(0, 80);
+    const lastUserMessage = [...planState.messages].reverse().find((message) => message.role === 'user');
+    const name = (items[0]?.destination || lastUserMessage?.content || planState.text || '').trim().slice(0, 80);
     if (!name) {
       toast(t('new.errName'), 'error');
       return;
@@ -5743,8 +5826,11 @@
       case 'edit':
         if (state.currentJourney) renderJourneyEdit(state.currentJourney);
         break;
-      case 'plan-confirm':
-        confirmPlanInput();
+      case 'plan-tab':
+        paintPlanTab(target.dataset.planTab === 'trip' ? 'trip' : 'chat');
+        break;
+      case 'plan-chat-retry':
+        retryChatTurn();
         break;
       case 'plan-save':
         savePlanAsJourney();
@@ -5753,10 +5839,14 @@
         savePlanAsDraft();
         break;
       case 'plan-delete-draft':
+        if (!planState.draftId) {
+          toast(t('plan.noDraft'));
+          break;
+        }
         removeDraft(planState.draftId);
         resetPlanState();
         toast(t('plan.draftDeletedToast'));
-        navigateTab('#/');
+        renderNewJourney();
         break;
       case 'plan-draft': {
         const draft = loadDrafts().find((entry) => entry.id === target.dataset.draftId);
@@ -5778,18 +5868,8 @@
         refreshDraftList();
         break;
       }
-      case 'plan-edit':
-        planState.editing = true;
-        planState.editingItem = null;
-        planState.error = '';
-        renderNewJourney();
-        break;
-      case 'plan-resend':
-        runPlan(planState.text);
-        break;
       case 'plan-item-edit':
         planState.editingItem = Number(target.dataset.planIndex || 0);
-        planState.error = '';
         renderNewJourney();
         break;
       case 'cancel-edit':
@@ -6051,6 +6131,14 @@
     closeDraftOverlay();
   });
 
+  // 软键盘或横竖屏改变可用高度时，保持横向分页位置与顶部滑块一致。
+  window.addEventListener('resize', () => {
+    if (currentRouteName !== 'new') return;
+    const pages = document.getElementById('plan-pages');
+    if (!pages) return;
+    pages.scrollLeft = (planState.tab === 'trip' ? 1 : 0) * pages.clientWidth;
+  });
+
   window.__redPandaSystemBack = () => {
     const route = parseRoute();
     if (route.name === 'settings') {
@@ -6060,6 +6148,11 @@
       return true;
     }
     if (route.name === 'new') {
+      // 行程子页面先退回聊天子页面，再退出创建页。
+      if (planState.tab === 'trip') {
+        paintPlanTab('chat');
+        return true;
+      }
       // 创建草稿页没有底部导航，也不该退出应用：回到最近的主页面。
       navigateTab(lastTabHash);
       return true;

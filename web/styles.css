@@ -1518,141 +1518,349 @@ html.is-offline .auth-screen {
 
 /* ---- journey plan (create journey) -------------------------------------- */
 
-input#plan-input::placeholder {
-  color: var(--placeholder-soft);
-}
-
-/* 固化后的文字向上升起 */
-.plan-card-text.is-rising,
-.panel.is-rising {
-  animation: plan-rise 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
-}
-
-@keyframes plan-rise {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* 输入与「确定」合成同一个圆角矩形的上下两部分 */
-.plan-card {
-  display: grid;
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  background: var(--surface-input);
-  box-shadow: var(--shadow-soft);
+.plan-screen {
+  position: relative;
+  isolation: isolate;
+  /* 背景一直铺到状态栏下面；负外边距抵消 #app 的顶部避让，内容高度保持不变 */
+  margin-top: calc(-1 * var(--top-inset));
+  padding-top: var(--top-inset);
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  background: var(--paper);
 }
 
-.plan-card:focus-within {
-  border-color: rgba(168, 58, 44, 0.5);
-  box-shadow: 0 0 0 4px rgba(168, 58, 44, 0.09);
+/* 随机提示对应的那一幅油画铺满整个页面；薄纱保证文字不被画面吃掉 */
+.plan-screen.has-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: linear-gradient(var(--plan-bg-veil-top), var(--plan-bg-veil-bottom)), var(--plan-bg);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
 }
 
-.plan-card + .plan-card,
-.plan-card + .card,
-.card + .plan-card {
-  margin-top: 16px;
-}
-
-.plan-card-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px 0 16px;
-  min-height: 58px;
-}
-
-.plan-card-top input {
-  flex: 1;
-  min-width: 0;
-  padding: 16px 0;
-  border: 0;
-  background: transparent;
-  font-size: 16px;
-  line-height: 1.5;
-  outline: none;
-}
-
-.plan-card-text {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  padding: 16px 0;
-  color: var(--ink-soft);
-  font-size: 16px;
-  line-height: 1.7;
-  overflow-wrap: anywhere;
-}
-
-.plan-tools {
-  display: flex;
+/* 顶部「聊天 / 行程」切换滑块，滑块随当前子页面平移 */
+.plan-switch {
+  position: relative;
+  z-index: 2;
   flex: 0 0 auto;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 10px 16px 6px;
+  padding: 4px;
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 999px;
+  background: var(--glass-bar-strong);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-soft);
 }
 
-.plan-tools .icon-btn {
-  width: 40px;
-  height: 40px;
+.plan-switch-thumb {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: 0 2px 10px rgba(72, 55, 32, 0.14);
+  transition: transform 0.24s cubic-bezier(0.22, 0.61, 0.36, 1);
+  pointer-events: none;
 }
 
-.plan-card-bottom {
-  border-top: 1px solid var(--line);
+.plan-switch[data-active="trip"] .plan-switch-thumb {
+  transform: translateX(100%);
 }
 
-.plan-card-btn {
+.plan-switch button {
+  position: relative;
+  z-index: 1;
+  padding: 8px 4px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  transition: color 0.2s ease;
+}
+
+.plan-switch button.active {
+  color: var(--seal-dark);
+}
+
+/* 两个子页面横向排列，手指左右滑动即可切换 */
+.plan-pages {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.plan-pages::-webkit-scrollbar {
+  display: none;
+}
+
+.plan-page {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+/* 聊天：消息列表在上面，输入框固定在子页面底部 */
+.plan-chat-page {
+  padding: 0 16px;
+}
+
+.chat-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 0 10px;
+}
+
+.chat-empty {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: 100%;
-  min-height: 52px;
-  padding: 0 20px;
-  border: 0;
-  border-radius: 0;
+  padding: 24px 12px 48px;
+  text-align: center;
+}
+
+.chat-logo {
+  width: 66px;
+  height: 66px;
+  object-fit: contain;
+  margin-bottom: 6px;
+  filter: drop-shadow(0 6px 14px rgba(72, 55, 32, 0.16));
+}
+
+.chat-empty h2 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 22px;
+}
+
+.chat-empty p {
+  margin: 0;
+  max-width: 280px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.chat-msg {
+  display: flex;
+  align-items: flex-end;
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+.chat-msg.is-user {
+  justify-content: flex-end;
+}
+
+.chat-avatar {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--glass-card-strong);
+  object-fit: contain;
+  box-shadow: var(--shadow-soft);
+}
+
+.chat-bubble {
+  max-width: 80%;
+  padding: 10px 14px;
+  border: 1px solid var(--glass-line);
+  border-radius: 18px;
+  background: var(--glass-card);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  box-shadow: var(--shadow-soft);
+}
+
+.is-assistant .chat-bubble {
+  border-bottom-left-radius: 6px;
+}
+
+.is-user .chat-bubble {
+  border-color: transparent;
+  border-bottom-right-radius: 6px;
   background: linear-gradient(140deg, #b34434, var(--seal-dark));
   color: #fff8ec;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  transition: opacity 0.18s ease, transform 0.14s ease;
 }
 
-.plan-card-btn:active {
-  transform: scale(0.99);
+.chat-msg.is-error .chat-bubble {
+  border-color: rgba(168, 58, 44, 0.35);
+  color: var(--seal-dark);
 }
 
-.plan-card-btn:disabled {
-  cursor: wait;
-  opacity: 0.85;
+.chat-retry {
+  display: block;
+  margin-top: 4px;
+  padding: 0;
+  font-size: 12px;
 }
 
-.plan-spin {
-  width: 15px;
-  height: 15px;
+.chat-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+}
+
+.chat-dots i {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 248, 236, 0.45);
-  border-top-color: #fff8ec;
-  animation: plan-spin 0.9s linear infinite;
+  background: var(--muted);
+  animation: chat-dot 1s infinite ease-in-out;
 }
 
-@keyframes plan-spin {
-  to {
-    transform: rotate(360deg);
+.chat-dots i:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.chat-dots i:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes chat-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
   }
 }
 
-.plan-tip {
-  margin: 12px 2px 0;
+.chat-composer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 0 0 calc(10px + env(safe-area-inset-bottom));
+  padding: 6px 6px 6px 14px;
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 26px;
+  background: var(--glass-bar-strong);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-soft);
+}
+
+.chat-composer:focus-within {
+  border-color: rgba(168, 58, 44, 0.45);
+}
+
+.chat-composer textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 36px;
+  max-height: 120px;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  font-size: 15px;
+  line-height: 1.5;
+  outline: none;
+  resize: none;
+}
+
+.chat-composer textarea::placeholder {
+  color: var(--placeholder-soft);
+}
+
+.chat-send {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: linear-gradient(140deg, #b34434, var(--seal-dark));
+  color: #fff8ec;
+  box-shadow: 0 4px 12px rgba(140, 47, 35, 0.28);
+  transition: transform 0.14s ease, opacity 0.18s ease;
+}
+
+.chat-send:active {
+  transform: scale(0.92);
+}
+
+.chat-send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chat-send svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 行程：从聊天里提取出的信息，底部固定三个操作按钮 */
+.plan-trip-page {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+}
+
+.plan-trip-inner {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.plan-trip-content {
+  flex: 1 0 auto;
+}
+
+.plan-empty {
+  margin: 8px 0 0;
+  padding: 18px 0;
   color: var(--muted);
-  font-size: 12px;
-  line-height: 1.7;
+  font-size: 14px;
+  text-align: center;
 }
 
 .plan-table {
@@ -1682,55 +1890,6 @@ input#plan-input::placeholder {
   font-weight: 600;
 }
 
-.plan-actions {
-  margin-top: 24px;
-}
-
-.plan-actions.is-draft-edit {
-  display: grid;
-  gap: 12px;
-}
-
-.plan-actions-sub {
-  flex-wrap: nowrap;
-}
-
-/* 这两个按钮直接压在油画背景上，半透明磨砂底保证文字可读 */
-.plan-actions .btn.ghost,
-.plan-actions .btn.danger {
-  background: var(--glass-card);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-}
-
-.plan-actions .btn.ghost:hover,
-.plan-actions .btn.danger:hover {
-  background: var(--glass-card-strong);
-}
-
-.plan-screen {
-  position: relative;
-  isolation: isolate;
-  /* 背景一直铺到状态栏下面；负外边距抵消 #app 的顶部避让，内容高度保持不变 */
-  margin-top: calc(-1 * var(--top-inset));
-  padding-top: var(--top-inset);
-  min-height: 100vh;
-  min-height: 100dvh;
-  background: var(--paper);
-}
-
-/* 随机提示对应的那一幅油画铺满整个页面；薄纱保证文字不被画面吃掉 */
-.plan-screen.has-bg::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background-image: linear-gradient(var(--plan-bg-veil-top), var(--plan-bg-veil-bottom)), var(--plan-bg);
-  background-position: center;
-  background-size: cover;
-  background-repeat: no-repeat;
-}
-
 .plan-row {
   cursor: pointer;
 }
@@ -1748,6 +1907,30 @@ input#plan-input::placeholder {
   background: var(--surface-input);
   font-size: 14px;
   outline: none;
+}
+
+.plan-actions {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.plan-actions-sub {
+  flex-wrap: nowrap;
+}
+
+/* 这两个按钮直接压在油画背景上，半透明磨砂底保证文字可读 */
+.plan-actions .btn.ghost,
+.plan-actions .btn.danger {
+  background: var(--glass-card);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.plan-actions .btn.ghost:hover,
+.plan-actions .btn.danger:hover {
+  background: var(--glass-card-strong);
 }
 
 /* ---- buttons ------------------------------------------------------------ */
@@ -2494,7 +2677,7 @@ input#plan-input::placeholder {
 [data-theme="dark"] .nav-btn.nav-create,
 [data-theme="dark"] .seal,
 [data-theme="dark"] .action-primary,
-[data-theme="dark"] .plan-card-btn,
+[data-theme="dark"] .chat-send,
 [data-theme="dark"] .btn.primary {
   background: linear-gradient(140deg, #b34434, #8c2f23);
   color: #fff8ec;
