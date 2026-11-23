@@ -3744,6 +3744,19 @@
     return list.length ? list : I18N.zh.plan.placeholders;
   }
 
+  // 模型偶尔会凭今天的日期编出时间；只有用户真说了日期、星期、相对时间或时刻才保留。
+  const PLAN_TIME_CUE = /(?:今天|明天|后天|大后天|昨天|前天|下周|上周|下个?月|这个?月|本月|月初|月底|周[一二三四五六日天]|星期[一二三四五六日天]|上午|下午|中午|晚上|凌晨|早上|\d{1,4}\s*[年/.-]\s*\d{1,2}|\d{1,2}\s*[月/]\s*\d{1,2}|\d{1,2}\s*月|\d{1,2}\s*[号日点]|\d{1,2}:\d{2}|(?:\d+|[一二三四五六七八九十两])\s*(?:天|晚|周|个月|小时)|tomorrow|next\s+(?:week|month)|on\s+(?:mon|tue|wed|thu|fri|sat|sun))/i;
+
+  function sanitizePlanItems(items, prompt) {
+    const list = Array.isArray(items) ? items : [];
+    if (PLAN_TIME_CUE.test(String(prompt || ''))) return list;
+    return list.map((item) => ({
+      ...item,
+      departTime: '',
+      returnTime: '',
+    }));
+  }
+
   /** Local drafts keep a plan alive when the user leaves the page. */
   function loadDrafts() {
     try {
@@ -4167,7 +4180,7 @@
       changes.error = chatResult.reason?.message || t('offline.error');
     }
     if (planResult.status === 'fulfilled' && Array.isArray(planResult.value?.items)) {
-      changes.items = planResult.value.items;
+      changes.items = sanitizePlanItems(planResult.value.items, planPrompt);
     }
     finishChatTurn(changes, turn);
   }

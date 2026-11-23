@@ -1652,7 +1652,6 @@ html.is-offline .auth-screen {
   height: 66px;
   box-sizing: border-box;
   padding: 7px;
-  border: 1px solid var(--glass-line-strong);
   border-radius: 18px;
   background: var(--glass-card-strong);
   object-fit: contain;
@@ -1707,7 +1706,7 @@ html.is-offline .auth-screen {
 }
 
 .is-user .chat-bubble {
-  border-color: transparent;
+  border: 0;
   border-bottom-right-radius: 6px;
   background: linear-gradient(140deg, #b34434, var(--seal-dark));
   color: #fff8ec;
