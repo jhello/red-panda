@@ -1524,8 +1524,9 @@ html.is-offline .auth-screen {
   /* 背景一直铺到状态栏下面；负外边距抵消 #app 的顶部避让，内容高度保持不变 */
   margin-top: calc(-1 * var(--top-inset));
   padding-top: var(--top-inset);
-  height: 100vh;
-  height: 100dvh;
+  /* 离线提示条浮在页面之上，先给它留出高度，别挡住输入框和底部按钮 */
+  height: calc(100vh - var(--offline-h, 0px));
+  height: calc(100dvh - var(--offline-h, 0px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
