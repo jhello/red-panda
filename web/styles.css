@@ -1919,11 +1919,6 @@ html.is-offline .auth-screen {
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--glass-card);
-  cursor: pointer;
-}
-
-.plan-item:hover {
-  background: rgba(120, 96, 60, 0.05);
 }
 
 .plan-vertical-table {

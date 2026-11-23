@@ -639,9 +639,6 @@
         fieldDepart: '出发时间',
         fieldReturn: '返回时间',
         planEmpty: '这次没有为你挑出合适的旅程。',
-        editItem: '修改旅程',
-        editItemSub: '改完直接点「保存修改」即可。',
-        saveItem: '保存修改',
         noContent: '还没有内容可以保存',
         noDraft: '还没有草稿',
         save: '保存旅程',
@@ -1112,9 +1109,6 @@
         fieldDepart: 'Departure',
         fieldReturn: 'Return',
         planEmpty: "It didn't find a place worth traveling to this time.",
-        editItem: 'Edit stop',
-        editItemSub: 'Make your changes, then save them.',
-        saveItem: 'Save changes',
         noContent: 'Nothing to save yet',
         noDraft: 'No draft yet',
         save: 'Save journey',
@@ -1588,9 +1582,6 @@
         fieldDepart: 'Abreise',
         fieldReturn: 'Rückkehr',
         planEmpty: 'Diesmal hat es keinen passenden Ziel gefunden.',
-        editItem: 'Stopp bearbeiten',
-        editItemSub: 'Änderungen übernehmen und speichern.',
-        saveItem: 'Änderungen speichern',
         noContent: 'Noch nichts zum Speichern',
         noDraft: 'Noch kein Entwurf',
         save: 'Reise speichern',
@@ -3658,30 +3649,11 @@
     }
   }
 
-  // ---- journey plan: prompt → AI plan → editable table ---------------------
-
-  const PLAN_PERIODS = {
-    zh: [
-      { label: '上午', hour: 9 },
-      { label: '下午', hour: 14 },
-      { label: '傍晚', hour: 19 },
-    ],
-    en: [
-      { label: 'Morning', hour: 9 },
-      { label: 'Afternoon', hour: 14 },
-      { label: 'Evening', hour: 19 },
-    ],
-    de: [
-      { label: 'Morgen', hour: 9 },
-      { label: 'Vormittag', hour: 14 },
-      { label: 'Abend', hour: 19 },
-    ],
-  };
+  // ---- journey plan: prompt → AI plan → read-only table --------------------
 
   const planState = {
     text: '',
     messages: [],
-    editingItem: null,
     busy: false,
     items: [],
     suggestion: '',
@@ -3694,6 +3666,7 @@
     // 每次新建或发送都递增，离开页面后丢弃还在路上的 AI 回复。
     turn: 0,
   };
+  let planScrollSettleTimer = null;
 
   /** Full-screen painting behind the plan page, in the same order as the suggestions. */
   const PLAN_BACKGROUNDS = ['paintings/athens.jpg', 'paintings/louvre.jpg', 'paintings/neuschwanstein.jpg'];
@@ -3702,7 +3675,6 @@
     planState.turn += 1;
     planState.text = '';
     planState.messages = [];
-    planState.editingItem = null;
     planState.busy = false;
     planState.items = [];
     planState.suggestion = '';
@@ -3721,16 +3693,6 @@
   let draftOverlayOpen = false;
   let expandedDraftId = null;
   let suppressPopCount = 0;
-
-  function periodIndexForHour(periods, hour) {
-    const hours = periods.map((p) => p.hour);
-    let index = 0;
-    for (let i = 1; i < hours.length; i += 1) {
-      if (hour >= hours[i]) index = i;
-    }
-    if (hour < hours[0]) index = 0;
-    return index;
-  }
 
   /**
    * 旧草稿没有保存背景序号，按草稿 ID 推导出固定的一张，
@@ -3892,10 +3854,8 @@
 
   function renderNewJourney() {
     const plan = planState;
-
-    if (plan.editingItem !== null && plan.items[plan.editingItem] == null) {
-      plan.editingItem = null;
-    }
+    // 重新渲染会换掉滚动容器，旧容器上的延时回写不能再改当前标签。
+    clearTimeout(planScrollSettleTimer);
 
     if (!plan.suggestion) {
       const picked = pickPlanSuggestion();
@@ -3940,44 +3900,9 @@
     };
 
     const tripMarkup = () => {
-      if (plan.editingItem !== null) {
-        const item = plan.items[plan.editingItem];
-        const periods = PLAN_PERIODS[getLocale()] || PLAN_PERIODS.zh;
-        const departIndex = periodIndexForHour(periods, Number(localPlanTime(item?.departTime).slice(11, 13) || 9));
-        const returnIndex = periodIndexForHour(periods, Number(localPlanTime(item?.returnTime).slice(11, 13) || 9));
-        const periodOptions = periods
-          .map((p, i) => `<option value="${i}" ${i === departIndex ? 'selected' : ''}>${esc(p.label)}</option>`)
-          .join('');
-        const periodOptionsReturn = periods
-          .map((p, i) => `<option value="${i}" ${i === returnIndex ? 'selected' : ''}>${esc(p.label)}</option>`)
-          .join('');
-        return `
-          <section class="card panel">
-            <h2 class="panel-title">${t('plan.editItem')}</h2>
-            <p class="panel-sub">${t('plan.editItemSub')}</p>
-            <div class="form">
-              <label class="field">
-                <span>${t('plan.fieldDestination')}</span>
-                <input id="plan-item-destination" maxlength="80" value="${esc(item?.destination ?? '')}" />
-              </label>
-              <label class="field">
-                <span>${t('plan.fieldDepart')}</span>
-                <input type="datetime-local" id="plan-item-depart" value="${esc(localPlanTime(item?.departTime))}" />
-                <select class="plan-period" id="plan-item-depart-period">${periodOptions}</select>
-              </label>
-              <label class="field">
-                <span>${t('plan.fieldReturn')}</span>
-                <input type="datetime-local" id="plan-item-return" value="${esc(localPlanTime(item?.returnTime))}" />
-                <select class="plan-period" id="plan-item-return-period">${periodOptionsReturn}</select>
-              </label>
-            </div>
-            <button class="btn primary block" type="button" id="plan-item-save">${t('plan.saveItem')}</button>
-          </section>`;
-      }
-
       // 每个目的地单独成卡；标签竖着排，聊天里没提到的字段整行不显示。
       const itemCards = plan.items
-        .map((item, index) => {
+        .map((item) => {
           const rows = [
             { label: t('plan.fieldDestination'), value: item.destination, text: esc(item.destination) },
             { label: t('plan.fieldDepart'), value: item.departTime, text: esc(fmtDate(item.departTime)) },
@@ -3985,7 +3910,7 @@
           ].filter((row) => String(row.value ?? '').trim());
           if (!rows.length) return '';
           return `
-            <div class="plan-item" data-action="plan-item-edit" data-plan-index="${index}">
+            <div class="plan-item">
               <table class="plan-vertical-table">
                 <tbody>
                   ${rows
@@ -4084,37 +4009,16 @@
       }
     });
 
-    const itemSaveButton = document.getElementById('plan-item-save');
-    const itemDestination = document.getElementById('plan-item-destination');
-    const itemDepart = document.getElementById('plan-item-depart');
-    const itemDepartPeriod = document.getElementById('plan-item-depart-period');
-    const itemReturn = document.getElementById('plan-item-return');
-    const itemReturnPeriod = document.getElementById('plan-item-return-period');
-
-    if (itemSaveButton) itemSaveButton.addEventListener('click', () => {
-      planState.editingItem = null;
-      storeDraft();
-      renderNewJourney();
-    });
-    if (itemDestination) itemDestination.addEventListener('change', () => {
-      const itemIndex = planState.editingItem;
-      const item = itemIndex !== null ? planState.items[itemIndex] : null;
-      if (item) planState.items[itemIndex] = { ...item, destination: itemDestination.value };
-    });
-    bindPlanTimeField(itemDepart, itemDepartPeriod, 'departTime');
-    bindPlanTimeField(itemReturn, itemReturnPeriod, 'returnTime');
-
     const pages = document.getElementById('plan-pages');
     if (pages) {
-      let settleTimer = null;
       pages.addEventListener('scroll', () => {
         // 滑块位置实时跟随页面横向滚动进度，不等滚动结束再跳。
         const progress = pages.clientWidth
           ? Math.min(1, Math.max(0, pages.scrollLeft / pages.clientWidth))
           : 0;
         paintPlanThumb(progress);
-        clearTimeout(settleTimer);
-        settleTimer = setTimeout(() => {
+        clearTimeout(planScrollSettleTimer);
+        planScrollSettleTimer = setTimeout(() => {
           const next = progress >= 0.5 ? 'trip' : 'chat';
           if (planState.tab !== next) {
             planState.tab = next;
@@ -4125,32 +4029,6 @@
     }
     paintPlanTab(plan.tab, false);
     renderNavBar();
-  }
-
-  function bindPlanTimeField(inputEl, periodEl, key) {
-    if (!inputEl || !periodEl) return;
-    const saveValue = (value) => {
-      const itemIndex = planState.editingItem;
-      const item = itemIndex !== null ? planState.items[itemIndex] : null;
-      if (item) planState.items[itemIndex] = { ...item, [key]: value };
-    };
-    inputEl.addEventListener('change', () => {
-      const value = inputEl.value;
-      const hour = value ? Number(value.slice(11, 13) || 9) : 9;
-      const periods = PLAN_PERIODS[getLocale()] || PLAN_PERIODS.zh;
-      periodEl.value = String(periodIndexForHour(periods, hour));
-      saveValue(value);
-    });
-    periodEl.addEventListener('change', () => {
-      const value = inputEl.value;
-      if (!value) return;
-      const periods = PLAN_PERIODS[getLocale()] || PLAN_PERIODS.zh;
-      const period = periods[Number(periodEl.value)];
-      if (!period) return;
-      const next = `${value.slice(0, 10)}T${String(period.hour).padStart(2, '0')}:${value.slice(14, 16) || '00'}`;
-      inputEl.value = next;
-      saveValue(next);
-    });
   }
 
   /** Paint the capsule position from a live 0..1 page-scroll progress. */
@@ -4177,6 +4055,8 @@
       // The scroll listener drives the thumb throughout the slide.
       pages.scrollTo({ left: target * pages.clientWidth, behavior: 'smooth' });
     } else {
+      // 重新渲染后即时回到当前子页面，避免页面和胶囊各说各话。
+      if (pages) pages.scrollLeft = target * pages.clientWidth;
       paintPlanThumb(target);
     }
     if (tab === 'chat') scrollChatToBottom();
@@ -4188,11 +4068,6 @@
     requestAnimationFrame(() => {
       box.scrollTop = box.scrollHeight;
     });
-  }
-
-  function localPlanTime(value) {
-    const text = String(value ?? '');
-    return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text) ? text.slice(0, 16) : '';
   }
 
   function sendChatMessage() {
@@ -4208,7 +4083,6 @@
     planState.turn += 1;
     planState.messages.push({ role: 'user', content: text });
     planState.text = text;
-    planState.editingItem = null;
     planState.busy = true;
     if (input) {
       input.value = '';
@@ -5992,10 +5866,6 @@
         refreshDraftList();
         break;
       }
-      case 'plan-item-edit':
-        planState.editingItem = Number(target.dataset.planIndex || 0);
-        renderNewJourney();
-        break;
       case 'cancel-edit':
         if (state.currentJourney) renderJourneyView(state.currentJourney);
         else navigate('#/journeys');
