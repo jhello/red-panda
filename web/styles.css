@@ -1650,6 +1650,11 @@ html.is-offline .auth-screen {
 .chat-logo {
   width: 66px;
   height: 66px;
+  box-sizing: border-box;
+  padding: 7px;
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 18px;
+  background: var(--glass-card-strong);
   object-fit: contain;
   margin-bottom: 6px;
   filter: drop-shadow(0 6px 14px rgba(72, 55, 32, 0.16));
@@ -1849,6 +1854,60 @@ html.is-offline .auth-screen {
   color: var(--muted);
   font-size: 14px;
   text-align: center;
+}
+
+/* 行程项竖排：左列是字段名，右列是聊天里提取到的值 */
+.plan-item-list {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.plan-item {
+  padding: 2px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--glass-card);
+  cursor: pointer;
+}
+
+.plan-item:hover {
+  background: rgba(120, 96, 60, 0.05);
+}
+
+.plan-vertical-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.plan-vertical-table th,
+.plan-vertical-table td {
+  padding: 11px 2px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.plan-vertical-table th {
+  width: 88px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.plan-vertical-table td {
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.plan-vertical-table tr:last-child th,
+.plan-vertical-table tr:last-child td {
+  border-bottom: 0;
 }
 
 .plan-table {

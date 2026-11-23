@@ -627,6 +627,7 @@
         chatSystem:
           '你是「小熊猫」旅程应用的旅行向导。用亲切、简洁的中文和用户对话，帮他把零散的想法变成一段可出发的旅程：询问目的地、出发与返回时间、想做的事，并在信息足够时给出简短的行程建议。不要输出 JSON 或代码块，每次回复不超过 120 字。',
         send: '发送',
+        replyHint: '回复小熊猫',
         thinking: '我想想',
         chatNoReply: '小熊猫一时没想好，请再说一遍。',
         title: '旅程计划',
@@ -1096,6 +1097,7 @@
         chatSystem:
           'You are a travel guide for the Red Panda journey app. Chat warmly and briefly in the user’s language, helping turn scattered ideas into a trip: ask about the destination, departure and return dates, and what they want to do. When you have enough information, suggest a short itinerary. Never output JSON or code blocks. Keep each reply under 120 words.',
         send: 'Send',
+        replyHint: 'Reply to Red Panda',
         thinking: 'Thinking…',
         chatNoReply: 'Red Panda could not think of a reply. Please try again.',
         title: 'Trip plan',
@@ -1568,6 +1570,7 @@
         chatSystem:
           'Du bist ein Reiseführer der Reise-App „Red Panda“. Sprich freundlich und kurz in der Sprache des Nutzers und hilf ihm, aus lose gesammelten Ideen eine Reise zu machen: Frage nach Ziel, Abreise- und Rückkehrdatum und geplanten Aktivitäten. Wenn genug Informationen da sind, schlage eine kurze Reiseroute vor. Keine JSON-Ausgabe, keine Codeblöcke, maximal 120 Wörter pro Antwort.',
         send: 'Senden',
+        replyHint: 'Dem kleinen Panda antworten',
         thinking: 'Ich überlege…',
         chatNoReply: 'Der kleine Panda hat gerade keine Antwort gefunden. Bitte versuche es noch einmal.',
         title: 'Reiseplan',
@@ -3825,7 +3828,8 @@
       // 旧草稿没存背景序号，按当时的提示语找回对应那张。
       plan.backgroundIndex = planPlaceholders().indexOf(plan.suggestion);
     }
-    const placeholder = esc(plan.suggestion);
+    // 还没开口时展示可发送的示例；聊起来之后改成引导用户继续回复。
+    const placeholder = esc(plan.messages.length ? t('plan.replyHint') : plan.suggestion);
     const background = PLAN_BACKGROUNDS[plan.backgroundIndex] || '';
 
     const chatMarkup = () => {
@@ -3894,28 +3898,30 @@
           </section>`;
       }
 
-      const details = plan.items.length
-        ? `<table class="plan-table">
-            <thead>
-              <tr>
-                <th>${t('plan.fieldDestination')}</th>
-                <th>${t('plan.fieldDepart')}</th>
-                <th>${t('plan.fieldReturn')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${plan.items
-                .map(
-                  (item, index) => `
-                <tr class="plan-row" data-action="plan-item-edit" data-plan-index="${index}">
-                  <td>${esc(item.destination)}</td>
-                  <td>${esc(fmtDate(item.departTime))}</td>
-                  <td>${esc(fmtDate(item.returnTime))}</td>
-                </tr>`,
-                )
-                .join('')}
-            </tbody>
-          </table>`
+      // 每个目的地单独成卡；标签竖着排，聊天里没提到的字段整行不显示。
+      const itemCards = plan.items
+        .map((item, index) => {
+          const rows = [
+            { label: t('plan.fieldDestination'), value: item.destination, text: esc(item.destination) },
+            { label: t('plan.fieldDepart'), value: item.departTime, text: esc(fmtDate(item.departTime)) },
+            { label: t('plan.fieldReturn'), value: item.returnTime, text: esc(fmtDate(item.returnTime)) },
+          ].filter((row) => String(row.value ?? '').trim());
+          if (!rows.length) return '';
+          return `
+            <div class="plan-item" data-action="plan-item-edit" data-plan-index="${index}">
+              <table class="plan-vertical-table">
+                <tbody>
+                  ${rows
+                    .map((row) => `<tr><th>${row.label}</th><td>${row.text}</td></tr>`)
+                    .join('')}
+                </tbody>
+              </table>
+            </div>`;
+        })
+        .filter(Boolean)
+        .join('');
+      const details = itemCards
+        ? `<div class="plan-item-list">${itemCards}</div>`
         : `<p class="plan-empty">${t('plan.planEmpty')}</p>`;
 
       return `
@@ -4089,8 +4095,9 @@
   function sendChatMessage() {
     if (planState.busy) return;
     const input = document.getElementById('chat-input');
-    // 输入框里的灰色提示语就是一条可直接发送的示例；点发送时把它当作真实输入。
-    const text = String(input?.value ?? '').trim() || String(planState.suggestion ?? '').trim();
+    // 一开始的灰色示例可以直接点发送；聊起来后的「回复小熊猫」只是输入提示。
+    const typed = String(input?.value ?? '').trim();
+    const text = typed || (planState.messages.length ? '' : String(planState.suggestion ?? '').trim());
     if (!text) {
       input?.focus();
       return;
