@@ -3665,8 +3665,6 @@
     ],
   };
 
-  let planTabProgrammaticScroll = false;
-
   const planState = {
     text: '',
     messages: [],
@@ -3844,7 +3842,6 @@
         const isUser = message.role === 'user';
         parts.push(`
           <div class="chat-msg ${isUser ? 'is-user' : 'is-assistant'}${message.error ? ' is-error' : ''}">
-            ${isUser ? '' : '<img class="chat-avatar" src="logo.png" alt="" />'}
             <div class="chat-bubble">${esc(message.content)}${
               message.error
                 ? `<button class="chat-retry link" type="button" data-action="plan-chat-retry">${t('common.retry')}</button>`
@@ -3855,7 +3852,6 @@
       if (plan.busy) {
         parts.push(`
           <div class="chat-msg is-assistant is-typing" aria-label="${t('plan.thinking')}">
-            <img class="chat-avatar" src="logo.png" alt="" />
             <div class="chat-bubble"><span class="chat-dots"><i></i><i></i><i></i></span></div>
           </div>`);
       }
@@ -4003,11 +3999,18 @@
     if (pages) {
       let settleTimer = null;
       pages.addEventListener('scroll', () => {
-        if (planTabProgrammaticScroll) return;
+        // 滑块位置实时跟随页面横向滚动进度，不等滚动结束再跳。
+        const progress = pages.clientWidth
+          ? Math.min(1, Math.max(0, pages.scrollLeft / pages.clientWidth))
+          : 0;
+        paintPlanThumb(progress);
         clearTimeout(settleTimer);
         settleTimer = setTimeout(() => {
-          const next = pages.scrollLeft > pages.clientWidth / 2 ? 'trip' : 'chat';
-          if (planState.tab !== next) paintPlanTab(next, false);
+          const next = progress >= 0.5 ? 'trip' : 'chat';
+          if (planState.tab !== next) {
+            planState.tab = next;
+            if (next === 'chat') scrollChatToBottom();
+          }
         }, 80);
       }, { passive: true });
     }
@@ -4041,25 +4044,31 @@
     });
   }
 
+  /** Paint the capsule position from a live 0..1 page-scroll progress. */
+  function paintPlanThumb(progress) {
+    const switcher = document.getElementById('plan-switch');
+    if (!switcher) return;
+    const thumb = switcher.querySelector('.plan-switch-thumb');
+    if (thumb) thumb.style.transform = `translateX(${progress * 100}%)`;
+    const active = progress >= 0.5 ? 'trip' : 'chat';
+    switcher.dataset.active = active;
+    switcher.querySelectorAll('[data-plan-tab]').forEach((button) => {
+      const isActive = button.dataset.planTab === active;
+      button.classList.toggle('active', isActive);
+      button.setAttribute('aria-selected', String(isActive));
+    });
+  }
+
   /** Keep the top slider and the horizontally swiped pages in sync. */
   function paintPlanTab(tab, scroll = true) {
     planState.tab = tab;
-    const switcher = document.getElementById('plan-switch');
-    if (switcher) {
-      switcher.dataset.active = tab;
-      switcher.querySelectorAll('[data-plan-tab]').forEach((button) => {
-        const active = button.dataset.planTab === tab;
-        button.classList.toggle('active', active);
-        button.setAttribute('aria-selected', String(active));
-      });
-    }
+    const target = tab === 'trip' ? 1 : 0;
     const pages = document.getElementById('plan-pages');
-    if (scroll && pages) {
-      planTabProgrammaticScroll = true;
-      pages.scrollTo({ left: (tab === 'trip' ? 1 : 0) * pages.clientWidth, behavior: 'smooth' });
-      setTimeout(() => {
-        planTabProgrammaticScroll = false;
-      }, 500);
+    if (scroll && pages && pages.scrollLeft !== target * pages.clientWidth) {
+      // The scroll listener drives the thumb throughout the slide.
+      pages.scrollTo({ left: target * pages.clientWidth, behavior: 'smooth' });
+    } else {
+      paintPlanThumb(target);
     }
     if (tab === 'chat') scrollChatToBottom();
   }

@@ -1533,10 +1533,10 @@ html.is-offline .auth-screen {
   background: var(--paper);
 }
 
-/* 随机提示对应的那一幅油画铺满整个页面；薄纱保证文字不被画面吃掉 */
+/* 随机提示对应的那一幅油画固定铺满视口；离线条改变页面高度时不要跟着缩放 */
 .plan-screen.has-bg::before {
   content: "";
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: -1;
   background-image: linear-gradient(var(--plan-bg-veil-top), var(--plan-bg-veil-bottom)), var(--plan-bg);
@@ -1571,12 +1571,9 @@ html.is-offline .auth-screen {
   border-radius: 999px;
   background: var(--card);
   box-shadow: 0 2px 10px rgba(72, 55, 32, 0.14);
-  transition: transform 0.24s cubic-bezier(0.22, 0.61, 0.36, 1);
+  /* 位置由页面横向滚动实时驱动，和子页面滑动完全同步 */
+  will-change: transform;
   pointer-events: none;
-}
-
-.plan-switch[data-active="trip"] .plan-switch-thumb {
-  transform: translateX(100%);
 }
 
 .plan-switch button {
@@ -1682,16 +1679,6 @@ html.is-offline .auth-screen {
 
 .chat-msg.is-user {
   justify-content: flex-end;
-}
-
-.chat-avatar {
-  flex: 0 0 30px;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: var(--glass-card-strong);
-  object-fit: contain;
-  box-shadow: var(--shadow-soft);
 }
 
 .chat-bubble {
