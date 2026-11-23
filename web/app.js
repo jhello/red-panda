@@ -740,7 +740,7 @@
         originInput: '输入地点，如“上海市浦东新区张江路 88 号”',
         originAdd: '新增地点',
         originMap: '地图选点', originMapHint: '点击地图或拖动图钉选择位置', originMapUse: '使用此地点', originEmpty: '还没有常用地址',
-        originMapProvider: '地图服务', mapProviderAmap: '高德地图', mapProviderGoogle: 'Google Maps',
+        originMapProvider: '地图服务', mapProviderAmap: '高德', mapProviderGoogle: 'Google',
         originEdit: '编辑', originUpdate: '保存修改', originCancel: '取消编辑', originLocate: '定位到当前位置', originSearching: '正在搜索地点…', originNoResults: '没有找到地点', originSearchAttribution: '地点数据 © OpenStreetMap contributors', originLocationError: '无法获取当前位置，请检查定位权限。',
         originSecureRequired: '网页定位需要 HTTPS，请用安全连接打开页面，或使用 Android App。',
         accountSecurity: '账户与安全',
@@ -1211,7 +1211,7 @@
         originInput: 'Enter a place, e.g. “88 Zhangjiang Road, Pudong, Shanghai”',
         originAdd: 'Add place',
         originMap: 'Pick on map', originMapHint: 'Click the map or drag the pin to choose a place', originMapUse: 'Use this place', originEmpty: 'No saved places yet',
-        originMapProvider: 'Map provider', mapProviderAmap: 'Amap', mapProviderGoogle: 'Google Maps',
+        originMapProvider: 'Map provider', mapProviderAmap: 'Amap', mapProviderGoogle: 'Google',
         originEdit: 'Edit', originUpdate: 'Save changes', originCancel: 'Cancel edit', originLocate: 'Locate me', originSearching: 'Searching places…', originNoResults: 'No places found', originSearchAttribution: 'Place data © OpenStreetMap contributors', originLocationError: 'Could not get your location. Check location permission.',
         originSecureRequired: 'Web location requires HTTPS. Open this page securely or use the Android app.',
         resetPassword: 'Forgot password',
@@ -1685,7 +1685,7 @@
         originInput: 'Ort eingeben, z. B. „Zhangjiang-Straße 88, Shanghai“',
         originAdd: 'Ort hinzufügen',
         originMap: 'Auf Karte wählen', originMapHint: 'Karte anklicken oder Markierung ziehen', originMapUse: 'Diesen Ort verwenden', originEmpty: 'Noch keine gespeicherten Orte',
-        originMapProvider: 'Kartendienst', mapProviderAmap: 'Amap', mapProviderGoogle: 'Google Maps',
+        originMapProvider: 'Kartendienst', mapProviderAmap: 'Amap', mapProviderGoogle: 'Google',
         originEdit: 'Bearbeiten', originUpdate: 'Änderungen speichern', originCancel: 'Bearbeitung abbrechen', originLocate: 'Mein Standort', originSearching: 'Orte werden gesucht…', originNoResults: 'Keine Orte gefunden', originSearchAttribution: 'Ortsdaten © OpenStreetMap contributors', originLocationError: 'Standort nicht verfügbar. Bitte Standortberechtigung prüfen.',
         originSecureRequired: 'Der Web-Standort benötigt HTTPS. Öffne die Seite sicher oder nutze die Android-App.',
         accountSecurity: 'Konto & Sicherheit',
@@ -5006,10 +5006,6 @@
           ${panel('language', `<section class="card panel settings-choice-panel"><div class="lang-panel">${languageSwitcher()}</div></section>`)}
           ${panel('theme', `<section class="card panel settings-choice-panel theme-panel">${themeSwitcher()}</section>`)}
           ${panel('origin', `<section class="card panel origin-panel">
-            <div class="origin-map-provider" role="group" aria-label="${esc(t('settings.originMapProvider'))}">
-              <button type="button" class="origin-map-provider-btn${currentMapProvider() === 'amap' ? ' active' : ''}" data-map-provider="amap">${esc(t('settings.mapProviderAmap'))}</button>
-              <button type="button" class="origin-map-provider-btn${currentMapProvider() === 'google' ? ' active' : ''}" data-map-provider="google">${esc(t('settings.mapProviderGoogle'))}</button>
-            </div>
             <div id="origin-list" class="origin-address-list"></div>
             <button class="btn primary block" type="button" id="origin-add">＋ ${esc(t('settings.originAdd') || '新增地点')}</button>
             <p class="form-error" id="origin-error" hidden></p>
@@ -5017,6 +5013,10 @@
           <div id="origin-picker" class="origin-picker" hidden>
             <div class="origin-picker-head">
               <button type="button" class="btn ghost" id="origin-picker-back">取消</button>
+              <div class="origin-picker-provider" role="group" aria-label="${esc(t('settings.originMapProvider'))}">
+                <button type="button" class="origin-picker-provider-btn${currentMapProvider() === 'amap' ? ' active' : ''}" data-map-provider="amap">${esc(t('settings.mapProviderAmap'))}</button>
+                <button type="button" class="origin-picker-provider-btn${currentMapProvider() === 'google' ? ' active' : ''}" data-map-provider="google">${esc(t('settings.mapProviderGoogle'))}</button>
+              </div>
               <button type="button" class="btn primary" id="origin-picker-confirm" disabled>确定</button>
             </div>
             <div id="origin-picker-body" class="origin-picker-body">
@@ -5451,13 +5451,15 @@
       });
     }
     document.querySelectorAll('[data-map-provider]').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const provider = btn.dataset.mapProvider;
         if (!MAP_PROVIDERS.includes(provider) || provider === currentMapProvider()) return;
         localStorage.setItem(STORAGE.mapProvider, provider);
         hideError('origin-error');
         syncMapProviderButtons();
+        const wasOpen = picker && !picker.hidden;
         resetMap();
+        if (wasOpen) await openPicker();
       });
     });
 
