@@ -15,6 +15,14 @@ function value(env, key, fallback) {
   return raw === undefined || raw === '' ? fallback : raw;
 }
 
+function readKeyFile(name) {
+  try {
+    return fs.readFileSync(path.join(PROJECT_ROOT, name), 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
+
 function readOrCreateAdminToken(dataDir, envToken) {
   if (envToken) return { token: envToken, source: 'env' };
   const file = path.join(dataDir, 'admin-token');
@@ -95,8 +103,14 @@ export function loadConfig(env = process.env) {
       model: value(env, 'OPENAI_MODEL', 'gpt-4o-mini'),
       mock: value(env, 'RED_PANDA_AI_MOCK', '0') === '1',
     },
-    tencentMap: {
-      key: value(env, 'TENCENT_MAP_KEY', value(env, 'RED_PANDA_TENCENT_MAP_KEY', '')),
+    map: {
+      defaultProvider: String(value(env, 'RED_PANDA_MAP_PROVIDER', 'amap')).toLowerCase() === 'google' ? 'google' : 'amap',
+      amap: {
+        key: value(env, 'AMAP_MAP_KEY', value(env, 'RED_PANDA_AMAP_MAP_KEY', readKeyFile('amap_api_key.txt'))),
+      },
+      google: {
+        key: value(env, 'GOOGLE_MAPS_API_KEY', value(env, 'RED_PANDA_GOOGLE_MAPS_KEY', readKeyFile('google_maps_api_key.txt'))),
+      },
     },
   };
 }

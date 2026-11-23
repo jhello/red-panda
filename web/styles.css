@@ -1285,6 +1285,9 @@ html.is-offline .auth-screen {
 .database-row span { color: var(--muted); white-space: nowrap; }
 
 .origin-panel { padding: 4px 0; }
+.origin-map-provider { display: flex; gap: 4px; margin: 0 0 14px; padding: 4px; border: 1px solid var(--line); border-radius: 14px; background: var(--glass-panel); }
+.origin-map-provider-btn { flex: 1; min-height: 36px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; }
+.origin-map-provider-btn.active { background: var(--card); color: var(--seal-dark); box-shadow: 0 2px 8px rgba(72, 55, 32, 0.14); }
 .origin-address-list { display: grid; gap: 0; margin: 0 0 12px; }
 .origin-address-list:has(.origin-swipe) {
   border: 1px solid var(--line);
@@ -1337,7 +1340,7 @@ html.is-offline .auth-screen {
 .origin-item-main small { color: var(--muted); font-size: 12px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .origin-empty { margin: 24px 4px; color: var(--muted); font-size: 13px; text-align: center; }
 
-/* 腾讯地图选点（仿微信发送位置） */
+/* 地图选点（仿微信发送位置） */
 .origin-picker { position: fixed; inset: 0; z-index: 1200; display: flex; flex-direction: column; background: var(--bg); }
 .origin-picker[hidden] { display: none; }
 .origin-picker-head { position: absolute; top: 0; left: 0; right: 0; z-index: 2000; display: flex; align-items: center; justify-content: space-between; padding: calc(10px + var(--top-inset)) 12px 10px; background: linear-gradient(to bottom, var(--map-head-top), var(--map-head-mid) 70%, var(--map-head-end)); pointer-events: none; }
@@ -2828,7 +2831,7 @@ html.is-offline .auth-screen {
   background: rgba(225, 138, 116, 0.09);
 }
 
-/* Tencent map tiles are only available in a light style; invert them so the
+/* Map tiles are only available in a light style here; invert them so the
    location picker does not flash a white rectangle in dark mode. */
 [data-theme="dark"] .origin-picker-map {
   filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9);

@@ -450,6 +450,20 @@ test('常用地址只保存在客户端，地点解析仍可用', async () => {
   assert.equal(parsed.data.origin.name, '上海浦东张江路 88 号');
 });
 
+test('地图配置提供高德与谷歌，并拒绝未知地图服务', async () => {
+  const map = await request('/api/map/config', { token });
+  assert.equal(map.status, 200);
+  assert.deepEqual(map.data.providers, ['amap', 'google']);
+  assert.equal(typeof map.data.amapKey, 'string');
+  assert.equal(typeof map.data.googleKey, 'string');
+
+  const bad = await request('/api/me/usual-origin/nearby', {
+    method: 'POST', token,
+    body: { lat: 31.18, lng: 121.43, provider: 'tencent' },
+  });
+  assert.equal(bad.status, 400);
+});
+
 test('AI 描述接口（mock 模式）', async () => {
   const result = await request('/api/ai/journey-description', {
     method: 'POST',

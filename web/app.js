@@ -8,7 +8,14 @@
     lang: 'red-panda.lang',
     theme: 'red-panda.theme',
     drafts: 'red-panda.drafts',
+    mapProvider: 'red-panda.map-provider',
   };
+
+  const MAP_PROVIDERS = ['amap', 'google'];
+  function currentMapProvider() {
+    const saved = localStorage.getItem(STORAGE.mapProvider);
+    return MAP_PROVIDERS.includes(saved) ? saved : 'amap';
+  }
 
   const app = document.getElementById('app');
   const overlayHost = document.getElementById('app-overlay');
@@ -733,6 +740,7 @@
         originInput: '输入地点，如“上海市浦东新区张江路 88 号”',
         originAdd: '新增地点',
         originMap: '地图选点', originMapHint: '点击地图或拖动图钉选择位置', originMapUse: '使用此地点', originEmpty: '还没有常用地址',
+        originMapProvider: '地图服务', mapProviderAmap: '高德地图', mapProviderGoogle: 'Google Maps',
         originEdit: '编辑', originUpdate: '保存修改', originCancel: '取消编辑', originLocate: '定位到当前位置', originSearching: '正在搜索地点…', originNoResults: '没有找到地点', originSearchAttribution: '地点数据 © OpenStreetMap contributors', originLocationError: '无法获取当前位置，请检查定位权限。',
         originSecureRequired: '网页定位需要 HTTPS，请用安全连接打开页面，或使用 Android App。',
         accountSecurity: '账户与安全',
@@ -1203,6 +1211,7 @@
         originInput: 'Enter a place, e.g. “88 Zhangjiang Road, Pudong, Shanghai”',
         originAdd: 'Add place',
         originMap: 'Pick on map', originMapHint: 'Click the map or drag the pin to choose a place', originMapUse: 'Use this place', originEmpty: 'No saved places yet',
+        originMapProvider: 'Map provider', mapProviderAmap: 'Amap', mapProviderGoogle: 'Google Maps',
         originEdit: 'Edit', originUpdate: 'Save changes', originCancel: 'Cancel edit', originLocate: 'Locate me', originSearching: 'Searching places…', originNoResults: 'No places found', originSearchAttribution: 'Place data © OpenStreetMap contributors', originLocationError: 'Could not get your location. Check location permission.',
         originSecureRequired: 'Web location requires HTTPS. Open this page securely or use the Android app.',
         resetPassword: 'Forgot password',
@@ -1676,6 +1685,7 @@
         originInput: 'Ort eingeben, z. B. „Zhangjiang-Straße 88, Shanghai“',
         originAdd: 'Ort hinzufügen',
         originMap: 'Auf Karte wählen', originMapHint: 'Karte anklicken oder Markierung ziehen', originMapUse: 'Diesen Ort verwenden', originEmpty: 'Noch keine gespeicherten Orte',
+        originMapProvider: 'Kartendienst', mapProviderAmap: 'Amap', mapProviderGoogle: 'Google Maps',
         originEdit: 'Bearbeiten', originUpdate: 'Änderungen speichern', originCancel: 'Bearbeitung abbrechen', originLocate: 'Mein Standort', originSearching: 'Orte werden gesucht…', originNoResults: 'Keine Orte gefunden', originSearchAttribution: 'Ortsdaten © OpenStreetMap contributors', originLocationError: 'Standort nicht verfügbar. Bitte Standortberechtigung prüfen.',
         originSecureRequired: 'Der Web-Standort benötigt HTTPS. Öffne die Seite sicher oder nutze die Android-App.',
         accountSecurity: 'Konto & Sicherheit',
@@ -4996,6 +5006,10 @@
           ${panel('language', `<section class="card panel settings-choice-panel"><div class="lang-panel">${languageSwitcher()}</div></section>`)}
           ${panel('theme', `<section class="card panel settings-choice-panel theme-panel">${themeSwitcher()}</section>`)}
           ${panel('origin', `<section class="card panel origin-panel">
+            <div class="origin-map-provider" role="group" aria-label="${esc(t('settings.originMapProvider'))}">
+              <button type="button" class="origin-map-provider-btn${currentMapProvider() === 'amap' ? ' active' : ''}" data-map-provider="amap">${esc(t('settings.mapProviderAmap'))}</button>
+              <button type="button" class="origin-map-provider-btn${currentMapProvider() === 'google' ? ' active' : ''}" data-map-provider="google">${esc(t('settings.mapProviderGoogle'))}</button>
+            </div>
             <div id="origin-list" class="origin-address-list"></div>
             <button class="btn primary block" type="button" id="origin-add">＋ ${esc(t('settings.originAdd') || '新增地点')}</button>
             <p class="form-error" id="origin-error" hidden></p>
@@ -5101,7 +5115,7 @@
     }
 
     const passwordForm = document.getElementById('password-form');
-    // 常用地址：列表 + 腾讯地图选点（仿微信发送位置）
+    // 常用地址：列表 + 地图选点（仿微信发送位置）
     const currentOrigins = () => Array.isArray(state.user.usualOrigin) ? [...state.user.usualOrigin] : [];
     const saveOrigins = async (origins) => {
       const result = await api('/api/me/usual-origin', { method: 'PUT', body: { origins } });
@@ -5292,26 +5306,122 @@
       true,
     );
 
-    let tmap = null, tmapReady = null, pickerMapRatio = 0.55, myLocationMarker = null, currentPos = null;
+    let tmap = null, mapAdapter = null, pickerMapRatio = 0.55, myLocationMarker = null, currentPos = null;
+    let mapConfigPromise = null;
+    const mapReady = {};
     const MAP_RATIO_MIN = 0.3; // 列表最多 70%
     const MAP_RATIO_MAX = 0.6; // 列表最少 40%
-    async function ensureTencentMap() {
-      if (window.TMap) return window.TMap;
-      if (tmapReady) return tmapReady;
-      tmapReady = (async () => {
-        const cfg = await api('/api/map/config').catch(() => ({}));
-        const key = cfg.tencentKey;
-        if (!key) throw new Error('未配置腾讯地图 Key，请在服务器设置 TENCENT_MAP_KEY');
-        await new Promise((resolve, reject) => {
-          const s = document.createElement('script');
-          s.src = `https://map.qq.com/api/gljs?v=1.exp&key=${encodeURIComponent(key)}`;
-          s.onload = resolve; s.onerror = () => reject(new Error('腾讯地图加载失败'));
-          document.head.appendChild(s);
-        });
-        return window.TMap;
-      })();
-      return tmapReady;
+    const mapConfig = () => {
+      if (!mapConfigPromise) mapConfigPromise = api('/api/map/config').catch(() => ({}));
+      return mapConfigPromise;
+    };
+    function loadMapScript(src, label) {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = () => reject(new Error(`${label}加载失败`));
+        document.head.appendChild(s);
+      });
     }
+    const myLocationIcon = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"><circle cx="9" cy="9" r="7" fill="#2f7cff" stroke="white" stroke-width="3"/></svg>');
+    const adapters = {
+      amap: {
+        async load() {
+          if (window.AMap) return window.AMap;
+          if (!mapReady.amap) {
+            mapReady.amap = (async () => {
+              const cfg = await mapConfig();
+              if (!cfg.amapKey) throw new Error('未配置高德地图 Key');
+              await loadMapScript(`https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(cfg.amapKey)}`, '高德地图');
+              return window.AMap;
+            })().catch((err) => { mapReady.amap = null; throw err; });
+          }
+          return mapReady.amap;
+        },
+        latLng: (lat, lng) => [lng, lat],
+        create(el, center, zoom, onMove) {
+          const map = new window.AMap.Map(el, {
+            center, zoom, viewMode: '2D', pitch: 0, rotation: 0,
+            resizeEnable: true, showLabel: false,
+          });
+          map.on('moveend', onMove);
+          map.on('zoomend', onMove);
+          return map;
+        },
+        center(map) {
+          const c = map.getCenter();
+          return { lat: c.getLat(), lng: c.getLng() };
+        },
+        setCenter(map, lat, lng, zoom) {
+          map.setCenter([lng, lat]);
+          if (zoom) map.setZoom(zoom);
+        },
+        resize(map) { if (map && typeof map.resize === 'function') map.resize(); },
+        marker(map, lat, lng) {
+          return new window.AMap.Marker({
+            map,
+            position: [lng, lat],
+            icon: new window.AMap.Icon({
+              image: myLocationIcon,
+              size: new window.AMap.Size(18, 18),
+              imageSize: new window.AMap.Size(18, 18),
+            }),
+          });
+        },
+        updateMarker(marker, lat, lng) { marker.setPosition([lng, lat]); },
+      },
+      google: {
+        async load() {
+          if (window.google?.maps) return window.google.maps;
+          if (!mapReady.google) {
+            mapReady.google = (async () => {
+              const cfg = await mapConfig();
+              if (!cfg.googleKey) throw new Error('未配置 Google Maps Key');
+              const cb = '__redpandaGoogleMapsReady';
+              await new Promise((resolve, reject) => {
+                window[cb] = resolve;
+                const s = document.createElement('script');
+                s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(cfg.googleKey)}&v=weekly&loading=async&callback=${cb}`;
+                s.onerror = () => reject(new Error('Google Maps 加载失败'));
+                document.head.appendChild(s);
+              });
+              return window.google.maps;
+            })().catch((err) => { mapReady.google = null; throw err; });
+          }
+          return mapReady.google;
+        },
+        latLng: (lat, lng) => ({ lat, lng }),
+        create(el, center, zoom, onMove) {
+          const map = new window.google.maps.Map(el, {
+            center, zoom, disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy',
+          });
+          map.addListener('idle', onMove);
+          return map;
+        },
+        center(map) {
+          const c = map.getCenter();
+          return { lat: c.lat(), lng: c.lng() };
+        },
+        setCenter(map, lat, lng, zoom) {
+          map.setCenter({ lat, lng });
+          if (zoom) map.setZoom(zoom);
+        },
+        resize(map) { if (window.google?.maps?.event) window.google.maps.event.trigger(map, 'resize'); },
+        marker(map, lat, lng) {
+          return new window.google.maps.Marker({
+            map,
+            position: { lat, lng },
+            icon: {
+              url: myLocationIcon,
+              scaledSize: new window.google.maps.Size(18, 18),
+              anchor: new window.google.maps.Point(9, 9),
+            },
+          });
+        },
+        updateMarker(marker, lat, lng) { marker.setPosition({ lat, lng }); },
+      },
+    };
 
     const picker = document.getElementById('origin-picker');
     const pickerBody = document.getElementById('origin-picker-body');
@@ -5326,6 +5436,31 @@
     const locateBtn = document.getElementById('origin-picker-locate');
     let selectedPoi = null, nearbyPois = [], suppressMove = false, moveTimer = null, searchSeq = 0, nearbySeq = 0;
 
+    function resetMap() {
+      tmap = null;
+      mapAdapter = null;
+      myLocationMarker = null;
+      currentPos = null;
+      clearTimeout(moveTimer);
+      if (mapEl) mapEl.innerHTML = '';
+      if (picker) picker.hidden = true;
+    }
+    function syncMapProviderButtons() {
+      document.querySelectorAll('[data-map-provider]').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.mapProvider === currentMapProvider());
+      });
+    }
+    document.querySelectorAll('[data-map-provider]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const provider = btn.dataset.mapProvider;
+        if (!MAP_PROVIDERS.includes(provider) || provider === currentMapProvider()) return;
+        localStorage.setItem(STORAGE.mapProvider, provider);
+        hideError('origin-error');
+        syncMapProviderButtons();
+        resetMap();
+      });
+    });
+
     function applyPickerRatio() {
       if (!pickerBody || !mapWrap || !listPanel) return;
       pickerMapRatio = Math.max(MAP_RATIO_MIN, Math.min(MAP_RATIO_MAX, pickerMapRatio));
@@ -5334,7 +5469,7 @@
       const mapH = Math.max(100, Math.min(h - 100 - dragH, Math.round((h - dragH) * pickerMapRatio)));
       mapWrap.style.height = mapH + 'px';
       listPanel.style.height = (h - mapH - dragH) + 'px';
-      if (tmap && typeof tmap.resize === 'function') setTimeout(() => { try { tmap.resize(); } catch {} }, 0);
+      if (tmap && mapAdapter) setTimeout(() => { try { mapAdapter.resize(tmap); } catch {} }, 0);
     }
     dragEl?.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -5398,17 +5533,13 @@
     poisEl?.addEventListener('touchcancel', onListTouchEnd, { passive: true });
 
     function setMyLocation(lat, lng) {
-      if (!tmap || !window.TMap || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      if (!tmap || !mapAdapter || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
       currentPos = { lat, lng };
-      const pos = new TMap.LatLng(lat, lng);
+      const pos = mapAdapter.latLng(lat, lng);
       if (!myLocationMarker) {
-        myLocationMarker = new TMap.MultiMarker({
-          map: tmap,
-          styles: { dot: new TMap.MarkerStyle({ width: 18, height: 18, anchor: { x: 9, y: 9 }, src: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"><circle cx="9" cy="9" r="7" fill="#2f7cff" stroke="white" stroke-width="3"/></svg>') }) },
-          geometries: [{ id: 'me', styleId: 'dot', position: pos }],
-        });
+        myLocationMarker = mapAdapter.marker(tmap, lat, lng);
       } else {
-        myLocationMarker.updateGeometries([{ id: 'me', styleId: 'dot', position: pos }]);
+        mapAdapter.updateMarker(myLocationMarker, lat, lng);
       }
     }
 
@@ -5444,10 +5575,13 @@
       const seq = ++nearbySeq;
       try {
         const [nearbyRes, reverseRes] = await Promise.allSettled([
-          api('/api/me/usual-origin/nearby', { method: 'POST', body: { lat, lng } }),
-          api('/api/me/usual-origin/reverse', { method: 'POST', body: { lat, lng } }),
+          api('/api/me/usual-origin/nearby', { method: 'POST', body: { lat, lng, provider: currentMapProvider() } }),
+          api('/api/me/usual-origin/reverse', { method: 'POST', body: { lat, lng, provider: currentMapProvider() } }),
         ]);
         if (seq !== nearbySeq) return;
+        if (nearbyRes.status === 'rejected' && reverseRes.status === 'rejected') {
+          throw nearbyRes.reason || reverseRes.reason;
+        }
         const pois = nearbyRes.status === 'fulfilled' && Array.isArray(nearbyRes.value.pois) ? nearbyRes.value.pois : [];
         pois.sort((a,b) => (a.distance ?? 1e9) - (b.distance ?? 1e9));
         const rev = reverseRes.status === 'fulfilled' ? (reverseRes.value || {}) : {};
@@ -5472,12 +5606,10 @@
     }
 
     function locateTo(lat, lng, zoom = 17) {
-      if (!tmap || !window.TMap) return;
-      const c = new TMap.LatLng(lat, lng);
+      if (!tmap || !mapAdapter) return;
       suppressMove = true;
       try {
-        tmap.setCenter(c);
-        if (zoom) tmap.setZoom(zoom);
+        mapAdapter.setCenter(tmap, lat, lng, zoom);
       } catch {}
       setTimeout(() => { suppressMove = false; fetchNearby(lat, lng); }, 0);
     }
@@ -5509,9 +5641,13 @@
     }
 
     async function openPicker() {
-      if (!picker) return;
+      if (!picker || !mapEl) return;
       hideError('origin-error');
-      try { await ensureTencentMap(); } catch (err) { showError('origin-error', err.message); return; }
+      const provider = currentMapProvider();
+      try {
+        await adapters[provider].load();
+        mapAdapter = adapters[provider];
+      } catch (err) { showError('origin-error', err.message); return; }
       picker.hidden = false;
       applyPickerRatio();
       selectedPoi = null; nearbyPois = []; confirmBtn.disabled = true;
@@ -5519,14 +5655,12 @@
       if (searchResults) searchResults.hidden = true;
       if (poisEl) poisEl.innerHTML = '<p class="origin-empty">正在获取附近地点…</p>';
       if (!tmap) {
-        const center = new TMap.LatLng(39.908823, 116.397470);
-        tmap = new TMap.Map(mapEl, { center, zoom: 16, viewMode: '2D', pitch: 0, rotation: 0, pitchable: false, rotatable: false, showControl: false });
-        tmap.on('idle', () => {
+        tmap = mapAdapter.create(mapEl, mapAdapter.latLng(39.908823, 116.397470), 16, () => {
           if (suppressMove) return;
           clearTimeout(moveTimer);
           moveTimer = setTimeout(() => {
-            const c = tmap.getCenter();
-            if (c) fetchNearby(c.getLat(), c.getLng());
+            const c = mapAdapter.center(tmap);
+            if (c) fetchNearby(c.lat, c.lng);
           }, 300);
         });
       }
@@ -5566,9 +5700,9 @@
       if (!q) { if (searchResults) searchResults.hidden = true; return; }
       searchInput._timer = setTimeout(async () => {
         try {
-          const c = tmap?.getCenter();
-          const body = { keyword: q };
-          if (c) { body.lat = c.getLat(); body.lng = c.getLng(); }
+          const c = tmap && mapAdapter ? mapAdapter.center(tmap) : null;
+          const body = { keyword: q, provider: currentMapProvider() };
+          if (c) { body.lat = c.lat; body.lng = c.lng; }
           const data = await api('/api/me/usual-origin/search', { method: 'POST', body });
           if (seq !== searchSeq) return;
           const pois = Array.isArray(data.pois) ? data.pois : [];

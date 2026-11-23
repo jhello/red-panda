@@ -251,9 +251,20 @@ IndexedDB，由客户端本地读写。
 
 需要认证。把自然语言地点描述交给 AI 解析，请求 `{ "text": "上海市徐汇区天钥桥路88号" }`，返回结构化的 `origin` 对象。
 
-### `POST /api/me/usual-origin/search` 和 `POST /api/me/usual-origin/reverse`
+### `POST /api/me/usual-origin/nearby`、`/search` 和 `/reverse`
 
-需要认证。通过 Photon（OpenStreetMap 数据）搜索地点候选，或按 `{ "lat": 31.18, "lon": 121.43, "locale": "zh" }` 反查附近地址。搜索请求使用 `{ "query": "上海体育场", "locale": "zh" }`，返回最多 6 个候选。地图图层使用 OpenStreetMap，需保留地图上的署名信息。
+需要认证。地点搜索、附近地点与逆地理编码统一返回 `{ pois, count }` / `{ address, component, pois }`，`pois` 字段包含 `id/name/address/lat/lng/distance/province/city/district/category`。
+
+请求体可带 `provider: "amap" | "google"` 手动选择地图服务，默认使用服务端配置 `RED_PANDA_MAP_PROVIDER`（默认 `amap`）：
+
+- `nearby` / `reverse` 需要 `{ "lat": 31.18, "lng": 121.43 }`；
+- `search` 需要 `{ "keyword": "上海体育场" }`，可附坐标按距离优先排序。
+
+高德使用 Web 服务 API，Google 使用 Places API (New) 与 Geocoding API；对应 Key 放在项目根目录的 `amap_api_key.txt` / `google_maps_api_key.txt`，也可用环境变量覆盖。
+
+### `GET /api/map/config`
+
+需要认证。返回两种地图的浏览器端 Key、可选服务列表和默认服务：`{ providers, defaultProvider, amapKey, googleKey }`，供前端加载对应地图 SDK。
 
 ### `PUT /api/me/password`
 

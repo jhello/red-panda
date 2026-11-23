@@ -88,6 +88,9 @@ npm run dev        # node --watch，改代码自动重启
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API 基地址，可指向兼容服务 |
 | `OPENAI_MODEL` | `gpt-4o-mini` | 使用的模型 |
 | `RED_PANDA_AI_MOCK` | `0` | 设为 `1` 时不调用真实 API，返回假数据 |
+| `RED_PANDA_MAP_PROVIDER` | `amap` | 默认地图服务：`amap` / `google`，用户可在设置里切换 |
+| `AMAP_MAP_KEY` | `amap_api_key.txt` | 高德 Web 服务 + JS API Key；文件在根目录，环境变量优先 |
+| `GOOGLE_MAPS_API_KEY` | `google_maps_api_key.txt` | Google Maps JS API + Places API (New) + Geocoding API Key；文件在根目录，环境变量优先 |
 
 示例 `.env`：
 
