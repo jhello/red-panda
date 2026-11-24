@@ -6405,6 +6405,13 @@
   });
 
   window.__redPandaSystemBack = () => {
+    const picker = document.getElementById('origin-picker');
+    if (picker && !picker.hidden) {
+      picker.hidden = true;
+      const results = document.getElementById('origin-picker-search-results');
+      if (results) results.hidden = true;
+      return true;
+    }
     const route = parseRoute();
     if (route.name === 'settings') {
       if (route.section) replaceHash('#/settings');
