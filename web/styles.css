@@ -1346,6 +1346,7 @@ html.is-offline .auth-screen {
 .origin-picker-provider { position: relative; z-index: 2001; display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--map-ghost); pointer-events: auto; }
 .origin-picker-provider-btn { min-width: 42px; height: 26px; padding: 0 8px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-soft); font-size: 11px; font-weight: 600; line-height: 1; }
 .origin-picker-provider-btn.active { background: var(--card); color: var(--seal-dark); box-shadow: 0 1px 5px rgba(72, 55, 32, 0.16); }
+.origin-picker-provider-btn:disabled { opacity: 0.55; cursor: default; }
 .origin-picker-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .origin-picker-map-wrap { position: relative; width: 100%; height: 55%; min-height: 140px; background: var(--map-cell); }
 .origin-picker-map { position: absolute; inset: 0; }
