@@ -1346,11 +1346,13 @@ html.is-offline .auth-screen {
 .origin-picker-provider { position: relative; z-index: 2001; display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--map-ghost); pointer-events: auto; }
 .origin-picker-provider-btn { min-width: 42px; height: 26px; padding: 0 8px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-soft); font-size: 11px; font-weight: 600; line-height: 1; }
 .origin-picker-provider-btn.active { background: var(--card); color: var(--seal-dark); box-shadow: 0 1px 5px rgba(72, 55, 32, 0.16); }
-.origin-picker-provider-btn.loading { color: var(--seal-dark); background: rgba(47, 124, 255, 0.12); }
+.origin-picker-provider-btn.switching { color: var(--seal-dark); background: rgba(47, 124, 255, 0.12); }
 .origin-picker-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .origin-picker-map-wrap { position: relative; width: 100%; height: 55%; min-height: 140px; background: var(--map-cell); }
-.origin-picker-map-wrap.is-switching::after { content: "正在切换地图…"; position: absolute; inset: 0; z-index: 1600; display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.6); color: var(--muted); font-size: 13px; pointer-events: none; }
-[data-theme="dark"] .origin-picker-map-wrap.is-switching::after { background: rgba(0, 0, 0, 0.5); }
+.origin-picker-map-wrap.has-status::after { content: attr(data-map-status); position: absolute; inset: 0; z-index: 1600; display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 0 24px; text-align: center; background: rgba(255, 255, 255, 0.72); color: var(--muted); font-size: 13px; line-height: 1.5; pointer-events: none; }
+.origin-picker-map-wrap.has-status .origin-picker-center-pin,
+.origin-picker-map-wrap.has-status .origin-picker-locate { display: none; }
+[data-theme="dark"] .origin-picker-map-wrap.has-status::after { background: rgba(0, 0, 0, 0.58); }
 .origin-picker-map { position: absolute; inset: 0; }
 .origin-picker-center-pin { position: absolute; left: 50%; top: 50%; width: 28px; height: 38px; margin-left: -14px; margin-top: -38px; z-index: 1500; pointer-events: none; }
 .origin-picker-center-pin::before { content: ""; position: absolute; left: 4px; top: 0; width: 20px; height: 20px; background: #22b573; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.25); box-sizing: border-box; }

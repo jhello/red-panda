@@ -5479,14 +5479,26 @@
       clearTimeout(moveTimer);
       if (mapEl) mapEl.innerHTML = '';
     }
+    function setMapStatus(message) {
+      if (!mapWrap) return;
+      if (message) {
+        mapWrap.dataset.mapStatus = message;
+        mapWrap.classList.add('has-status');
+      } else {
+        delete mapWrap.dataset.mapStatus;
+        mapWrap.classList.remove('has-status');
+      }
+    }
+    function providerLabel(provider) {
+      return provider === 'google' ? 'Google Maps' : (t('settings.mapProviderAmap') || '高德地图');
+    }
     function syncMapProviderButtons() {
       document.querySelectorAll('[data-map-provider]').forEach((btn) => {
-        const loading = btn.dataset.mapProvider === switchingProvider;
+        const switching = btn.dataset.mapProvider === switchingProvider;
         btn.classList.toggle('active', btn.dataset.mapProvider === currentMapProvider());
-        btn.classList.toggle('loading', loading);
-        btn.setAttribute('aria-busy', loading ? 'true' : 'false');
+        btn.classList.toggle('switching', switching);
+        btn.setAttribute('aria-busy', switching ? 'true' : 'false');
       });
-      mapWrap?.classList.toggle('is-switching', Boolean(switchingProvider));
     }
     function onMapMove() {
       if (suppressMove || switchingProvider) return;
@@ -5504,40 +5516,39 @@
       if (!poisEl) return;
       poisEl.innerHTML = `<p class="${isError ? 'form-error' : 'origin-empty'}">${esc(message)}</p>`;
     }
-    function showPickerError(err, fallback) {
+    function pickerErrorMessage(err, fallback) {
       const msg = err?.message || fallback;
-      showPickerStatus(msg.includes('请稍后重试') ? msg : `${msg}，请稍后重试。`, true);
+      return msg.includes('请稍后重试') ? msg : `${msg}，请稍后重试。`;
+    }
+    function showPickerError(err, fallback) {
+      showPickerStatus(pickerErrorMessage(err, fallback), true);
     }
     function refreshCurrentMap() {
       if (!picker || picker.hidden) return;
       hideError('origin-error');
       if (searchResults) searchResults.hidden = true;
       if (!mapAdapter || !tmap) { openPicker(); return; }
+      setMapStatus('');
       showPickerStatus('正在获取附近地点…');
       const c = mapAdapter.center(tmap);
       if (c) fetchNearby(c.lat, c.lng);
       else locateCurrent();
     }
-    function cancelMapSwitch() {
-      mapSwitchSeq += 1;
-      switchingProvider = null;
-      syncMapProviderButtons();
-      refreshCurrentMap();
-    }
     async function switchMapProvider(provider) {
       const next = String(provider || '').toLowerCase();
       if (!MAP_PROVIDERS.includes(next)) return;
       if (next === switchingProvider) return;
-      if (next === currentMapProvider()) {
-        if (switchingProvider) cancelMapSwitch();
-        else refreshCurrentMap();
-        return;
-      }
+      if (next === currentMapProvider()) { refreshCurrentMap(); return; }
       const seq = ++mapSwitchSeq;
       switchingProvider = next;
+      clearMap();
+      localStorage.setItem(STORAGE.mapProvider, next);
       syncMapProviderButtons();
       hideError('origin-error');
       if (searchResults) searchResults.hidden = true;
+      selectedPoi = null; nearbyPois = []; confirmBtn.disabled = true;
+      if (searchInput) searchInput.value = '';
+      setMapStatus(`正在加载${providerLabel(next)}…`);
       showPickerStatus('正在切换地图…');
       try {
         await adapters[next].load();
@@ -5545,20 +5556,17 @@
         if (seq !== mapSwitchSeq) return;
         switchingProvider = null;
         syncMapProviderButtons();
-        showPickerError(err, '地图加载失败');
-        selectedPoi = null;
-        confirmBtn.disabled = true;
+        const msg = pickerErrorMessage(err, '地图加载失败');
+        setMapStatus(msg);
+        showPickerStatus(msg, true);
         return;
       }
       if (seq !== mapSwitchSeq) return;
       switchingProvider = null;
-      clearMap();
-      localStorage.setItem(STORAGE.mapProvider, next);
       syncMapProviderButtons();
-      if (picker.hidden) return;
+      if (picker.hidden) { setMapStatus(''); return; }
       mapAdapter = adapters[next];
-      selectedPoi = null; nearbyPois = []; confirmBtn.disabled = true;
-      if (searchInput) searchInput.value = '';
+      setMapStatus('');
       try {
         showPickerStatus('正在获取附近地点…');
         createPickerMap();
@@ -5566,7 +5574,9 @@
         setTimeout(() => applyPickerRatio(), 0);
         locateCurrent();
       } catch (err) {
-        showPickerError(err, '地图初始化失败');
+        const msg = pickerErrorMessage(err, '地图初始化失败');
+        setMapStatus(msg);
+        showPickerStatus(msg, true);
       }
     }
     document.querySelectorAll('[data-map-provider]').forEach((btn) => {
@@ -5767,6 +5777,7 @@
       selectedPoi = null; nearbyPois = []; confirmBtn.disabled = true;
       if (searchInput) searchInput.value = '';
       if (searchResults) searchResults.hidden = true;
+      setMapStatus('正在加载地图…');
       showPickerStatus('正在加载地图…');
       const provider = currentMapProvider();
       try {
@@ -5774,18 +5785,23 @@
         mapAdapter = adapters[provider];
       } catch (err) {
         if (switchingProvider || currentMapProvider() !== provider) return;
-        showPickerError(err, '地图加载失败');
+        const msg = pickerErrorMessage(err, '地图加载失败');
+        setMapStatus(msg);
+        showPickerStatus(msg, true);
         return;
       }
       if (picker.hidden || switchingProvider || currentMapProvider() !== provider) return;
       try {
+        setMapStatus('');
         showPickerStatus('正在获取附近地点…');
         createPickerMap();
         applyPickerRatio();
         setTimeout(() => applyPickerRatio(), 0);
         locateCurrent();
       } catch (err) {
-        showPickerError(err, '地图初始化失败');
+        const msg = pickerErrorMessage(err, '地图初始化失败');
+        setMapStatus(msg);
+        showPickerStatus(msg, true);
       }
     }
 
