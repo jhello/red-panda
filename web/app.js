@@ -5311,6 +5311,8 @@
     const mapReady = {};
     const MAP_RATIO_MIN = 0.3; // 列表最多 70%
     const MAP_RATIO_MAX = 0.6; // 列表最少 40%
+    const MAP_LOAD_TIMEOUT = 15000;
+    let mapScriptSeq = 0;
     const mapConfig = () => {
       if (!mapConfigPromise) mapConfigPromise = api('/api/map/config').catch(() => ({}));
       return mapConfigPromise;
@@ -5318,9 +5320,46 @@
     function loadMapScript(src, label) {
       return new Promise((resolve, reject) => {
         const s = document.createElement('script');
+        let done = false;
+        const finish = (err) => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          s.onload = null;
+          s.onerror = null;
+          err ? reject(err) : resolve();
+        };
+        const timer = setTimeout(() => {
+          s.remove();
+          finish(new Error(`${label}加载超时，请稍后重试`));
+        }, MAP_LOAD_TIMEOUT);
         s.src = src;
-        s.onload = resolve;
-        s.onerror = () => reject(new Error(`${label}加载失败`));
+        s.onload = () => finish();
+        s.onerror = () => finish(new Error(`${label}加载失败`));
+        document.head.appendChild(s);
+      });
+    }
+    function loadGoogleMaps(key) {
+      return new Promise((resolve, reject) => {
+        const cb = `__redpandaGoogleMapsReady_${++mapScriptSeq}`;
+        const s = document.createElement('script');
+        let done = false;
+        let timer = null;
+        const finish = (err) => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          s.onload = null;
+          s.onerror = null;
+          s.remove();
+          if (err) window[cb] = () => {}; // 迟到的回调不再影响后续加载
+          else { try { delete window[cb]; } catch {} }
+          err ? reject(err) : resolve(window.google.maps);
+        };
+        window[cb] = () => finish();
+        s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly&loading=async&callback=${cb}`;
+        s.onerror = () => finish(new Error('Google Maps 加载失败'));
+        timer = setTimeout(() => finish(new Error('Google Maps 加载超时，请稍后重试')), MAP_LOAD_TIMEOUT);
         document.head.appendChild(s);
       });
     }
@@ -5378,15 +5417,7 @@
             mapReady.google = (async () => {
               const cfg = await mapConfig();
               if (!cfg.googleKey) throw new Error('未配置 Google Maps Key');
-              const cb = '__redpandaGoogleMapsReady';
-              await new Promise((resolve, reject) => {
-                window[cb] = resolve;
-                const s = document.createElement('script');
-                s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(cfg.googleKey)}&v=weekly&loading=async&callback=${cb}`;
-                s.onerror = () => reject(new Error('Google Maps 加载失败'));
-                document.head.appendChild(s);
-              });
-              return window.google.maps;
+              return loadGoogleMaps(cfg.googleKey);
             })().catch((err) => { mapReady.google = null; throw err; });
           }
           return mapReady.google;
@@ -5436,7 +5467,8 @@
     const locateBtn = document.getElementById('origin-picker-locate');
     let selectedPoi = null, nearbyPois = [], suppressMove = false, moveTimer = null, searchSeq = 0, nearbySeq = 0;
 
-    let switchingMap = false;
+    let switchingProvider = null;
+    let mapSwitchSeq = 0;
     function clearMap() {
       tmap = null;
       mapAdapter = null;
@@ -5449,12 +5481,15 @@
     }
     function syncMapProviderButtons() {
       document.querySelectorAll('[data-map-provider]').forEach((btn) => {
+        const loading = btn.dataset.mapProvider === switchingProvider;
         btn.classList.toggle('active', btn.dataset.mapProvider === currentMapProvider());
-        btn.disabled = switchingMap;
+        btn.classList.toggle('loading', loading);
+        btn.setAttribute('aria-busy', loading ? 'true' : 'false');
       });
+      mapWrap?.classList.toggle('is-switching', Boolean(switchingProvider));
     }
     function onMapMove() {
-      if (suppressMove || switchingMap) return;
+      if (suppressMove || switchingProvider) return;
       clearTimeout(moveTimer);
       moveTimer = setTimeout(() => {
         const c = mapAdapter?.center(tmap);
@@ -5469,10 +5504,37 @@
       if (!poisEl) return;
       poisEl.innerHTML = `<p class="${isError ? 'form-error' : 'origin-empty'}">${esc(message)}</p>`;
     }
+    function showPickerError(err, fallback) {
+      const msg = err?.message || fallback;
+      showPickerStatus(msg.includes('请稍后重试') ? msg : `${msg}，请稍后重试。`, true);
+    }
+    function refreshCurrentMap() {
+      if (!picker || picker.hidden) return;
+      hideError('origin-error');
+      if (searchResults) searchResults.hidden = true;
+      if (!mapAdapter || !tmap) { openPicker(); return; }
+      showPickerStatus('正在获取附近地点…');
+      const c = mapAdapter.center(tmap);
+      if (c) fetchNearby(c.lat, c.lng);
+      else locateCurrent();
+    }
+    function cancelMapSwitch() {
+      mapSwitchSeq += 1;
+      switchingProvider = null;
+      syncMapProviderButtons();
+      refreshCurrentMap();
+    }
     async function switchMapProvider(provider) {
       const next = String(provider || '').toLowerCase();
-      if (switchingMap || !MAP_PROVIDERS.includes(next) || next === currentMapProvider()) return;
-      switchingMap = true;
+      if (!MAP_PROVIDERS.includes(next)) return;
+      if (next === switchingProvider) return;
+      if (next === currentMapProvider()) {
+        if (switchingProvider) cancelMapSwitch();
+        else refreshCurrentMap();
+        return;
+      }
+      const seq = ++mapSwitchSeq;
+      switchingProvider = next;
       syncMapProviderButtons();
       hideError('origin-error');
       if (searchResults) searchResults.hidden = true;
@@ -5480,17 +5542,18 @@
       try {
         await adapters[next].load();
       } catch (err) {
-        switchingMap = false;
+        if (seq !== mapSwitchSeq) return;
+        switchingProvider = null;
         syncMapProviderButtons();
-        const msg = err?.message || '地图加载失败';
-        showPickerStatus(`${msg}，请稍后重试。`, true);
+        showPickerError(err, '地图加载失败');
         selectedPoi = null;
         confirmBtn.disabled = true;
         return;
       }
+      if (seq !== mapSwitchSeq) return;
+      switchingProvider = null;
       clearMap();
       localStorage.setItem(STORAGE.mapProvider, next);
-      switchingMap = false;
       syncMapProviderButtons();
       if (picker.hidden) return;
       mapAdapter = adapters[next];
@@ -5503,8 +5566,7 @@
         setTimeout(() => applyPickerRatio(), 0);
         locateCurrent();
       } catch (err) {
-        const msg = err?.message || '地图初始化失败';
-        showPickerStatus(`${msg}，请稍后重试。`, true);
+        showPickerError(err, '地图初始化失败');
       }
     }
     document.querySelectorAll('[data-map-provider]').forEach((btn) => {
@@ -5693,7 +5755,7 @@
 
     async function openPicker() {
       if (!picker || !mapEl) return;
-      if (switchingMap) {
+      if (switchingProvider) {
         picker.hidden = false;
         applyPickerRatio();
         showPickerStatus('正在切换地图…');
@@ -5711,11 +5773,11 @@
         await adapters[provider].load();
         mapAdapter = adapters[provider];
       } catch (err) {
-        const msg = err?.message || '地图加载失败';
-        showPickerStatus(`${msg}，请稍后重试。`, true);
+        if (switchingProvider || currentMapProvider() !== provider) return;
+        showPickerError(err, '地图加载失败');
         return;
       }
-      if (picker.hidden) return;
+      if (picker.hidden || switchingProvider || currentMapProvider() !== provider) return;
       try {
         showPickerStatus('正在获取附近地点…');
         createPickerMap();
@@ -5723,8 +5785,7 @@
         setTimeout(() => applyPickerRatio(), 0);
         locateCurrent();
       } catch (err) {
-        const msg = err?.message || '地图初始化失败';
-        showPickerStatus(`${msg}，请稍后重试。`, true);
+        showPickerError(err, '地图初始化失败');
       }
     }
 
