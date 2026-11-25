@@ -2633,7 +2633,8 @@ html.is-offline .auth-screen {
 .me-name-edit{min-width:0;max-width:calc(100% - 70px);padding:6px 0;border:0;background:transparent;text-align:left;color:var(--ink);font:inherit;font-size:24px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .me-name-edit:focus-visible{outline:2px solid var(--seal);outline-offset:3px;border-radius:4px}
 .me-name-input{width:min(75%,360px);min-width:0;padding:6px 0;border:0;border-bottom:2px solid var(--seal);border-radius:0;background:transparent;color:var(--ink);font:inherit;font-size:24px;font-weight:650;outline:none}
-.gear-btn{border:0;background:transparent;font-size:23px;color:var(--ink-soft);padding:10px}
+.paw-btn{border:0;background:transparent;color:var(--ink-soft);padding:10px;display:grid;place-items:center}
+.paw-btn svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .me-page{padding-top:8px}
 .footprint-card{width:100%;border:1px solid var(--line);border-radius:var(--radius);background:var(--card);text-align:left;padding:20px;color:var(--ink);box-shadow:var(--shadow-soft)}
 .footprint-copy{display:flex;justify-content:space-between;align-items:center}
