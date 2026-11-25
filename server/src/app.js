@@ -1023,10 +1023,10 @@ export function createApp(config, options = {}) {
       pois = (Array.isArray(data.pois) ? data.pois : []).map((p) => normalizeAmapPoi(p, { lat, lng }));
       count = Number(data.count) || pois.length;
     } else {
-      const locationBias = { circle: { center: { latitude: lat, longitude: lng }, radius: 1000 } };
+      const locationCircle = { circle: { center: { latitude: lat, longitude: lng }, radius: 1000 } };
       const data = keyword
-        ? await googlePlaces('searchText', { textQuery: keyword, locationBias, maxResultCount: pageSize })
-        : await googlePlaces('searchNearby', { locationBias, maxResultCount: pageSize });
+        ? await googlePlaces('searchText', { textQuery: keyword, locationBias: locationCircle, maxResultCount: pageSize })
+        : await googlePlaces('searchNearby', { locationRestriction: locationCircle, maxResultCount: pageSize });
       pois = (Array.isArray(data.places) ? data.places : []).map((p) => normalizeGooglePlace(p, { lat, lng }));
       count = pois.length;
     }
@@ -1094,6 +1094,7 @@ export function createApp(config, options = {}) {
     } else {
       const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
       url.searchParams.set('latlng', `${lat},${lng}`);
+      url.searchParams.set('key', requireMapKey('google'));
       const geo = await googleFetch(url);
       const result = geo.results?.[0] || {};
       formatted = result.formatted_address || '';
@@ -1105,7 +1106,7 @@ export function createApp(config, options = {}) {
         street_number: googleComponent(result, 'street_number'),
       };
       const data = await googlePlaces('searchNearby', {
-        locationBias: { circle: { center: { latitude: lat, longitude: lng }, radius: 1000 } },
+        locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: 1000 } },
         maxResultCount: 20,
       });
       pois = (Array.isArray(data.places) ? data.places : []).map((p) => normalizeGooglePlace(p, { lat, lng }));
