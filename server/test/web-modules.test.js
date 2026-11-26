@@ -68,6 +68,32 @@ test('前端本地存储模块按账号隔离数据库名并归一化行程计�
   assert.equal(journey.return_time, '2026-11-15T20:00');
 });
 
+test('旧资料中的昵称不会覆盖当前账号的邮箱前缀', () => {
+  // Legacy device-wide storage used to leave a previous account's display name
+  // in the profile. Only an explicitly saved nickname is authoritative.
+  assert.deepEqual(
+    storage.resolveDisplayName({ id: 'profile', displayName: 'phone-test' }, { email: 'jhello@126.com' }),
+    { displayName: 'jhello', custom: false },
+  );
+  assert.deepEqual(
+    storage.resolveDisplayName({ id: 'profile', displayName: '' }, { email: 'jhello@126.com' }, '我的'),
+    { displayName: 'jhello', custom: false },
+  );
+  assert.deepEqual(
+    storage.resolveDisplayName({ id: 'profile', displayName: '小熊猫', displayNameCustom: true }, { email: 'jhello@126.com' }),
+    { displayName: '小熊猫', custom: true },
+  );
+  assert.deepEqual(
+    storage.resolveDisplayName({ id: 'profile', displayName: '' }, { email: '' }, '我的'),
+    { displayName: '我的', custom: false },
+  );
+
+  const storageSource = fs.readFileSync(path.join(WEB_DIR, 'js', 'storage.js'), 'utf8');
+  assert.match(storageSource, /existing\.displayNameCustom = true/);
+  const appSource = fs.readFileSync(path.join(WEB_DIR, 'app.js'), 'utf8');
+  assert.match(appSource, /displayNameCustom !== true/);
+});
+
 test('前端照片压缩决策与等比缩放计算正确', () => {
   assert.equal(media.shouldCompressImage({ type: 'image/jpeg', size: 500_000 }), true);
   assert.equal(media.shouldCompressImage({ type: 'image/png', size: 300_000 }), true);

@@ -37,6 +37,20 @@
     return Date.now() * 1000 + Math.floor(Math.random() * 1000);
   }
 
+  /**
+   * A nickname is only trusted when the user explicitly saved it. Old device-wide
+   * profiles can contain a display name from a previous account; treating that as
+   * authoritative would make the current account show somebody else's nickname.
+   */
+  function resolveDisplayName(saved, user, fallback = '') {
+    const custom = saved?.displayNameCustom === true && String(saved.displayName || '').trim();
+    if (custom) return { displayName: custom, custom: true };
+    return {
+      displayName: String(user?.email || '').split('@')[0] || fallback,
+      custom: false,
+    };
+  }
+
   function buildLocalJourney(body, base = {}, options = {}) {
     const plan = body.plan === undefined ? (base.plan || null) : normalizeLocalPlan(body.plan);
     const now = options.now || new Date().toISOString();
@@ -212,11 +226,12 @@
     async function hydrateClientProfile(user) {
       if (!user) return user;
       const saved = (await storeAll('settings')).find((item) => item.id === 'profile') || { id: 'profile' };
-      const fallbackName = String(user.email || '').split('@')[0] || t('nav.me');
+      const name = resolveDisplayName(saved, user, t('nav.me'));
       const profile = {
         ...saved,
         id: 'profile',
-        displayName: saved.displayName || fallbackName,
+        displayName: name.displayName,
+        displayNameCustom: name.custom,
         locale: saved.locale || '',
         usualOrigin: saved.usualOrigin || [],
       };
@@ -346,6 +361,7 @@
           throw new ApiError(t('api.nicknameLength'), 400, 'validation_error');
         }
         existing.displayName = displayName;
+        existing.displayNameCustom = true;
         await storePut('settings', existing);
         return { displayName };
       }
@@ -381,6 +397,7 @@
     LOCAL_DB,
     localDbNameForUser,
     normalizeLocalPlan,
+    resolveDisplayName,
     buildLocalJourney,
     createLocalStorage,
   };

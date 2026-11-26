@@ -964,7 +964,14 @@
       const tx = db.transaction(['journeys', 'memories', 'settings'], 'readwrite');
       for (const j of plan.journeyStats.records) tx.objectStore('journeys').put(j);
       for (const m of plan.memoryStats.records) tx.objectStore('memories').put(m);
-      for (const s of plan.settingStats.records) tx.objectStore('settings').put(s);
+      for (const s of plan.settingStats.records) {
+        // A backup from an older build may carry a legacy profile name with no
+        // explicit-save marker. Let hydration recompute it from the current account.
+        const record = s.id === 'profile' && s.displayNameCustom !== true
+          ? { ...s, displayName: '', displayNameCustom: false }
+          : s;
+        tx.objectStore('settings').put(record);
+      }
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
