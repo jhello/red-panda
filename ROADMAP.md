@@ -45,7 +45,7 @@
 - 曾尝试「先选文件夹、再用原生列表只显示备份后缀文件」的方案（`55228cc`），但观感更差，已整体 revert（`dbc93f0`），恢复系统文件选择器。部分厂商文件管理器仍会列出无关文件并置灰，这是当前接受的折中。
 - 移除导入前的系统确认弹窗：选择文件后仅读取并比对，在按钮下方展示圆角确认卡片（文件、导入详情、取消 / 确认按钮），确认后才写入 IndexedDB；卡片文案与待导入统计随语言切换实时更新。
 - 状态栏改为保存文案生成函数而非已渲染字符串，避免切换语言后残留 `Import cancelled` 等旧语言状态；导出取消、导入取消、导入完成状态均验证可随 zh/en/de 切换更新。
-- 全项目不再出现阻断用户操作的对话框 / 弹窗：删除回忆与删除行程也改为页面内确认卡片；WebView 的 alert / confirm / prompt / beforeunload 立即自动处理，不再显示原生 `AlertDialog`；定位权限不再发起运行时授权弹窗，未授权时直接失败。
+- 全项目不再出现阻断用户操作的对话框 / 弹窗：删除回忆与删除行程也改为页面内确认卡片；WebView 的 alert / confirm / prompt / beforeunload 立即自动处理，不再显示原生 `AlertDialog`。系统权限例外：定位未授权时恢复标准 `requestPermissions` 系统授权页，交互与系统设置里的权限开关保持一致；`INTERNET` / `ACCESS_NETWORK_STATE` 等普通权限仍由系统自动授予。
 - `node --check`、67/67 自动化测试、`./scripts/build-android.sh` 与 `ELI AN00`（`192.168.10.51`）真机回归全部通过。
 
 ### 昵称回归修复（已验证）
@@ -70,7 +70,7 @@
 
 ## 最近验证
 
-- 2026-11-26：`node --check web/*.js web/js/*.js` 通过；`cd server && node --test` 通过（68/68）；`./scripts/build-android.sh` 构建通过。真机 `ELI AN00`（`192.168.10.51`）验证：旧昵称 `phone-test` 已回退为当前账号邮箱前缀 `jhello`；显式保存的 `小熊猫` 在增加常用地址、关闭定位权限并返回后保持不变；apk 已恢复为正式构建且定位权限保持关闭。
-- 2026-11-26：`node --check web/*.js web/js/*.js` 通过；`cd server && node --test` 通过（67/67）；`./scripts/build-android.sh` 构建通过。真机 `ELI AN00`（`192.168.10.51`）验证：恢复系统文件选择器；导入确认卡片展示详情，取消不写库、确认后计数更新；删除行程 / 删除回忆的页面内确认卡片在 zh/en/de 均可取消或确认，切换语言后卡片文案同步更新；`window.alert` / `confirm` / `prompt` 与定位请求均不再弹出原生界面。
+- 2026-11-26：`node --check web/*.js web/js/*.js` 通过；`cd server && node --test` 通过（68/68）；`./scripts/build-android.sh` 构建通过。真机 `ELI AN00`（`192.168.10.51`）验证：旧昵称 `phone-test` 已回退为当前账号邮箱前缀 `jhello`；显式保存的 `小熊猫` 在增加常用地址、关闭定位权限并返回后保持不变；定位权限恢复系统标准授权页后仍可正常授权 / 拒绝；apk 已恢复为正式构建且定位权限保持关闭。
+- 2026-11-26：`node --check web/*.js web/js/*.js` 通过；`cd server && node --test` 通过（67/67）；`./scripts/build-android.sh` 构建通过。真机 `ELI AN00`（`192.168.10.51`）验证：恢复系统文件选择器；导入确认卡片展示详情，取消不写库、确认后计数更新；删除行程 / 删除回忆的页面内确认卡片在 zh/en/de 均可取消或确认，切换语言后卡片文案同步更新；`window.alert` / `confirm` / `prompt` 不再弹出原生界面，定位权限改由标准系统授权页处理。
 - 2026-11-26：`node --check web/*.js web/js/*.js` 通过；`cd server && node --test` 通过（65/65）；`./scripts/build-android.sh` 构建通过并在 `ELI AN00`（`192.168.10.51`）完成真机回归：登录、行程、回忆、AI mock、zh/en/de 切换、数据页、分块导出、文件导入、备份桥并发均正常，导出 `.rpd` 通过 `gzip -t`，创建旅程背景图在 `file://` WebView 中解析到 `file:///android_asset/www/paintings/athens.jpg` 且图片加载成功。
 - 2026-11-26：用 `./scripts/start-server.sh` 恢复真实服务后 `/api/health` 返回 200；确认 `.env` 与 Key 文件仍可加载高德 / Google 服务端 Key，`/api/map/config` 在已登录用户下返回两把浏览器可用 Key。真机验证地图选择器：服务在线时高德地图加载成功且无「未配置 Key」提示；服务离线时显示「当前连不上服务器，请检查网络后重试」，恢复服务后再次加载正常。

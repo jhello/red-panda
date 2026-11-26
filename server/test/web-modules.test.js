@@ -254,7 +254,7 @@ test('备份失败码全部本地化，导入改为页面确认卡片并按后�
   assert.match(javaSource, /EXTRA_MIME_TYPES, new String\[\]\{"application\/json", "application\/octet-stream"\}/);
 });
 
-test('整个项目不再出现阻断用户操作的对话框或弹窗', () => {
+test('应用内流程不使用阻断对话框，系统权限走标准授权页', () => {
   const jsDir = path.join(WEB_DIR, 'js');
   const webFiles = [
     path.join(WEB_DIR, 'index.html'),
@@ -285,8 +285,11 @@ test('整个项目不再出现阻断用户操作的对话框或弹窗', () => {
   assert.match(javaSource, /public boolean onJsPrompt[\s\S]*?result\.cancel\(\)/);
   assert.match(javaSource, /public boolean onJsBeforeUnload[\s\S]*?result\.confirm\(\)/);
 
-  // Location permission requests used to put a full-screen system sheet over
-  // the app; only an already granted permission is honoured now.
-  assert.doesNotMatch(javaSource, /requestPermissions|onRequestPermissionsResult|GEOLOCATION_REQUEST_CODE/);
-  assert.match(javaSource, /callback\.invoke\(origin, hasLocationPermission\(\), false\)/);
+  // Runtime permissions are requested through the standard Android system sheet,
+  // matching the toggles in system settings. WebView JavaScript dialogs remain
+  // auto-handled; no in-app AlertDialog is involved.
+  assert.match(javaSource, /private static final int GEOLOCATION_REQUEST_CODE = 7101/);
+  assert.match(javaSource, /requestPermissions\(new String\[\] \{[\s\S]*?Manifest\.permission\.ACCESS_COARSE_LOCATION[\s\S]*?Manifest\.permission\.ACCESS_FINE_LOCATION/);
+  assert.match(javaSource, /public void onRequestPermissionsResult\([\s\S]*?geolocationCallback\.invoke\(geolocationOrigin, hasLocationPermission\(\), false\)/);
+  assert.match(javaSource, /if \(hasLocationPermission\(\)\) \{[\s\S]*?callback\.invoke\(origin, true, false\)/);
 });

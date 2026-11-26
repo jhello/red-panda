@@ -56,6 +56,7 @@ public class MainActivity extends Activity {
     private static final int DARK_PAPER_COLOR = Color.rgb(20, 25, 26);
     private static final String PREFS_NAME = "red-panda";
     private static final String PREF_THEME = "theme_mode";
+    private static final int GEOLOCATION_REQUEST_CODE = 7101;
 
     private WebView webView;
     private FrameLayout root;
@@ -66,6 +67,8 @@ public class MainActivity extends Activity {
     private int imeBottom;
     private String themeMode = "system";
     private boolean darkMode = false;
+    private GeolocationPermissions.Callback geolocationCallback;
+    private String geolocationOrigin;
     private ValueCallback<Uri[]> fileChooserCallback;
     private volatile boolean backupChooserLaunched;
     private volatile String pendingBackupBase64;
@@ -161,9 +164,18 @@ public class MainActivity extends Activity {
 
             @Override
             public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-                // A runtime permission sheet blocks the whole app. Use location
-                // only when it was already granted; otherwise fail silently.
-                callback.invoke(origin, hasLocationPermission(), false);
+                if (hasLocationPermission()) {
+                    callback.invoke(origin, true, false);
+                    return;
+                }
+                // Use the system runtime permission sheet so the in-app choice
+                // stays consistent with the permission toggle in system settings.
+                geolocationOrigin = origin;
+                geolocationCallback = callback;
+                requestPermissions(new String[] {
+                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                }, GEOLOCATION_REQUEST_CODE);
             }
         });
         webView.addJavascriptInterface(new BackupBridge(), "AndroidBackup");
@@ -600,6 +612,16 @@ public class MainActivity extends Activity {
     private boolean hasLocationPermission() {
         return checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
                 || checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == GEOLOCATION_REQUEST_CODE && geolocationCallback != null) {
+            geolocationCallback.invoke(geolocationOrigin, hasLocationPermission(), false);
+            geolocationCallback = null;
+            geolocationOrigin = null;
+        }
     }
 
     @Override
