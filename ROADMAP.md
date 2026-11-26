@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-已完成 **第 1、2、3 阶段（安全加固、模块化拆分、离线优先与媒体存储优化）** 的代码开发与服务端 / 前端模块自动化验证；等待确认是否补齐 CI/CD 配置与开启第 4 阶段产品功能。
+已完成 **第 1、2、3 阶段（安全加固、模块化拆分、离线优先与媒体存储优化）** 的代码开发、自动化验证与 Android 真机回归；PR #2 复核中发现的问题已修复并提交，CI/CD 配置已补齐。下一步可确认是否开启第 4 阶段产品功能。
 
 ## 已完成
 
@@ -13,7 +13,7 @@
 
 ### 第 1 阶段：安全与稳定性加固（已验证）
 - 拆分高德 / Google 地图的服务端 Key 与浏览器端 Key（`AMAP_BROWSER_KEY` / `GOOGLE_MAPS_BROWSER_KEY`，向下兼容回退）。
-- 抽离统一限流器 `server/src/rate-limit.js`（支持 `RED_PANDA_TRUST_PROXY=1` 读取真实客户端 IP、小时级定时清理过期条目），新增 AI 与地图按用户限流。
+- 抽离统一限流器 `server/src/rate-limit.js`（支持 `RED_PANDA_TRUST_PROXY=1` 按可信代理跳数读取真实客户端 IP、小时级定时清理过期条目），新增 AI 与地图按用户限流。
 - 密码哈希与校验升级为异步 `crypto.scrypt`（`hashPasswordAsync` / `verifyPasswordAsync`），兼容旧同步接口。
 
 ### 第 2 阶段：模块化拆分、AI 多语言与测试覆盖（已验证）
@@ -21,7 +21,7 @@
 - 拆分 `server/src/app.js`（1482 → 366 行）为 `http-utils.js`、`rate-limit.js`、`static.js`、`routes/auth.js`、`routes/maps.js`、`routes/ai.js`。
 - 拆分 `web/app.js`（6531 → 4925 行）与 `web/styles.css`（2872 → 1581 + 985 + 363 行），拆出 `web/js/i18n.js`、`storage.js`、`media.js`、`backup.js`、`sw-register.js` 与 `web/css/*`（保持零构建、兼容 `file://` WebView）。
 - 让 AI 行程简介、行程计划、回忆生成提示词及 `mockRecap` 跟随 `zh / en / de` 三语设置，前端 AI 调用透传 `locale`。
-- 新增 `server/test/security-and-i18n.test.js` 与 `server/test/web-modules.test.js`，自动化测试增至 62 个并全部通过。
+- 新增 `server/test/security-and-i18n.test.js` 与 `server/test/web-modules.test.js`，自动化测试增至 63 个并全部通过。
 - 新增 GitHub Actions 自动测试工作流 `.github/workflows/test.yml`（push / PR 自动执行前端语法检查与 `node --test`）。
 
 ### 第 3 阶段：离线优先与媒体存储优化（HTML5 / 模块层已验证）
@@ -30,9 +30,17 @@
 - 数据与备份页接入 `navigator.storage.estimate()` 展示设备存储空间占用及 80%+ 警告提示。
 - 前端与 Android 桥接层支持分块 Base64 流式备份写入，兼容旧 APK 单次 `saveBackup`。
 
+### PR #2 复核修复（已验证）
+- 反向代理下仅按 `RED_PANDA_TRUST_PROXY_HOPS` 从右向左采信 `X-Forwarded-For`，校验 IP 并忽略客户端可伪造的 `X-Real-IP`。
+- 登录限流改为原子消费，避免并发请求绕过失败次数限制；新增并发登录测试。
+- 地图浏览器 Key 不再在路由层回退到服务端 Key；未单独配置时启动告警，可用 `RED_PANDA_MAP_BROWSER_KEY_FALLBACK=0` 禁止回退。
+- 修复导入备份 ID 注入、行程卡片属性未转义、导出按钮重入与 Android 备份桥并发竞态；导入选择器兼容 `.rpd` 的 `application/octet-stream` MIME。
+- PNG / WebP 压缩保留透明通道；GitHub Actions 固定到具体 commit；`android:allowBackup` 设为 `false`。
+- 扩充文档（`.env.example`、`docs/API.md`）与测试，测试总数 63/63 通过。
+
 ## 进行中 / 待验证
 
-- [ ] Android 端改动编译验证（[MainActivity.java](file:///Users/aideihua/project/red-panda/android/app/src/main/java/com/redpanda/app/MainActivity.java) ：仅 debug 构建开启 WebView 调试 + 分块流式备份写入）：代码已改，因本机未安装 Android SDK，待有 SDK 环境执行 `./scripts/build-android.sh` 验证。
+- [x] Android 端改动编译与真机验证：`./scripts/build-android.sh` 构建通过；手机完成登录、建行程、存回忆、AI 回忆、三语切换、数据页、导出 / 导入与备份桥并发测试，无崩溃或控制台错误。
 
 ## 待办（后续排期）
 
@@ -42,8 +50,8 @@
 
 ## 阻塞
 
-- 本机缺少 `~/Android/Sdk`，暂无法现场编译 APK 验证 Android Java 代码。
+- 无。CLA 检查由仓库所有者豁免，不作为阻塞项。
 
 ## 最近验证
 
-- 2026-11-26：`node --check web/*.js web/js/*.js` 通过；`cd server && node --test` 通过（62/62，耗时 674ms）。
+- 2026-11-26：`node --check web/*.js web/js/*.js` 通过；`cd server && node --test` 通过（63/63）；`./scripts/build-android.sh` 构建通过并在 `ELI AN00`（`192.168.10.51`）完成真机回归：登录、行程、回忆、AI mock、zh/en/de 切换、数据页、分块导出、文件导入、备份桥并发均正常，导出 `.rpd` 通过 `gzip -t`。
