@@ -1,0 +1,30 @@
+name: Test
+
+# 每次 push 或 PR 自动校验前端静态语法并运行服务端与前端模块测试（Node 22+ 零依赖）。
+
+on:
+  push:
+    branches: [main, release]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check frontend syntax
+        run: node --check web/*.js web/js/*.js
+
+      - name: Run server and web module tests
+        working-directory: server
+        run: node --test
