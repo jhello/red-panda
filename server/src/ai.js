@@ -120,24 +120,46 @@ export function mockPlan(input) {
  * of one journey into a short recap.
  */
 export function mockRecap(context = {}, locale = 'zh') {
-  const name = context.journeyName || '这趟旅行';
+  const defaultName = locale === 'de' ? 'Diese Reise' : locale === 'en' ? 'This journey' : '这趟旅行';
+  const name = context.journeyName || defaultName;
   const photos = Number(context.photos || 0);
   const videos = Number(context.videos || 0);
   const notes = Array.isArray(context.notes) ? context.notes : [];
   const pieces = [];
-  if (photos) pieces.push(locale === 'zh' ? `${photos} 张照片` : `${photos} photos`);
-  if (videos) pieces.push(locale === 'zh' ? `${videos} 段影像` : `${videos} clips`);
-  if (notes.length) pieces.push(locale === 'zh' ? `${notes.length} 句写给这趟行程的话` : `${notes.length} notes`);
+  if (photos) {
+    pieces.push(locale === 'zh' ? `${photos} 张照片` : locale === 'de' ? `${photos} Fotos` : `${photos} photos`);
+  }
+  if (videos) {
+    pieces.push(locale === 'zh' ? `${videos} 段影像` : locale === 'de' ? `${videos} Videos` : `${videos} clips`);
+  }
+  if (notes.length) {
+    pieces.push(
+      locale === 'zh'
+        ? `${notes.length} 句写给这趟行程的话`
+        : locale === 'de'
+          ? `${notes.length} Notizen`
+          : `${notes.length} notes`,
+    );
+  }
   const list = pieces.length
     ? pieces.join(locale === 'zh' ? '、' : ', ')
     : locale === 'zh'
       ? '一些还没写下来的片段'
-      : 'a few unwritten moments';
+      : locale === 'de'
+        ? 'ein paar ungeschriebene Augenblicke'
+        : 'a few unwritten moments';
   if (locale === 'zh') {
     return (
       `「${name}」这一路，你留下了${list}。` +
       '风从目的地吹过来，把没说完的话也一起收好；' +
       '等下一个季节再翻出来，仍然是当时的光。'
+    );
+  }
+  if (locale === 'de') {
+    return (
+      `Auf „${name}“ hast du ${list} festgehalten. ` +
+      'Der Wind jenes Ortes bewahrt auch die unausgesprochenen Worte, ' +
+      'und wenn du sie in einer anderen Jahreszeit wieder öffnest, leuchtet dasselbe Licht.'
     );
   }
   return (

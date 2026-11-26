@@ -35,6 +35,11 @@ function readOrCreateAdminToken(dataDir, envToken) {
   return { token, source: 'generated' };
 }
 
+function positiveInt(raw, fallback) {
+  const num = Number(raw);
+  return Number.isInteger(num) && num > 0 ? num : fallback;
+}
+
 /**
  * Load runtime configuration from environment variables.
  * Everything is optional; sensible local-first defaults are used.
@@ -55,7 +60,10 @@ export function loadConfig(env = process.env) {
   const sessionDays = Number(value(env, 'RED_PANDA_SESSION_DAYS', '30'));
   const verifyHours = Number(value(env, 'RED_PANDA_VERIFY_HOURS', '24'));
   const resetMinutes = Number(value(env, 'RED_PANDA_RESET_MINUTES', '1440'));
-  const emailRateLimit = Number(value(env, 'RED_PANDA_EMAIL_RATE_LIMIT', '20'));
+  const emailRateLimit = positiveInt(value(env, 'RED_PANDA_EMAIL_RATE_LIMIT', '20'), 20);
+  const aiRateLimit = positiveInt(value(env, 'RED_PANDA_AI_RATE_LIMIT', '30'), 30);
+  const mapRateLimit = positiveInt(value(env, 'RED_PANDA_MAP_RATE_LIMIT', '120'), 120);
+  const trustProxy = value(env, 'RED_PANDA_TRUST_PROXY', '0') === '1';
   const publicUrl = value(env, 'RED_PANDA_PUBLIC_URL', '').replace(/\/+$/, '');
 
   const smtpUser = value(env, 'RED_PANDA_SMTP_USER', '');
@@ -65,6 +73,30 @@ export function loadConfig(env = process.env) {
     'RED_PANDA_MAIL_FROM',
     smtpUser ? `Red Panda <${smtpUser}>` : 'Red Panda <no-reply@red-panda.local>',
   );
+
+  // Separate server-side REST keys from browser-side SDK keys, while staying
+  // backwards-compatible with single-key deployments (browserKey falls back to serverKey).
+  const amapServerKey = value(
+    env,
+    'AMAP_MAP_KEY',
+    value(env, 'RED_PANDA_AMAP_MAP_KEY', readKeyFile('amap_api_key.txt')),
+  );
+  const amapBrowserKey = value(
+    env,
+    'AMAP_BROWSER_KEY',
+    value(env, 'RED_PANDA_AMAP_BROWSER_KEY', readKeyFile('amap_browser_key.txt')),
+  ) || amapServerKey;
+
+  const googleServerKey = value(
+    env,
+    'GOOGLE_MAPS_API_KEY',
+    value(env, 'RED_PANDA_GOOGLE_MAPS_KEY', readKeyFile('google_maps_api_key.txt')),
+  );
+  const googleBrowserKey = value(
+    env,
+    'GOOGLE_MAPS_BROWSER_KEY',
+    value(env, 'RED_PANDA_GOOGLE_MAPS_BROWSER_KEY', readKeyFile('google_maps_browser_key.txt')),
+  ) || googleServerKey;
 
   return {
     version: pkg.version,
@@ -77,7 +109,10 @@ export function loadConfig(env = process.env) {
     sessionDays: Number.isFinite(sessionDays) && sessionDays > 0 ? sessionDays : 30,
     verificationHours: Number.isFinite(verifyHours) && verifyHours > 0 ? verifyHours : 24,
     resetMinutes: Number.isFinite(resetMinutes) && resetMinutes > 0 ? resetMinutes : 1440,
-    emailRateLimit: Number.isInteger(emailRateLimit) && emailRateLimit > 0 ? emailRateLimit : 20,
+    emailRateLimit,
+    aiRateLimit,
+    mapRateLimit,
+    trustProxy,
     publicUrl: publicUrl || null,
     webDir: path.resolve(value(env, 'RED_PANDA_WEB_DIR', path.join(PROJECT_ROOT, 'web'))),
     dashboardDir: path.join(SERVER_DIR, 'public', 'dashboard'),
@@ -106,10 +141,14 @@ export function loadConfig(env = process.env) {
     map: {
       defaultProvider: String(value(env, 'RED_PANDA_MAP_PROVIDER', 'amap')).toLowerCase() === 'google' ? 'google' : 'amap',
       amap: {
-        key: value(env, 'AMAP_MAP_KEY', value(env, 'RED_PANDA_AMAP_MAP_KEY', readKeyFile('amap_api_key.txt'))),
+        key: amapServerKey,
+        serverKey: amapServerKey,
+        browserKey: amapBrowserKey,
       },
       google: {
-        key: value(env, 'GOOGLE_MAPS_API_KEY', value(env, 'RED_PANDA_GOOGLE_MAPS_KEY', readKeyFile('google_maps_api_key.txt'))),
+        key: googleServerKey,
+        serverKey: googleServerKey,
+        browserKey: googleBrowserKey,
       },
     },
   };

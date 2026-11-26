@@ -17,6 +17,7 @@ application/json; charset=utf-8`），`204` 响应无正文。
 
 - **登录限流**：同一 IP 10 分钟内最多失败 20 次，超出返回 `429`。
 - **邮件限流**：同一 IP 10 分钟内最多触发 20 次注册 / 重发 / 找回操作（可用 `RED_PANDA_EMAIL_RATE_LIMIT` 调整），超出返回 `429`。
+- **AI 与地图限流**：按登录用户计数，10 分钟内默认最多 30 次 AI 请求（`RED_PANDA_AI_RATE_LIMIT`）与 120 次地图代理请求（`RED_PANDA_MAP_RATE_LIMIT`），超出返回 `429`。部署在反向代理后可设置 `RED_PANDA_TRUST_PROXY=1` 以识别真实客户端 IP。
 
 ## 状态码
 
@@ -264,7 +265,7 @@ IndexedDB，由客户端本地读写。
 
 ### `GET /api/map/config`
 
-需要认证。返回两种地图的浏览器端 Key、可选服务列表和默认服务：`{ providers, defaultProvider, amapKey, googleKey }`，供前端加载对应地图 SDK。
+需要认证。返回两种地图的浏览器端 Key、可选服务列表和默认服务：`{ providers, defaultProvider, amapKey, googleKey }`，供前端加载对应地图 SDK。支持通过 `AMAP_BROWSER_KEY` / `GOOGLE_MAPS_BROWSER_KEY`（或 `amap_browser_key.txt` / `google_maps_browser_key.txt`）与服务端 REST Key 分开配置；未单独配置时自动回退到服务端 Key。
 
 ### `PUT /api/me/password`
 
@@ -328,7 +329,7 @@ AI 未配置时返回 `503`（`ai_not_configured`）。
 
 ### `POST /api/ai/journey-description`
 
-根据旅程名称生成一段中文简介。
+根据旅程名称生成一段简介（支持通过 `locale: "zh" | "en" | "de"` 或 `Accept-Language` 指定输出语言，默认中文）。
 
 ```json
 { "name": "东海之行", "hint": "写得更神秘一些" }

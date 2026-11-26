@@ -1,374 +1,30 @@
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { URL } from 'node:url';
 
-import { AIError, aiStatus, chat, mockPlan, mockRecap } from './ai.js';
-import { hashPassword, hashToken, newSessionToken, safeEqual, verifyPassword } from './auth.js';
-import { fileSize, openDatabase } from './db.js';
+import { AIError, aiStatus } from './ai.js';
+import { hashToken, safeEqual } from './auth.js';
 import { getLanUrls } from './config.js';
+import { fileSize, openDatabase } from './db.js';
+import {
+  HttpError,
+  getClientIp,
+  readJson,
+  sendEmpty,
+  sendJson,
+  setApiHeaders,
+} from './http-utils.js';
 import { createMailer } from './mailer.js';
-import { emailChangeVerificationEmail, resetEmail, verificationEmail } from './emails.js';
+import { RateLimiter } from './rate-limit.js';
+import { parseJourneyPlan, registerAiRoutes } from './routes/ai.js';
+import { registerAuthRoutes } from './routes/auth.js';
+import { registerMapRoutes } from './routes/maps.js';
+import { notFound, resolveStaticPath, serveFile } from './static.js';
 
-const MAX_BODY_BYTES = 1024 * 1024;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
-
-const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.webmanifest': 'application/manifest+json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp',
-  '.gif': 'image/gif',
-  '.heic': 'image/heic',
-  '.avif': 'image/avif',
-  '.mp4': 'video/mp4',
-  '.mov': 'video/quicktime',
-  '.webm': 'video/webm',
-  '.mkv': 'video/x-matroska',
-  '.ico': 'image/x-icon',
-  '.woff2': 'font/woff2',
-  '.txt': 'text/plain; charset=utf-8',
-};
-
-class HttpError extends Error {
-  constructor(status, message, code = 'error') {
-    super(message);
-    this.name = 'HttpError';
-    this.status = status;
-    this.code = code;
-  }
-}
-
-function sendJson(res, status, payload) {
-  if (res.headersSent) return;
-  const body = Buffer.from(JSON.stringify(payload));
-  res.writeHead(status, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': body.length,
-    'Cache-Control': 'no-store',
-  });
-  res.end(body);
-}
-
-function sendEmpty(res, status) {
-  if (res.headersSent) return;
-  res.writeHead(status);
-  res.end();
-}
-
-function setApiHeaders(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Admin-Token');
-  res.setHeader('Access-Control-Max-Age', '86400');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'no-referrer');
-}
-
-function readJson(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let size = 0;
-    req.on('data', (chunk) => {
-      size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
-        reject(new HttpError(413, '请求内容过大', 'payload_too_large'));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on('end', () => {
-      if (size === 0) return resolve({});
-      try {
-        const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          return reject(new HttpError(400, '请求体必须是 JSON 对象', 'bad_json'));
-        }
-        resolve(parsed);
-      } catch {
-        reject(new HttpError(400, 'JSON 格式不正确', 'bad_json'));
-      }
-    });
-    req.on('error', reject);
-  });
-}
-
-
-function requiredString(value, label, { min = 0, max = 200, trim = true } = {}) {
-  if (typeof value !== 'string') {
-    throw new HttpError(400, `${label}格式不正确`, 'validation_error');
-  }
-  const text = trim ? value.trim() : value;
-  if (text.length < min) throw new HttpError(400, `${label}不能为空`, 'validation_error');
-  if (text.length > max) throw new HttpError(400, `${label}不能超过 ${max} 个字符`, 'validation_error');
-  return text;
-}
-
-function optionalString(value, label, max = 5000) {
-  if (value === undefined || value === null || value === '') return '';
-  if (typeof value !== 'string') throw new HttpError(400, `${label}格式不正确`, 'validation_error');
-  const text = value.trim();
-  if (text.length > max) throw new HttpError(400, `${label}不能超过 ${max} 个字符`, 'validation_error');
-  return text;
-}
-
-function normalizeEmail(value) {
-  const email = String(value ?? '').trim().toLowerCase();
-  if (email.length < 5 || email.length > 254 || !EMAIL_RE.test(email)) {
-    throw new HttpError(400, '请输入有效的邮箱地址', 'validation_error');
-  }
-  return email;
-}
-
-const SUPPORTED_LOCALES = new Set(['zh', 'en', 'de']);
-
-/** Accept "zh", "en", "de" and common BCP-47 tags such as zh-Hans-DE or de-AT. */
-function normalizeLocale(value) {
-  const text = String(value ?? '').trim().toLowerCase();
-  if (SUPPORTED_LOCALES.has(text)) return text;
-  if (text.startsWith('zh')) return 'zh';
-  if (text.startsWith('en')) return 'en';
-  if (text.startsWith('de')) return 'de';
-  return '';
-}
-
-/** Field aliases a model may use for each field of a journey plan. */
-const PLAN_FIELD_ALIASES = {
-  destination: ['destination', 'dest', 'place', 'city', 'spot', 'name', '目的地', '地点', '城市'],
-  departTime: [
-    'departTime', 'departureTime', 'departure_time', 'departureDate', 'departure_date',
-    'depart', 'departure', 'start', 'startTime', 'start_time', '出发时间', '出发日期', '出发',
-  ],
-  returnTime: [
-    'returnTime', 'return_time', 'returnDate', 'return_date', 'return',
-    'end', 'endTime', 'end_time', 'finish', 'finishTime', '返回时间', '返回日期', '返回',
-  ],
-};
-
-function pickPlanField(raw, kind) {
-  for (const key of PLAN_FIELD_ALIASES[kind]) {
-    const value = raw[key];
-    if (value !== undefined && value !== null && value !== '') return value;
-  }
-  return '';
-}
-
-/** Normalize a date/time string to YYYY-MM-DDTHH:mm (empty when unusable). */
-function normalizePlanTime(value) {
-  const text = String(value ?? '').trim();
-  if (!text) return '';
-  const dateTime = /^(\d{4})-(\d{1,2})-(\d{1,2})[T\s]+(\d{1,2}):(\d{2})/.exec(text);
-  if (dateTime) {
-    const [, y, m, d, hh, mm] = dateTime;
-    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${mm}`;
-  }
-  const dateOnly = /^(\d{4})[-/年.](\d{1,2})[-/月.](\d{1,2})日?$/.exec(text);
-  if (dateOnly) {
-    const [, y, m, d] = dateOnly;
-    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T09:00`;
-  }
-  return '';
-}
-
-/** Today's date, so the model can resolve relative dates like "下个月15号". */
-function todayContext() {
-  const now = new Date();
-  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}（星期${weekdays[now.getDay()]}）`;
-}
-
-/**
- * Turn an LLM answer into a normalized journey plan:
- * { items: [{ destination, departTime, returnTime }] }.
- * Models answer in slightly different shapes, so accept a single object,
- * an array, or { items: [...] }, and read common field aliases.
- */
-export function parseJourneyPlan(content) {
-  let text = String(content ?? '').trim();
-  const fence = /```(?:json)?/i.exec(text);
-  if (fence) {
-    const start = text.indexOf(fence[0]);
-    const end = text.indexOf('```', start + fence[0].length);
-    if (start !== -1 && end > start) text = text.slice(start + fence[0].length, end);
-  }
-
-  let parsed = null;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    parsed = null;
-  }
-  if (parsed === null) {
-    const arrayStart = text.indexOf('[');
-    const arrayEnd = text.lastIndexOf(']');
-    if (arrayStart !== -1 && arrayEnd > arrayStart) {
-      try {
-        parsed = JSON.parse(text.slice(arrayStart, arrayEnd + 1));
-      } catch {
-        parsed = null;
-      }
-    }
-  }
-  if (parsed === null) {
-    const objectStart = text.indexOf('{');
-    const objectEnd = text.lastIndexOf('}');
-    if (objectStart !== -1 && objectEnd > objectStart) {
-      try {
-        parsed = JSON.parse(text.slice(objectStart, objectEnd + 1));
-      } catch {
-        parsed = null;
-      }
-    }
-  }
-  if (parsed === null) {
-    throw new AIError('AI 返回内容格式不正确', 502, 'ai_invalid_json');
-  }
-
-  let rawItems;
-  if (Array.isArray(parsed)) rawItems = parsed;
-  else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.items)) rawItems = parsed.items;
-  else if (parsed && typeof parsed === 'object') rawItems = [parsed];
-  else rawItems = [];
-
-  const items = [];
-  for (const raw of rawItems) {
-    if (!raw || typeof raw !== 'object') continue;
-    const departTime = normalizePlanTime(pickPlanField(raw, 'departTime'));
-    const returnTime = normalizePlanTime(pickPlanField(raw, 'returnTime'));
-    const destination = pickPlanField(raw, 'destination');
-    // Some models put several stops into one array field.
-    const destinations = Array.isArray(destination) ? destination : [destination];
-    for (const one of destinations) {
-      const name = String(one ?? '').trim();
-      if (!name) continue;
-      items.push({ destination: name.slice(0, 80), departTime, returnTime });
-    }
-  }
-  if (items.length === 0) throw new AIError('AI 没有返回可用的旅程计划', 502, 'ai_empty');
-  return { items };
-}
-
-/**
- * Normalize the structured trip plan sent by the client:
- * { items: [{ destination, departTime, returnTime }], departTime, returnTime }.
- * Returns null when there is nothing usable.
- */
-function normalizeJourneyPlan(value) {
-  if (!value || typeof value !== 'object') return null;
-  const rawItems = Array.isArray(value.items) ? value.items : Array.isArray(value) ? value : [];
-  const items = [];
-  for (const raw of rawItems) {
-    if (!raw || typeof raw !== 'object') continue;
-    const destination = String(raw.destination ?? '').trim();
-    if (!destination) continue;
-    items.push({
-      destination: destination.slice(0, 80),
-      departTime: String(raw.departTime ?? '').trim().slice(0, 16),
-      returnTime: String(raw.returnTime ?? '').trim().slice(0, 16),
-    });
-  }
-  if (items.length === 0) return null;
-  const departs = items.map((item) => item.departTime).filter(Boolean).sort();
-  const returns = items.map((item) => item.returnTime).filter(Boolean).sort();
-  return {
-    items,
-    departTime: departs[0] ?? '',
-    returnTime: returns.at(-1) ?? '',
-  };
-}
-
-function localeForUser(body, req) {
-  return (
-    normalizeLocale(body?.locale) ||
-    normalizeLocale(req?.headers?.['accept-language']) ||
-    'zh'
-  );
-}
-
-function validatePassword(value) {
-  const password = typeof value === 'string' ? value : '';
-  if (password.length < 8) throw new HttpError(400, '密码至少需要 8 个字符', 'validation_error');
-  if (password.length > 128) throw new HttpError(400, '密码不能超过 128 个字符', 'validation_error');
-  return password;
-}
-
-function publicUser(row) {
-  return {
-    id: row.id,
-    email: row.email || null,
-    emailVerified: Boolean(row.email_verified),
-    createdAt: row.created_at,
-  };
-}
-
-function safeJoin(baseDir, relativePath) {
-  let decoded;
-  try {
-    decoded = decodeURIComponent(relativePath);
-  } catch {
-    return null;
-  }
-  const resolved = path.resolve(baseDir, `.${path.sep}${decoded}`);
-  const base = path.resolve(baseDir);
-  if (resolved !== base && !resolved.startsWith(`${base}${path.sep}`)) return null;
-  return resolved;
-}
-
-function serveFile(req, res, filePath) {
-  let stat;
-  try {
-    stat = fs.statSync(filePath);
-  } catch {
-    return false;
-  }
-  if (!stat.isFile()) return false;
-
-  res.writeHead(200, {
-    'Content-Type': MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream',
-    'Content-Length': stat.size,
-    'Cache-Control': 'no-cache',
-    'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'no-referrer',
-    'X-Frame-Options': 'DENY',
-  });
-  if (req.method === 'HEAD') {
-    res.end();
-  } else {
-    fs.createReadStream(filePath).pipe(res);
-  }
-  return true;
-}
-
-
-function notFound(req, res) {
-  if (req.url?.startsWith('/api/')) {
-    sendJson(res, 404, { error: '接口不存在', code: 'not_found' });
-    return;
-  }
-  const body = Buffer.from(
-    '<!doctype html><meta charset="utf-8"><title>404</title>' +
-      '<style>body{font-family:system-ui;background:#f7f2e8;color:#22282b;display:grid;place-items:center;height:100vh;margin:0}' +
-      'div{text-align:center}h1{font-size:64px;margin:0;color:#a83a2c}p{color:#6b7375}</style>' +
-      '<div><h1>404</h1><p>这一页山海尚未写成。</p><p><a href="/">返回控制台</a> · <a href="/app/">打开应用</a></p></div>',
-  );
-  res.writeHead(404, {
-    'Content-Type': 'text/html; charset=utf-8',
-    'Content-Length': body.length,
-  });
-  res.end(body);
-}
+const RATE_WINDOW_MS = 10 * 60 * 1000;
 
 export function createApp(config, options = {}) {
   const db = openDatabase(config.dbPath);
@@ -390,20 +46,20 @@ export function createApp(config, options = {}) {
     requestLog: [],
     metrics: { total: 0, byStatus: {}, aiCalls: 0 },
   };
-  const loginAttempts = new Map();
-  const emailAttempts = new Map();
+
+  const loginLimiter = new RateLimiter({ max: 20, windowMs: RATE_WINDOW_MS });
+  const emailLimiter = new RateLimiter({ max: config.emailRateLimit ?? 20, windowMs: RATE_WINDOW_MS });
+  const aiLimiter = new RateLimiter({ max: config.aiRateLimit ?? 30, windowMs: RATE_WINDOW_MS });
+  const mapLimiter = new RateLimiter({ max: config.mapRateLimit ?? 120, windowMs: RATE_WINDOW_MS });
 
   const routes = [];
-
-  function route(method, pattern, handler, options = {}) {
-    const methodUpper = method.toUpperCase();
-    const routePath = pattern.source.replaceAll('\\/', '/').replace(/^\^/, '').replace(/\$$/, '');
+  function route(method, pattern, handler, routeOptions = {}) {
     routes.push({
-      method: methodUpper,
+      method: method.toUpperCase(),
       pattern,
       handler,
-      auth: options.auth === true,
-      admin: options.admin === true,
+      auth: routeOptions.auth === true,
+      admin: routeOptions.admin === true,
     });
   }
 
@@ -443,120 +99,12 @@ export function createApp(config, options = {}) {
     return safeEqual(token, config.adminToken);
   }
 
-  function issueSession(userId) {
-    const token = newSessionToken();
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + config.sessionDays * 24 * 60 * 60 * 1000);
-    db.createSession({
-      tokenHash: hashToken(token),
-      userId,
-      now: now.toISOString(),
-      expiresAt: expiresAt.toISOString(),
-    });
-    return { token, expiresAt: expiresAt.toISOString() };
-  }
-
-  function checkLoginRate(ip) {
-    const now = Date.now();
-    const entry = loginAttempts.get(ip);
-    if (!entry || entry.resetAt <= now) {
-      loginAttempts.set(ip, { count: 0, resetAt: now + 10 * 60 * 1000 });
-      return;
-    }
-    if (entry.count >= 20) {
-      throw new HttpError(429, '尝试次数过多，请十分钟后再试', 'rate_limited');
-    }
-  }
-
-  function noteLoginFailure(ip) {
-    const entry = loginAttempts.get(ip);
-    if (entry) entry.count += 1;
-  }
-
-  function checkEmailRate(ip) {
-    const now = Date.now();
-    const entry = emailAttempts.get(ip);
-    if (!entry || entry.resetAt <= now) {
-      emailAttempts.set(ip, { count: 1, resetAt: now + 10 * 60 * 1000 });
-      return;
-    }
-    if (entry.count >= config.emailRateLimit) {
-      throw new HttpError(429, '操作过于频繁，请十分钟后再试', 'rate_limited');
-    }
-    entry.count += 1;
-  }
-
   function publicBaseUrl() {
     if (config.publicUrl) return config.publicUrl;
     const address = server.address();
     const port = typeof address === 'object' && address ? address.port : config.port;
     const lan = getLanUrls(port).find((entry) => entry.name !== 'localhost');
     return lan?.url || `http://127.0.0.1:${port}`;
-  }
-
-  async function sendVerificationEmail(user, context = {}) {
-    const token = newSessionToken();
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + config.verificationHours * 60 * 60 * 1000);
-    db.createEmailVerification({
-      tokenHash: hashToken(token),
-      userId: user.id,
-      now: now.toISOString(),
-      expiresAt: expiresAt.toISOString(),
-    });
-    const link = `${publicBaseUrl()}/api/auth/verify?token=${encodeURIComponent(token)}`;
-    const mail = verificationEmail({
-      link,
-      email: user.email,
-      hours: config.verificationHours,
-      locale: localeForUser(context.body, context.req),
-    });
-    await mailer.send({ to: user.email, ...mail });
-    return link;
-  }
-
-  async function sendEmailChangeVerification(user, email, context = {}) {
-    const token = newSessionToken();
-    const now = new Date();
-    const hours = 24;
-    const expiresAt = new Date(now.getTime() + hours * 60 * 60 * 1000);
-    db.createEmailVerification({ tokenHash: hashToken(token), userId: user.id, now: now.toISOString(), expiresAt: expiresAt.toISOString(), targetEmail: email });
-    const link = `${publicBaseUrl()}/api/auth/verify?token=${encodeURIComponent(token)}`;
-    const mail = emailChangeVerificationEmail({ link, email, hours, locale: localeForUser(context.body, context.req) });
-    try {
-      await mailer.send({ to: email, ...mail });
-    } catch (error) {
-      db.deletePendingEmailChange(user.id);
-      throw error;
-    }
-    return { pendingEmail: email, pendingEmailExpiresAt: expiresAt.toISOString() };
-  }
-
-  async function sendResetEmail(user, context = {}) {
-    const token = newSessionToken();
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + config.resetMinutes * 60 * 1000);
-    db.deleteResetsForUser(user.id);
-    db.createPasswordReset({
-      tokenHash: hashToken(token),
-      userId: user.id,
-      now: now.toISOString(),
-      expiresAt: expiresAt.toISOString(),
-    });
-    const link = `${publicBaseUrl()}/app/#/reset-password?token=${encodeURIComponent(token)}`;
-    const mail = resetEmail({
-      link,
-      email: user.email,
-      hours: Math.ceil(config.resetMinutes / 60),
-      locale: localeForUser(context.body, context.req),
-    });
-    try {
-      await mailer.send({ to: user.email, ...mail });
-    } catch (error) {
-      db.deleteResetsForUser(user.id);
-      throw error;
-    }
-    return { pendingResetExpiresAt: expiresAt.toISOString() };
   }
 
   function buildStatus() {
@@ -608,7 +156,7 @@ export function createApp(config, options = {}) {
     };
   }
 
-  // ---- public routes -------------------------------------------------------
+  // ---- core health & admin routes ------------------------------------------
 
   route('GET', /^\/api\/health$/, () => ({
     status: 200,
@@ -628,691 +176,34 @@ export function createApp(config, options = {}) {
     { admin: true },
   );
 
-  route('POST', /^\/api\/auth\/register$/, async ({ body, req }) => {
-    const ip = req.socket.remoteAddress ?? 'unknown';
-    checkEmailRate(ip);
-    const email = normalizeEmail(body.email);
-    const password = validatePassword(body.password);
-    const now = new Date().toISOString();
+  // ---- modular API routes --------------------------------------------------
 
-    const existing = db.findUserByEmail(email);
-    if (existing) {
-      if (existing.email_verified) {
-        throw new HttpError(409, '这个邮箱已经注册过了', 'email_taken');
-      }
-      // Unverified accounts may re-register: update the password and resend.
-      db.setPassword(existing.id, hashPassword(password));
-      try {
-        await sendVerificationEmail(db.findUserById(existing.id), { body, req });
-      } catch (error) {
-        console.error('[red-panda] 验证邮件发送失败:', error);
-        throw new HttpError(502, '账户已存在，但验证邮件发送失败，请稍后重试', 'mail_failed');
-      }
-      return {
-        status: 200,
-        body: {
-          status: 'pending_verification',
-          email,
-          message: '验证邮件已重新发送，请查收',
-        },
-      };
-    }
-
-    let userId;
-    try {
-      userId = db.createUser({ email, passwordHash: hashPassword(password), now });
-    } catch (error) {
-      if (String(error.message).includes('UNIQUE')) {
-        throw new HttpError(409, '这个邮箱已经注册过了', 'email_taken');
-      }
-      throw error;
-    }
-
-    const user = db.findUserById(userId);
-    try {
-      await sendVerificationEmail(user, { body, req });
-    } catch (error) {
-      console.error('[red-panda] 验证邮件发送失败:', error);
-      throw new HttpError(502, '账户已创建，但验证邮件发送失败，请稍后重试', 'mail_failed');
-    }
-
-    return {
-      status: 201,
-      body: {
-        status: 'pending_verification',
-        email,
-        message: '验证邮件已发送，请查收并点击链接激活账户',
-      },
-    };
+  registerAuthRoutes({
+    route,
+    db,
+    config,
+    mailer,
+    publicBaseUrl,
+    loginLimiter,
+    emailLimiter,
   });
 
-  route('POST', /^\/api\/auth\/login$/, async ({ body, req }) => {
-    const ip = req.socket.remoteAddress ?? 'unknown';
-    checkLoginRate(ip);
-    const identifier = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
-    const password = typeof body.password === 'string' ? body.password : '';
-    if (!identifier) throw new HttpError(400, '请输入邮箱', 'validation_error');
-    if (!password) throw new HttpError(400, '请输入密码', 'validation_error');
-
-    // Email is the only login identifier; username-only legacy accounts are
-    // removed by database migration and are no longer accepted.
-    let user = db.findUserByEmail(identifier);
-    if (!user || !verifyPassword(password, user.password_hash)) {
-      noteLoginFailure(ip);
-      throw new HttpError(401, '邮箱或密码不正确', 'invalid_credentials');
-    }
-    if (!user.email_verified) {
-      throw new HttpError(403, '邮箱尚未验证，请查收验证邮件并点击激活链接', 'email_not_verified');
-    }
-    loginAttempts.delete(ip);
-    const now = new Date().toISOString();
-    db.touchLogin(user.id, now);
-    const session = issueSession(user.id);
-    return {
-      status: 200,
-      body: { token: session.token, expiresAt: session.expiresAt, user: publicUser(user) },
-    };
+  registerMapRoutes({
+    route,
+    config,
+    state,
+    mapLimiter,
+    aiLimiter,
   });
 
-  route('GET', /^\/api\/auth\/verify$/, ({ req, res }) => {
-    let token = '';
-    try {
-      token = new URL(req.url ?? '/', 'http://localhost').searchParams.get('token') ?? '';
-    } catch {
-      token = '';
-    }
-    let verified = false;
-    let emailChanged = false;
-    if (token) {
-      const row = db.consumeEmailVerification(hashToken(token), new Date().toISOString());
-      if (row?.target_email) {
-        const existing = db.findUserByEmail(row.target_email);
-        if (!existing || existing.id === row.user_id) {
-          db.setEmail(row.user_id, row.target_email);
-          emailChanged = true;
-          verified = true;
-        }
-      } else if (row) {
-        db.markEmailVerified(row.user_id);
-        verified = true;
-      }
-    }
-    const location = emailChanged ? '/app/#/settings/account-security?emailChanged=1' : (verified ? '/app/#/login?verified=1' : '/app/#/login?verify=invalid');
-    res.writeHead(302, { Location: location });
-    res.end();
-    return { status: 302 };
+  registerAiRoutes({
+    route,
+    config,
+    state,
+    aiLimiter,
   });
 
-  route('POST', /^\/api\/auth\/resend-verification$/, async ({ body, req }) => {
-    const ip = req.socket.remoteAddress ?? 'unknown';
-    checkEmailRate(ip);
-    const email = normalizeEmail(body.email);
-    const user = db.findUserByEmail(email);
-    if (user && !user.email_verified) {
-      try {
-        await sendVerificationEmail(user, { body, req });
-      } catch (error) {
-        console.error('[red-panda] 验证邮件发送失败:', error);
-      }
-    }
-    return {
-      status: 200,
-      body: {
-        status: 'ok',
-        message: '如果该邮箱存在且尚未验证，验证邮件已发送',
-      },
-    };
-  });
-
-  route('POST', /^\/api\/auth\/forgot-password$/, async ({ body, req }) => {
-    const ip = req.socket.remoteAddress ?? 'unknown';
-    checkEmailRate(ip);
-    const email = normalizeEmail(body.email);
-    const user = db.findUserByEmail(email);
-    if (!user) {
-      return {
-        status: 200,
-        body: {
-          status: 'not_registered',
-          email,
-          message: '该邮箱尚未注册',
-        },
-      };
-    }
-    try {
-      if (user.email_verified) {
-        const pending = await sendResetEmail(user, { body, req });
-        return {
-          status: 200,
-          body: {
-            status: 'ok',
-            email,
-            pendingResetExpiresAt: pending.pendingResetExpiresAt,
-            message: '重置邮件已发送',
-          },
-        };
-      }
-      await sendVerificationEmail(user, { body, req });
-      return {
-        status: 200,
-        body: {
-          status: 'unverified',
-          email,
-          message: '该邮箱已注册但尚未验证，验证邮件已发送',
-        },
-      };
-    } catch (error) {
-      console.error('[red-panda] 邮件发送失败:', error);
-      throw new HttpError(502, '邮件发送失败，请稍后重试', 'mail_failed');
-    }
-  });
-
-  route('POST', /^\/api\/auth\/reset-password$/, async ({ body, req }) => {
-    const ip = req.socket.remoteAddress ?? 'unknown';
-    checkEmailRate(ip);
-    const token = requiredString(body.token, '重置令牌', { min: 10, max: 200 });
-    const password = validatePassword(body.password);
-    const row = db.consumePasswordReset(hashToken(token), new Date().toISOString());
-    if (!row) {
-      throw new HttpError(400, '重置链接无效或已过期，请重新申请', 'invalid_reset_token');
-    }
-    db.setPassword(row.user_id, hashPassword(password));
-    db.deleteSessionsForUser(row.user_id);
-    return { status: 204 };
-  });
-
-  // ---- authenticated routes ------------------------------------------------
-
-  route(
-    'POST',
-    /^\/api\/auth\/logout$/,
-    ({ auth }) => {
-      db.deleteSession(auth.tokenHash);
-      return { status: 204 };
-    },
-    { auth: true },
-  );
-
-  route(
-    'GET',
-    /^\/api\/me$/,
-    ({ auth }) => {
-      const pending = db.pendingEmailChange(auth.user.id, new Date().toISOString());
-      const pendingReset = db.pendingPasswordReset(auth.user.id, new Date().toISOString());
-      return { status: 200, body: { user: { ...publicUser(auth.user), pendingEmail: pending?.target_email || null, pendingEmailExpiresAt: pending?.expires_at || null, pendingResetExpiresAt: pendingReset?.expires_at || null } } };
-    },
-    { auth: true },
-  );
-
-  route('PUT', /^\/api\/me\/email$/, async ({ auth, body, req }) => {
-    const email = normalizeEmail(body.email);
-    if (email === String(auth.user.email || '').toLowerCase()) {
-      db.deletePendingEmailChange(auth.user.id);
-      return { status: 200, body: { pendingEmail: null, pendingEmailExpiresAt: null } };
-    }
-    const existing = db.findUserByEmail(email);
-    if (existing && existing.id !== auth.user.id) throw new HttpError(409, '这个邮箱已经注册过了', 'email_taken');
-    checkEmailRate(req.socket.remoteAddress ?? 'unknown');
-    const pending = await sendEmailChangeVerification(auth.user, email, { body, req });
-    return { status: 200, body: pending };
-  }, { auth: true });
-
-  route('POST', /^\/api\/me\/password-reset$/, async ({ auth, body, req }) => {
-    checkEmailRate(req.socket.remoteAddress ?? 'unknown');
-    const pending = await sendResetEmail(auth.user, { body, req });
-    return { status: 200, body: pending };
-  }, { auth: true });
-
-  route(
-    'PUT',
-    /^\/api\/me\/password$/,
-    ({ auth, body }) => {
-      const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
-      const newPassword = validatePassword(body.newPassword);
-      const row = db.findUserById(auth.user.id);
-      if (!row || !verifyPassword(currentPassword, row.password_hash)) {
-        throw new HttpError(401, '当前密码不正确', 'invalid_password');
-      }
-      db.setPassword(auth.user.id, hashPassword(newPassword));
-      // Keep this session, sign out every other device.
-      db.deleteOtherSessions(auth.user.id, auth.tokenHash);
-      return { status: 204 };
-    },
-    { auth: true },
-  );
-
-  const MAP_PROVIDERS = ['amap', 'google'];
-  const MAP_LABELS = { amap: '高德地图', google: 'Google Maps' };
-  const GOOGLE_PLACE_FIELDS = [
-    'places.id', 'places.displayName', 'places.formattedAddress',
-    'places.location', 'places.addressComponents', 'places.types',
-  ].join(',');
-
-  function mapProviderFrom(body) {
-    const raw = body?.provider ?? config.map.defaultProvider;
-    const provider = String(raw).toLowerCase();
-    if (!MAP_PROVIDERS.includes(provider)) throw new HttpError(400, '不支持的地图服务', 'validation_error');
-    return provider;
-  }
-  function requireMapKey(provider) {
-    const key = config.map?.[provider]?.key || '';
-    if (!key) throw new HttpError(503, `未配置${MAP_LABELS[provider]} Key`, `${provider}_map_not_configured`);
-    return key;
-  }
-  function mapUnavailable(provider) {
-    throw new HttpError(502, `${MAP_LABELS[provider]}服务暂时不可用，请稍后重试。`, 'place_search_unavailable');
-  }
-  async function amapGet(path, params) {
-    const key = requireMapKey('amap');
-    const url = new URL(`https://restapi.amap.com${path}`);
-    url.searchParams.set('key', key);
-    for (const [k, v] of Object.entries(params || {})) {
-      if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
-    }
-    let response;
-    try { response = await fetch(url, { signal: AbortSignal.timeout(20_000) }); }
-    catch { mapUnavailable('amap'); }
-    let data;
-    try { data = await response.json(); } catch { data = null; }
-    if (!response.ok || !data || data.status !== '1') {
-      throw new HttpError(502, data?.info || '地点服务暂时不可用，请稍后重试。', 'place_search_unavailable');
-    }
-    return data;
-  }
-  async function googleFetch(url, { method = 'GET', headers = {}, body } = {}) {
-    const key = requireMapKey('google');
-    let response;
-    try {
-      response = await fetch(url, {
-        method,
-        headers: { ...headers, 'X-Goog-Api-Key': key },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        signal: AbortSignal.timeout(20_000),
-      });
-    } catch { mapUnavailable('google'); }
-    let data;
-    try { data = await response.json(); } catch { data = null; }
-    if (!response.ok || !data || data.error || (data.status && data.status !== 'OK')) {
-      throw new HttpError(502, data?.error?.message || data?.error_message || '地点服务暂时不可用，请稍后重试。', 'place_search_unavailable');
-    }
-    return data;
-  }
-  function googlePlaces(action, body) {
-    return googleFetch(`https://places.googleapis.com/v1/places:${action}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Goog-FieldMask': GOOGLE_PLACE_FIELDS },
-      body,
-    });
-  }
-  const amapText = (value) => (Array.isArray(value) ? value[0] || '' : value || '');
-  function amapLocation(value, fallback) {
-    const [lng, lat] = String(value || '').split(',').map(Number);
-    return {
-      lat: Number.isFinite(lat) ? lat : fallback.lat,
-      lng: Number.isFinite(lng) ? lng : fallback.lng,
-    };
-  }
-  function normalizeAmapPoi(poi = {}, fallback = { lat: 0, lng: 0 }) {
-    const loc = amapLocation(poi.location, fallback);
-    const distance = Number(poi.distance);
-    return {
-      id: poi.id || '',
-      name: poi.name || '',
-      address: poi.address || [poi.pname, poi.cityname, poi.adname].map(amapText).filter(Boolean).join(''),
-      lat: loc.lat,
-      lng: loc.lng,
-      distance: Number.isFinite(distance) ? distance : null,
-      province: amapText(poi.pname),
-      city: amapText(poi.cityname),
-      district: amapText(poi.adname),
-      category: poi.type || '',
-    };
-  }
-  function googleComponent(place, type) {
-    const item = (place?.addressComponents || []).find((c) => (c.types || []).includes(type));
-    return item?.longName || item?.shortName || '';
-  }
-  function distanceMeters(a, b) {
-    const rad = (d) => d * Math.PI / 180;
-    const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
-    const s = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
-    return Math.round(6371000 * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s)));
-  }
-  function normalizeGooglePlace(place = {}, center = null) {
-    const loc = place.location || {};
-    const point = {
-      lat: Number(loc.latitude ?? 0),
-      lng: Number(loc.longitude ?? 0),
-    };
-    return {
-      id: place.id || '',
-      name: place.displayName?.text || '',
-      address: place.formattedAddress || '',
-      lat: point.lat,
-      lng: point.lng,
-      distance: center && Number.isFinite(point.lat) && Number.isFinite(point.lng) ? distanceMeters(center, point) : null,
-      province: googleComponent(place, 'administrative_area_level_1'),
-      city: googleComponent(place, 'locality'),
-      district: googleComponent(place, 'administrative_area_level_2'),
-      category: (place.types || [])[0] || '',
-    };
-  }
-
-  route('POST', /^\/api\/me\/usual-origin\/nearby$/, async ({ body }) => {
-    const provider = mapProviderFrom(body);
-    const lat = Number(body.lat);
-    const lng = Number(body.lng ?? body.lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      throw new HttpError(400, '地图坐标无效', 'validation_error');
-    }
-    const keyword = typeof body.keyword === 'string' ? body.keyword.trim().slice(0, 80) : '';
-    const pageSize = Math.min(20, Math.max(1, Number(body.page_size) || 20));
-    const pageIndex = Math.max(1, Number(body.page_index) || 1);
-    let pois = [], count = 0;
-    if (provider === 'amap') {
-      const params = {
-        location: `${lng},${lat}`,
-        radius: 1000,
-        offset: pageSize,
-        page: pageIndex,
-        extensions: 'base',
-        sort: 'distance',
-      };
-      if (keyword) params.keywords = keyword;
-      const data = await amapGet('/v3/place/around', params);
-      pois = (Array.isArray(data.pois) ? data.pois : []).map((p) => normalizeAmapPoi(p, { lat, lng }));
-      count = Number(data.count) || pois.length;
-    } else {
-      const locationCircle = { circle: { center: { latitude: lat, longitude: lng }, radius: 1000 } };
-      const data = keyword
-        ? await googlePlaces('searchText', { textQuery: keyword, locationBias: locationCircle, maxResultCount: pageSize })
-        : await googlePlaces('searchNearby', { locationRestriction: locationCircle, maxResultCount: pageSize });
-      pois = (Array.isArray(data.places) ? data.places : []).map((p) => normalizeGooglePlace(p, { lat, lng }));
-      count = pois.length;
-    }
-    return { status: 200, body: { pois, count } };
-  }, { auth: true });
-
-  route('POST', /^\/api\/me\/usual-origin\/search$/, async ({ body }) => {
-    const provider = mapProviderFrom(body);
-    const keyword = typeof body.keyword === 'string' ? body.keyword.trim().slice(0, 80) : (typeof body.query === 'string' ? body.query.trim().slice(0, 80) : '');
-    if (keyword.length < 1) throw new HttpError(400, '请输入搜索关键词', 'validation_error');
-    const lat = Number(body.lat);
-    const lng = Number(body.lng ?? body.lon);
-    const hasCoords = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
-    const pageSize = Math.min(20, Math.max(1, Number(body.page_size) || 20));
-    const pageIndex = Math.max(1, Number(body.page_index) || 1);
-    let pois = [], count = 0;
-    if (provider === 'amap') {
-      const params = { keywords: keyword, offset: pageSize, page: pageIndex, extensions: 'base' };
-      if (hasCoords) {
-        params.location = `${lng},${lat}`;
-        params.radius = 50000;
-      }
-      const data = await amapGet('/v3/place/text', params);
-      pois = (Array.isArray(data.pois) ? data.pois : []).map((p) => normalizeAmapPoi(p, hasCoords ? { lat, lng } : { lat: 0, lng: 0 }));
-      count = Number(data.count) || pois.length;
-    } else {
-      const request = { textQuery: keyword, maxResultCount: pageSize };
-      if (hasCoords) request.locationBias = { circle: { center: { latitude: lat, longitude: lng }, radius: 50000 } };
-      const data = await googlePlaces('searchText', request);
-      pois = (Array.isArray(data.places) ? data.places : []).map((p) => normalizeGooglePlace(p, hasCoords ? { lat, lng } : null));
-      count = pois.length;
-    }
-    return { status: 200, body: { pois, count } };
-  }, { auth: true });
-
-  route('POST', /^\/api\/me\/usual-origin\/reverse$/, async ({ body }) => {
-    const provider = mapProviderFrom(body);
-    const lat = Number(body.lat);
-    const lng = Number(body.lng ?? body.lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      throw new HttpError(400, '地图坐标无效', 'validation_error');
-    }
-    let formatted = '', component = {}, pois = [];
-    if (provider === 'amap') {
-      const data = await amapGet('/v3/geocode/regeo', {
-        location: `${lng},${lat}`, radius: 1000, extensions: 'all', homeorcorp: 0,
-      });
-      const result = data.regeocode || {};
-      const comp = result.addressComponent || {};
-      const streetNumber = comp.streetNumber || {};
-      formatted = result.formatted_address || '';
-      component = {
-        province: amapText(comp.province),
-        city: amapText(comp.city),
-        district: amapText(comp.district),
-        street: amapText(streetNumber.street) || amapText(result.roads?.[0]?.name),
-        street_number: amapText(streetNumber.number),
-      };
-      pois = (Array.isArray(result.pois) ? result.pois : []).slice(0, 20).map((p) => normalizeAmapPoi({
-        ...p,
-        pname: p.pname || comp.province,
-        cityname: p.cityname || comp.city,
-        adname: p.adname || comp.district,
-      }, { lat, lng }));
-    } else {
-      const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
-      url.searchParams.set('latlng', `${lat},${lng}`);
-      url.searchParams.set('key', requireMapKey('google'));
-      const geo = await googleFetch(url);
-      const result = geo.results?.[0] || {};
-      formatted = result.formatted_address || '';
-      component = {
-        province: googleComponent(result, 'administrative_area_level_1'),
-        city: googleComponent(result, 'locality'),
-        district: googleComponent(result, 'administrative_area_level_2'),
-        street: googleComponent(result, 'route'),
-        street_number: googleComponent(result, 'street_number'),
-      };
-      const data = await googlePlaces('searchNearby', {
-        locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: 1000 } },
-        maxResultCount: 20,
-      });
-      pois = (Array.isArray(data.places) ? data.places : []).map((p) => normalizeGooglePlace(p, { lat, lng }));
-    }
-    return {
-      status: 200,
-      body: { address: formatted, component: { ...component }, pois },
-    };
-  }, { auth: true });
-
-  route('GET', /^\/api\/map\/config$/, async () => {
-    return {
-      status: 200,
-      body: {
-        providers: [...MAP_PROVIDERS],
-        defaultProvider: config.map.defaultProvider,
-        amapKey: config.map.amap.key || '',
-        googleKey: config.map.google.key || '',
-      },
-    };
-  }, { auth: true });
-
-  route('POST', /^\/api\/me\/usual-origin\/parse$/, async ({ body }) => {
-    const text = typeof body.text === 'string' ? body.text.trim().slice(0, 1000) : '';
-    if (!text) throw new HttpError(400, '请输入地点描述', 'validation_error');
-    const result = await chat(config, [
-      { role: 'system', content: '将用户给出的常用地址描述解析为 JSON 对象。只返回JSON，键名必须为name,country,province,city,district,township,street,streetNumber；无法确定的值为空字符串。name 用适合显示的简短地点名。' },
-      { role: 'user', content: text },
-    ], { maxTokens: 500, temperature: 0 });
-    let origin;
-    try { origin = result.mock ? { name: text } : JSON.parse(result.content.replace(/^```(?:json)?\s*|\s*```$/g, '')); }
-    catch { throw new AIError('AI 返回的地点格式无法识别，请补充描述后重试。', 502, 'ai_invalid_json'); }
-    const fields = ['name', 'country', 'province', 'city', 'district', 'township', 'street', 'streetNumber'];
-    return { status: 200, body: { origin: Object.fromEntries(fields.map((key) => [key, String(origin[key] || '').slice(0, 160)])) } };
-  }, { auth: true });
-
-  route(
-    'POST',
-    /^\/api\/ai\/memory-recap$/,
-    async ({ auth, body, req }) => {
-      const supplied = (body.context && typeof body.context === 'object') ? body.context : {};
-      const context = {
-        journeyName: optionalString(supplied.journeyName, '旅程名称', 80),
-        destination: optionalString(supplied.destination, '目的地', 500),
-        departTime: optionalString(supplied.departTime, '出发时间', 40),
-        returnTime: optionalString(supplied.returnTime, '返回时间', 40),
-        photos: Math.max(0, Math.min(10000, Number(supplied.photos) || 0)),
-        videos: Math.max(0, Math.min(10000, Number(supplied.videos) || 0)),
-        notes: Array.isArray(supplied.notes) ? supplied.notes.slice(0, 100).map((note) => optionalString(note, '回忆文字', 2000)).filter(Boolean) : [],
-      };
-      const locale = localeForUser(body, req);
-      if (config.ai.mock) {
-        state.metrics.aiCalls += 1;
-        return {
-          status: 200,
-          body: { recap: mockRecap(context, locale), model: 'mock', mock: true },
-        };
-      }
-      const result = await chat(
-        config,
-        [
-          {
-            role: 'system',
-            content:
-              '你是「小熊猫」旅程应用里的回忆作者。' +
-              '根据用户给某段行程添加的照片、视频和文字，写一段温柔、有画面感的旅行回忆。' +
-              '不要罗列清单，不要标题，不要解释，控制在 200 字以内，只输出回忆正文。',
-          },
-          {
-            role: 'user',
-            content:
-              `行程：${context.journeyName}\n` +
-              (context.destination ? `目的地：${context.destination}\n` : '') +
-              (context.departTime ? `出发：${context.departTime}\n` : '') +
-              (context.returnTime ? `返回：${context.returnTime}\n` : '') +
-              `照片 ${context.photos} 张，视频 ${context.videos} 段。\n` +
-              (context.notes.length
-                ? `用户写下的片段：\n${context.notes.map((note) => `- ${note}`).join('\n')}\n`
-                : '用户还没有写下文字。\n') +
-              '请写成一段旅行回忆。',
-          },
-        ],
-        { maxTokens: 600, temperature: 0.9 },
-      );
-      state.metrics.aiCalls += 1;
-      return {
-        status: 200,
-        body: { recap: result.content, model: result.model, mock: result.mock },
-      };
-    },
-    { auth: true },
-  );
-
-  route(
-    'POST',
-    /^\/api\/ai\/journey-description$/,
-    async ({ body }) => {
-      const name = requiredString(body.name, '旅程名称', { min: 1, max: 80 });
-      const hint = optionalString(body.hint, '补充线索', 300);
-      const result = await chat(
-        config,
-        [
-          {
-            role: 'system',
-            content:
-              '你是「小熊猫」旅程应用的向导，擅长用简洁、富有画面感的中文为旅程写简介。' +
-              '只输出简介正文，不要标题、不要引号，控制在 120 字以内。',
-          },
-          {
-            role: 'user',
-            content: `旅程名称：${name}\n${hint ? `补充线索：${hint}\n` : ''}请为这段旅程写一段简介。`,
-          },
-        ],
-        { maxTokens: 400, temperature: 0.9 },
-      );
-      state.metrics.aiCalls += 1;
-      return {
-        status: 200,
-        body: { description: result.content, model: result.model, mock: result.mock },
-      };
-    },
-    { auth: true },
-  );
-
-  route(
-    'POST',
-    /^\/api\/ai\/journey-plan$/,
-    async ({ body }) => {
-      const prompt = requiredString(body.prompt, '旅行想法', { min: 1, max: 500 });
-      if (config.ai.mock) {
-        state.metrics.aiCalls += 1;
-        const plan = mockPlan(prompt);
-        return { status: 200, body: { items: plan.items, model: 'mock', mock: true } };
-      }
-      const result = await chat(
-        config,
-        [
-          {
-            role: 'system',
-            content:
-              '你是「小熊猫」旅程应用的向导，擅长把旅行想法整理成可出发的旅程计划。' +
-              '从用户描述里分析提取目的地（地点）和出发/返回时间。' +
-              '只输出一个 JSON 对象，不要 Markdown 代码块，不要解释，不要多余文字。' +
-              '格式必须严格为：{"items":[{"destination":"目的地名称","departTime":"出发时间","returnTime":"返回时间"}]}；' +
-              '每个目的地占一项；时间为 24 小时制 YYYY-MM-DDTHH:mm，无法确定的写空字符串。' +
-              '时间提取规则：用户写了具体日期、时刻、星期或相对说法（如“今天”“下周”“下个月15号”“玩三天”“下午三点”）时，' +
-              '必须换算并填入；用户完全没有提到任何时间时，两个时间字段都必须是空字符串，不要推测或编造。',
-          },
-          {
-            role: 'user',
-            content:
-              `今天是 ${todayContext()}。\n用户想去的地方：${prompt}\n` +
-              '今天日期用于换算用户确实写出的相对时间，例如「今天」「明天」「下周」「下个月15号」「玩三天」。' +
-              '如果用户完全没有提到任何时间，两个时间字段都必须输出空字符串，不要推测。' +
-              '并按上述格式输出旅程计划 JSON。',
-          },
-        ],
-        { maxTokens: 900, temperature: 0.3 },
-      );
-      state.metrics.aiCalls += 1;
-      const plan = parseJourneyPlan(result.content);
-      return {
-        status: 200,
-        body: { items: plan.items, model: result.model, mock: result.mock },
-      };
-    },
-    { auth: true },
-  );
-
-  route(
-    'POST',
-    /^\/api\/ai\/chat$/,
-    async ({ body }) => {
-      const messages = Array.isArray(body.messages) ? body.messages : null;
-      if (!messages || messages.length === 0 || messages.length > 20) {
-        throw new HttpError(400, 'messages 需为 1–20 条消息', 'validation_error');
-      }
-      const cleaned = messages.map((message) => {
-        if (!message || typeof message !== 'object') {
-          throw new HttpError(400, '消息格式不正确', 'validation_error');
-        }
-        if (!['system', 'user', 'assistant'].includes(message.role)) {
-          throw new HttpError(400, '消息角色不正确', 'validation_error');
-        }
-        if (typeof message.content !== 'string' || message.content.length === 0) {
-          throw new HttpError(400, '消息内容不能为空', 'validation_error');
-        }
-        if (message.content.length > 4000) {
-          throw new HttpError(400, '单条消息不能超过 4000 个字符', 'validation_error');
-        }
-        return { role: message.role, content: message.content };
-      });
-      if (typeof body.system === 'string' && body.system.trim()) {
-        cleaned.unshift({ role: 'system', content: body.system.trim().slice(0, 2000) });
-      }
-      const result = await chat(config, cleaned, { maxTokens: 800, temperature: 0.7 });
-      state.metrics.aiCalls += 1;
-      return {
-        status: 200,
-        body: { content: result.content, model: result.model, usage: result.usage, mock: result.mock },
-      };
-    },
-    { auth: true },
-  );
-
-  // ---- request handling ----------------------------------------------------
+  // ---- HTTP request dispatcher --------------------------------------------
 
   const server = http.createServer(async (req, res) => {
     const started = performance.now();
@@ -1374,24 +265,14 @@ export function createApp(config, options = {}) {
         throw new HttpError(405, '只支持 GET', 'method_not_allowed');
       }
 
-      let filePath = null;
-      if (pathname === '/' || pathname === '/dashboard' || pathname === '/dashboard/') {
-        filePath = path.join(config.dashboardDir, 'index.html');
-      } else if (pathname.startsWith('/dashboard/')) {
-        filePath = safeJoin(config.dashboardDir, pathname.slice('/dashboard/'.length));
-      } else if (pathname === '/app') {
+      if (pathname === '/app') {
         res.writeHead(302, { Location: '/app/' });
         res.end();
         status = 302;
         return;
-      } else if (pathname === '/app/') {
-        filePath = path.join(config.webDir, 'index.html');
-      } else if (pathname.startsWith('/app/')) {
-        filePath = safeJoin(config.webDir, pathname.slice('/app/'.length));
-      } else if (pathname === '/favicon.ico') {
-        filePath = path.join(config.webDir, 'icon-192.png');
       }
 
+      let filePath = resolveStaticPath(pathname, config);
       if (filePath && fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
         filePath = path.join(filePath, 'index.html');
       }
@@ -1430,12 +311,10 @@ export function createApp(config, options = {}) {
           path: pathname,
           status,
           ms: duration,
-          ip: req.socket.remoteAddress ?? '',
+          ip: getClientIp(req, config),
         });
         if (state.requestLog.length > 200) state.requestLog.shift();
-        console.log(
-          `[red-panda] ${req.method} ${pathname} → ${status} (${duration}ms)`,
-        );
+        console.log(`[red-panda] ${req.method} ${pathname} → ${status} (${duration}ms)`);
       } else if (status >= 500) {
         console.error(`[red-panda] ${req.method} ${pathname} → ${status} (${duration}ms)`);
       }
@@ -1446,6 +325,10 @@ export function createApp(config, options = {}) {
     try {
       db.deleteExpiredSessions();
       db.deleteExpiredTokens();
+      loginLimiter.prune();
+      emailLimiter.prune();
+      aiLimiter.prune();
+      mapLimiter.prune();
     } catch (error) {
       console.error('[red-panda] session cleanup failed:', error);
     }
@@ -1456,6 +339,7 @@ export function createApp(config, options = {}) {
     server,
     db,
     state,
+    limiters: { loginLimiter, emailLimiter, aiLimiter, mapLimiter },
     async close() {
       clearInterval(cleanup);
       await new Promise((resolve) => server.close(resolve));
@@ -1479,4 +363,4 @@ export function adminTokenMatches(token, config) {
   return safeEqual(String(token ?? ''), config.adminToken);
 }
 
-export { HttpError };
+export { HttpError, parseJourneyPlan };
