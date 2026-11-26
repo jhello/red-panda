@@ -42,6 +42,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -69,6 +70,7 @@ public class MainActivity extends Activity {
     private GeolocationPermissions.Callback geolocationCallback;
     private String geolocationOrigin;
     private ValueCallback<Uri[]> fileChooserCallback;
+    private volatile boolean backupChooserLaunched;
     private volatile String pendingBackupBase64;
     private volatile File pendingBackupTempFile;
     private volatile String pendingBackupFilename;
@@ -122,11 +124,14 @@ public class MainActivity extends Activity {
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (fileChooserCallback != null) fileChooserCallback.onReceiveValue(null);
                 fileChooserCallback = callback;
+                backupChooserLaunched = acceptsBackupFile(params.getAcceptTypes());
                 try {
-                    startActivityForResult(params.createIntent(), FILE_CHOOSER_REQUEST_CODE);
+                    Intent intent = backupChooserLaunched ? backupDocumentIntent() : params.createIntent();
+                    startActivityForResult(intent, FILE_CHOOSER_REQUEST_CODE);
                     return true;
                 } catch (Exception error) {
                     fileChooserCallback = null;
+                    backupChooserLaunched = false;
                     return false;
                 }
             }
@@ -226,12 +231,12 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void saveBackup(String filename, String base64) {
             if (!backupBusy.compareAndSet(false, true)) {
-                runOnUiThread(() -> reportBackupSave(false, "备份正在进行中，请稍后再试"));
+                runOnUiThread(() -> reportBackupSave(false, "busy"));
                 return;
             }
             runOnUiThread(() -> {
                 if (backupPickerLaunched) {
-                    reportBackupSave(false, "备份正在进行中，请稍后再试");
+                    reportBackupSave(false, "busy");
                     backupBusy.set(false);
                     return;
                 }
@@ -255,7 +260,7 @@ public class MainActivity extends Activity {
                 return true;
             } catch (Exception error) {
                 cleanupStagedBackup();
-                runOnUiThread(() -> reportBackupSave(false, error.getMessage()));
+                runOnUiThread(() -> reportBackupSave(false, "streamStartFailed"));
                 return false;
             }
         }
@@ -269,7 +274,7 @@ public class MainActivity extends Activity {
                 return true;
             } catch (Exception error) {
                 cleanupStagedBackup();
-                runOnUiThread(() -> reportBackupSave(false, error.getMessage()));
+                runOnUiThread(() -> reportBackupSave(false, "chunkWriteFailed"));
                 return false;
             }
         }
@@ -285,7 +290,7 @@ public class MainActivity extends Activity {
                 }
                 if (pendingBackupTempFile == null || !pendingBackupTempFile.exists()) {
                     runOnUiThread(() -> {
-                        reportBackupSave(false, "Backup buffer missing");
+                        reportBackupSave(false, "bufferMissing");
                         cleanupStagedBackup();
                     });
                     return;
@@ -296,7 +301,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> launchBackupPicker(filename));
             } catch (Exception error) {
                 cleanupStagedBackup();
-                runOnUiThread(() -> reportBackupSave(false, error.getMessage()));
+                runOnUiThread(() -> reportBackupSave(false, "saveFailed"));
             }
         }
 
@@ -304,6 +309,49 @@ public class MainActivity extends Activity {
         public void cancelBackup() {
             runOnUiThread(MainActivity.this::cleanupStagedBackup);
         }
+    }
+
+    /**
+     * The backup input is the only non-media file chooser in the app. Chromium
+     * normalizes custom suffixes such as .rpd unpredictably, so detect the
+     * media chooser instead of trying to match a particular MIME string.
+     */
+    private static boolean acceptsBackupFile(String[] types) {
+        if (types == null || types.length == 0) return false;
+        for (String type : types) {
+            if (type == null) continue;
+            String value = type.toLowerCase(Locale.ROOT);
+            if (value.startsWith("image/") || value.startsWith("video/") || value.startsWith("audio/")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Android has no registered MIME type for .rpd, so it reports those files as
+     * application/octet-stream. Restricting the picker to JSON + octet-stream
+     * hides unrelated files (images, text, video) while still showing backups.
+     */
+    private static Intent backupDocumentIntent() {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/json", "application/octet-stream"});
+        intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false);
+        return intent;
+    }
+
+    private boolean hasBackupExtension(Uri uri) {
+        if (uri == null) return false;
+        String name = displayName(uri);
+        if (!name.contains(".")) {
+            String segment = uri.getLastPathSegment();
+            name = segment == null ? "" : segment;
+        }
+        String lower = name.toLowerCase(Locale.ROOT);
+        return lower.endsWith(".rpd") || lower.endsWith(".json");
     }
 
     private void launchBackupPicker(String filename) {
@@ -318,7 +366,7 @@ public class MainActivity extends Activity {
         } catch (Exception error) {
             pendingBackupBase64 = null;
             cleanupStagedBackup();
-            reportBackupSave(false, error.getMessage());
+            reportBackupSave(false, "saveFailed");
         }
     }
 
@@ -431,6 +479,19 @@ public class MainActivity extends Activity {
         if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
             if (fileChooserCallback != null) {
                 Uri[] result = resultCode == RESULT_OK && data != null ? FileChooserParams.parseResult(resultCode, data) : null;
+                if (backupChooserLaunched) {
+                    if (result != null) {
+                        for (Uri uri : result) {
+                            if (!hasBackupExtension(uri)) {
+                                result = null;
+                                webView.evaluateJavascript(
+                                        "window.__redPandaInvalidImportFile && window.__redPandaInvalidImportFile()", null);
+                                break;
+                            }
+                        }
+                    }
+                    backupChooserLaunched = false;
+                }
                 fileChooserCallback.onReceiveValue(result);
                 fileChooserCallback = null;
             }
@@ -440,11 +501,11 @@ public class MainActivity extends Activity {
             File tempFile = pendingBackupTempFile;
             if (resultCode != RESULT_OK || data == null || data.getData() == null || (encoded == null && tempFile == null)) {
                 cleanupStagedBackup();
-                reportBackupSave(false, "Save cancelled");
+                reportBackupSave(false, "cancelled");
                 return;
             }
             try (OutputStream output = getContentResolver().openOutputStream(data.getData())) {
-                if (output == null) throw new IllegalStateException("Unable to open selected file");
+                if (output == null) throw new IllegalStateException("openFailed");
                 if (tempFile != null && tempFile.exists()) {
                     try (InputStream input = new FileInputStream(tempFile)) {
                         byte[] buffer = new byte[64 * 1024];
@@ -458,7 +519,7 @@ public class MainActivity extends Activity {
                 }
                 reportBackupSave(true, displayName(data.getData()));
             } catch (Exception error) {
-                reportBackupSave(false, error.getMessage());
+                reportBackupSave(false, "saveFailed");
             } finally {
                 cleanupStagedBackup();
             }

@@ -62,6 +62,7 @@
     compareBackupRecords,
     parseBackupEnvelope,
     estimateDeviceStorage,
+    backupError,
     saveBackupViaAndroid,
   } = window.RedPandaBackup;
 
@@ -200,6 +201,9 @@
     currentLocale = locale;
     localStorage.setItem(STORAGE.lang, locale);
     applyDocumentLocale();
+    // 状态区保存的是取文案的函数，而不是已经渲染好的字符串；切换语言后立即重绘，
+    // 避免出现「德语界面里残留英文 Import cancelled」之类的混合文案。
+    renderBackupStatus();
     if (state.token && state.user) {
       state.user = { ...state.user, locale };
       cacheUser(state.user);
@@ -589,13 +593,69 @@
   }
 
   let databaseSort = 'count';
-  let databaseStatus = { message: '', percent: null, kind: '' };
+  // The status message is stored as a factory so every redraw uses the current
+  // locale. Storing rendered text made "Import cancelled" survive a locale switch.
+  let databaseStatus = { text: () => '', percent: null, kind: '' };
   let databaseSnapshotCache = null;
   let backupExportInProgress = false;
-  function backupStatus(message, percent = null, kind = '') {
-    databaseStatus = { message, percent, kind };
+  let pendingImport = null;
+  let importPreparing = false;
+
+  const BACKUP_ERROR_KEYS = {
+    cancelled: 'backup.exportCancelled',
+    busy: 'backup.exportBusy',
+    saveFailed: 'backup.saveFailed',
+    streamStartFailed: 'backup.streamStartFailed',
+    chunkWriteFailed: 'backup.chunkWriteFailed',
+    bufferMissing: 'backup.bufferMissing',
+    openFailed: 'backup.openFailed',
+    invalidExtension: 'backup.invalidExtension',
+    invalidFile: 'backup.invalidFile',
+    readFailed: 'backup.readFailed',
+    notBackup: 'backup.notBackup',
+    incomplete: 'backup.incomplete',
+  };
+
+  // Wrap a t() call so the status can be regenerated after a locale change.
+  function statusText(key, vars = {}) {
+    return () => t(key, vars);
+  }
+
+  function localizedError(key, vars = {}) {
+    const error = new Error(key);
+    error.localizedKey = key;
+    error.localizedVars = vars;
+    return error;
+  }
+
+  function backupErrorText(error, fallbackKey) {
+    if (error?.localizedKey) return t(error.localizedKey, error.localizedVars);
+    const code = error?.code || error?.message;
+    if (BACKUP_ERROR_KEYS[code]) return t(BACKUP_ERROR_KEYS[code]);
+    if (code && typeof code === 'string' && code.startsWith('backup.')) return t(code);
+    // Unknown engine / platform errors are never shown verbatim: they may be
+    // in a different language than the rest of the interface.
+    return t(fallbackKey);
+  }
+
+  function invalidExtensionMessage() {
+    return t('backup.importFailedDetail', { message: t('backup.invalidExtension') });
+  }
+
+  function isBackupCancelled(error) {
+    return (error?.code || error?.message) === 'cancelled';
+  }
+
+  function backupStatus(text, percent = null, kind = '') {
+    databaseStatus = { text: typeof text === 'function' ? text : () => String(text ?? ''), percent, kind };
+    renderBackupStatus();
+  }
+
+  function renderBackupStatus() {
     const host = document.getElementById('database-status');
     if (!host) return;
+    const { text, percent, kind } = databaseStatus;
+    const message = text();
     host.dataset.kind = kind;
     host.innerHTML = `<p>${esc(message)}</p>${percent === null ? '' : `<progress max="100" value="${Math.max(0, Math.min(100, percent))}"></progress><span>${Math.round(percent)}%</span>`}`;
   }
@@ -665,7 +725,8 @@
     app.innerHTML = `<div class="screen settings-screen"><main class="page database-page">
       <div id="database-summary" class="database-summary"><div class="skeleton-block"></div></div>
       <div id="database-quota" class="database-quota" hidden></div>
-      <div class="database-actions"><button class="btn ghost" data-action="backup-export">${t('backup.exportData')}</button><label class="btn ghost" for="backup-file">${t('backup.chooseFile')}</label><input id="backup-file" type="file" accept=".rpd,.json,application/json,application/gzip,application/octet-stream" hidden /></div>
+      <div class="database-actions"><button class="btn ghost" data-action="backup-export">${t('backup.exportData')}</button><label class="btn ghost" for="backup-file">${t('backup.chooseFile')}</label><input id="backup-file" type="file" accept=".rpd,.json" hidden /></div>
+      <div id="import-review" class="import-review" role="group" aria-label="${t('backup.reviewTitle')}" hidden></div>
       <div id="database-status" class="backup-status" role="status" aria-live="polite"></div>
       <section class="database-table"><div class="database-table-head"><strong>${t('backup.details')}</strong><div><button class="link subtle" data-action="database-sort-count">${t('backup.byCount')}<span class="database-sort-arrow" aria-hidden="true"></span></button><button class="link subtle" data-action="database-sort-size">${t('backup.bySize')}<span class="database-sort-arrow" aria-hidden="true"></span></button></div></div><div id="database-types"><div class="skeleton-block"></div></div></section>
       <p class="panel-sub">${t('backup.sizeNote')}</p>
@@ -674,7 +735,8 @@
     drawDatabaseSummary(databaseSnapshotCache);
     drawDatabaseTypes();
     drawDeviceQuota();
-    backupStatus(databaseStatus.message, databaseStatus.percent, databaseStatus.kind);
+    renderBackupStatus();
+    renderImportReview();
   }
   async function exportBackup() {
     // Invoke the destination picker during the user gesture where supported.
@@ -689,7 +751,7 @@
         });
       } catch (error) {
         if (error.name === 'AbortError') {
-          backupStatus(t('backup.exportCancelled'));
+          backupStatus(statusText('backup.exportCancelled'));
           return;
         }
         destination = null;
@@ -699,9 +761,9 @@
     const { journeys, memories, settings } = snapshot;
     const mediaTotal = snapshot.types.find((x) => x.key === 'media').count;
     let mediaDone = 0;
-    backupStatus(t('backup.exportingJourneys', { done: journeys.length, total: journeys.length }), 8);
+    backupStatus(statusText('backup.exportingJourneys', { done: journeys.length, total: journeys.length }), 8);
     const journeyRecords = journeys.map((x) => ({ ...x }));
-    backupStatus(t('backup.journeysExported', { n: journeyRecords.length }), 25);
+    backupStatus(statusText('backup.journeysExported', { n: journeyRecords.length }), 25);
     const packed = [];
     for (let i = 0; i < memories.length; i++) {
       const m = memories[i];
@@ -710,19 +772,19 @@
         media.push({ ...v, url: undefined, blob: undefined, data: v.blob ? await blobToBase64(v.blob) : '' });
         mediaDone++;
         backupStatus(
-          t('backup.memoriesExporting', { i: i + 1, n: memories.length, done: mediaDone, total: mediaTotal }),
+          statusText('backup.memoriesExporting', { i: i + 1, n: memories.length, done: mediaDone, total: mediaTotal }),
           25 + (mediaTotal ? (55 * mediaDone) / mediaTotal : 55),
         );
       }
       packed.push({ ...m, media });
       if (!media.length) {
         backupStatus(
-          t('backup.exportingMemories', { i: i + 1, n: memories.length }),
+          statusText('backup.exportingMemories', { i: i + 1, n: memories.length }),
           25 + (memories.length ? (55 * (i + 1)) / memories.length : 55),
         );
       }
     }
-    backupStatus(t('backup.mediaExported', { n: mediaDone, s: settings.length }), 82);
+    backupStatus(statusText('backup.mediaExported', { n: mediaDone, s: settings.length }), 82);
     const data = {
       format: 'red-panda-backup',
       schemaVersion: 1,
@@ -731,55 +793,99 @@
       memories: packed,
       settings: settings.map((x) => ({ ...x })),
     };
-    backupStatus(t('backup.compressing'), 85);
+    backupStatus(statusText('backup.compressing'), 85);
     const stream = new Blob([new TextEncoder().encode(JSON.stringify(data))]).stream().pipeThrough(new CompressionStream('gzip'));
     const file = await new Response(stream).blob();
-    const summaryText = `${t('backup.exportSuccess')} · ${journeyRecords.length} ${t('backup.journeyUnit')} · ${packed.length} ${t('backup.memoryUnit')} · ${mediaDone} ${t('backup.mediaUnit')} · ${settings.length} ${t('backup.settingUnit')}`;
+    const summaryText = () => `${t('backup.exportSuccess')} · ${journeyRecords.length} ${t('backup.journeyUnit')} · ${packed.length} ${t('backup.memoryUnit')} · ${mediaDone} ${t('backup.mediaUnit')} · ${settings.length} ${t('backup.settingUnit')}`;
     if (destination) {
       const writer = await destination.createWritable();
       await writer.write(file);
       await writer.close();
-      backupStatus(`${summaryText} · ${destination.name}`, 100, 'success');
+      backupStatus(() => `${summaryText()} · ${destination.name}`, 100, 'success');
     } else if (androidSave) {
-      backupStatus(t('backup.packagedChoose'), 92);
-      try {
-        const savedName = await saveBackupViaAndroid(window.AndroidBackup, filename, file, (pct) => {
-          backupStatus(t('backup.sendingToDevice', { percent: pct }), 92 + Math.round(pct * 0.06));
-        });
-        backupStatus(`${summaryText} · ${savedName}`, 100, 'success');
-      } catch (error) {
-        backupStatus(`${t('backup.exportFailed')}: ${error.message}`, null, 'error');
-        throw error;
-      }
+      backupStatus(statusText('backup.packagedChoose'), 92);
+      const savedName = await saveBackupViaAndroid(window.AndroidBackup, filename, file, (pct) => {
+        backupStatus(statusText('backup.sendingToDevice', { percent: pct }), 92 + Math.round(pct * 0.06));
+      });
+      backupStatus(() => `${summaryText()} · ${savedName}`, 100, 'success');
     } else {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(file);
       a.download = filename;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-      backupStatus(t('backup.downloadStarted', { file: filename, size: formatBytes(file.size) }), 100, 'pending');
+      backupStatus(statusText('backup.downloadStarted', { file: filename, size: formatBytes(file.size) }), 100, 'pending');
     }
   }
   const importStatsText = (label, s) => t('backup.stats', { label, old: s.old, added: s.added, identical: s.identical, updated: s.updated });
-  async function importBackup(file) {
-    if (!confirm(t('backup.importConfirm'))) return false;
-    backupStatus(t('backup.readingFile', { file: file.name }), 0);
-    let buf = await file.arrayBuffer();
-    const u = new Uint8Array(buf);
-    backupStatus(t('backup.decompressing'), 15);
-    if (u[0] === 0x1f && u[1] === 0x8b) {
-      buf = await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+
+  // Stats are recomputed from the plan on every render so a pending review card
+  // follows the selected language too.
+  function importResults(plan) {
+    return [
+      importStatsText(t('backup.statsJourney'), plan.journeyStats),
+      importStatsText(t('backup.statsMemory'), plan.memoryStats),
+      importStatsText(t('backup.statsMedia'), plan.mediaStats),
+      importStatsText(t('backup.statsSettings'), plan.settingStats),
+    ];
+  }
+
+  // In-page review card: no native confirm dialog interrupts the user, and
+  // nothing is written to IndexedDB until they press the confirm button.
+  function renderImportReview(plan = pendingImport) {
+    const host = document.getElementById('import-review');
+    if (!host) return;
+    pendingImport = plan || null;
+    if (!plan) {
+      host.hidden = true;
+      host.innerHTML = '';
+      return;
     }
-    const rawData = JSON.parse(new TextDecoder().decode(buf));
+    host.hidden = false;
+    host.innerHTML = `
+      <div class="import-review-head"><strong>${esc(t('backup.reviewTitle'))}</strong><span>${esc(plan.file.name)}</span></div>
+      <p class="import-review-policy">${esc(t('backup.importConfirm'))}</p>
+      <div class="import-review-subtitle">${esc(t('backup.reviewDetails'))}</div>
+      <ul class="import-review-list">${importResults(plan).map((line) => `<li>${esc(line)}</li>`).join('')}</ul>
+      <div class="import-review-actions">
+        <button type="button" class="btn ghost" data-action="import-review-cancel">${esc(t('backup.reviewCancel'))}</button>
+        <button type="button" class="btn primary" data-action="import-review-confirm">${esc(t('backup.reviewConfirm'))}</button>
+      </div>`;
+  }
+
+  // Read and compare only. The returned plan is held until the user confirms.
+  async function prepareImport(file) {
+    backupStatus(statusText('backup.readingFile', { file: file.name }), 0);
+    let buf;
+    try {
+      buf = await file.arrayBuffer();
+    } catch {
+      throw backupError('readFailed');
+    }
+    const u = new Uint8Array(buf);
+    backupStatus(statusText('backup.decompressing'), 15);
+    if (u[0] === 0x1f && u[1] === 0x8b) {
+      try {
+        buf = await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+      } catch {
+        throw backupError('invalidFile');
+      }
+    }
+    let rawData;
+    try {
+      rawData = JSON.parse(new TextDecoder().decode(buf));
+    } catch {
+      throw backupError('invalidFile');
+    }
     const parsed = await parseBackupEnvelope(rawData);
     if (!parsed.ok) {
       if (parsed.errorCode === 'unsupportedVersion') {
-        throw new Error(t('backup.unsupportedVersion', { version: parsed.version }));
+        throw localizedError('backup.unsupportedVersion', { version: parsed.version });
       }
-      throw new Error(t(`backup.${parsed.errorCode}`));
+      throw localizedError(`backup.${parsed.errorCode}`);
     }
     const normalized = parsed.data;
-    backupStatus(t('backup.journeysRead', { n: normalized.journeys.length }), 25);
+    backupStatus(statusText('backup.journeysRead', { n: normalized.journeys.length }), 25);
     const memories = [];
     let count = 0;
     const total = normalized.memories.reduce((n, m) => n + (m.media || []).length, 0);
@@ -787,7 +893,7 @@
       const m = normalized.memories[i];
       const media = [];
       backupStatus(
-        t('backup.readingMemories', { i: i + 1, n: normalized.memories.length }),
+        statusText('backup.readingMemories', { i: i + 1, n: normalized.memories.length }),
         20 + (normalized.memories.length ? (15 * (i + 1)) / normalized.memories.length : 15),
       );
       for (const v of m.media || []) {
@@ -795,14 +901,14 @@
         const { data: _data, url: _url, ...metadata } = v;
         media.push({ ...metadata, blob: new Blob([bytes], { type: v.mime || 'application/octet-stream' }) });
         count++;
-        backupStatus(t('backup.readingMedia', { done: count, total }), 35 + (total ? (35 * count) / total : 35));
+        backupStatus(statusText('backup.readingMedia', { done: count, total }), 35 + (total ? (35 * count) / total : 35));
       }
       memories.push({ ...m, media });
     }
-    backupStatus(t('backup.mediaRead', { c: count, s: normalized.settings.length }), 75);
-    const oldJourneys = await storeAll('journeys');
-    const oldMemories = await storeAll('memories');
-    const oldSettings = await storeAll('settings');
+    backupStatus(statusText('backup.mediaRead', { c: count, s: normalized.settings.length }), 75);
+    const [oldJourneys, oldMemories, oldSettings] = await Promise.all([
+      storeAll('journeys'), storeAll('memories'), storeAll('settings'),
+    ]);
     const [journeyStats, memoryStats, settingStats] = await Promise.all([
       compareBackupRecords(normalized.journeys, oldJourneys),
       compareBackupRecords(memories, oldMemories, true),
@@ -811,25 +917,24 @@
     const oldMedia = oldMemories.flatMap((m) => m.media || []);
     const newMedia = memories.flatMap((m) => m.media || []);
     const mediaStats = await compareBackupRecords(newMedia, oldMedia);
-    backupStatus(t('backup.comparing'), 82);
+    backupStatus(statusText('backup.comparing'), 82);
+    return { file, journeyStats, memoryStats, settingStats, mediaStats };
+  }
+
+  async function commitImport(plan) {
+    backupStatus(statusText('backup.importing'), 85);
     const db = await localDb();
     await new Promise((resolve, reject) => {
       const tx = db.transaction(['journeys', 'memories', 'settings'], 'readwrite');
-      for (const j of journeyStats.records) tx.objectStore('journeys').put(j);
-      for (const m of memoryStats.records) tx.objectStore('memories').put(m);
-      for (const s of settingStats.records) tx.objectStore('settings').put(s);
+      for (const j of plan.journeyStats.records) tx.objectStore('journeys').put(j);
+      for (const m of plan.memoryStats.records) tx.objectStore('memories').put(m);
+      for (const s of plan.settingStats.records) tx.objectStore('settings').put(s);
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
+    renderImportReview(null);
     await refreshDatabaseStats();
-    const results = [
-      importStatsText(t('backup.statsJourney'), journeyStats),
-      importStatsText(t('backup.statsMemory'), memoryStats),
-      importStatsText(t('backup.statsMedia'), mediaStats),
-      importStatsText(t('backup.statsSettings'), settingStats),
-    ];
-    backupStatus(t('backup.mergeComplete', { results: results.join('\n') }), 100, 'success');
-    return true;
+    backupStatus(() => t('backup.mergeComplete', { results: importResults(plan).join('\n') }), 100, 'success');
   }
   async function pingServer(server) {
     let response;
@@ -3412,27 +3517,27 @@
           ${panel('theme', `<section class="card panel settings-choice-panel theme-panel">${themeSwitcher()}</section>`)}
           ${panel('origin', `<section class="card panel origin-panel">
             <div id="origin-list" class="origin-address-list"></div>
-            <button class="btn primary block" type="button" id="origin-add">＋ ${esc(t('settings.originAdd') || '新增地点')}</button>
+            <button class="btn primary block" type="button" id="origin-add">＋ ${esc(t('settings.originAdd'))}</button>
             <p class="form-error" id="origin-error" hidden></p>
           </section>
           <div id="origin-picker" class="origin-picker" hidden>
             <div class="origin-picker-head">
-              <button type="button" class="btn ghost" id="origin-picker-back">取消</button>
+              <button type="button" class="btn ghost" id="origin-picker-back">${esc(t('settings.originPickerCancel'))}</button>
               <div class="origin-picker-provider" role="group" aria-label="${esc(t('settings.originMapProvider'))}">
                 <button type="button" class="origin-picker-provider-btn${currentMapProvider() === 'amap' ? ' active' : ''}" data-map-provider="amap">${esc(t('settings.mapProviderAmap'))}</button>
                 <button type="button" class="origin-picker-provider-btn${currentMapProvider() === 'google' ? ' active' : ''}" data-map-provider="google">${esc(t('settings.mapProviderGoogle'))}</button>
               </div>
-              <button type="button" class="btn primary" id="origin-picker-confirm" disabled>确定</button>
+              <button type="button" class="btn primary" id="origin-picker-confirm" disabled>${esc(t('settings.originPickerConfirm'))}</button>
             </div>
             <div id="origin-picker-body" class="origin-picker-body">
               <div class="origin-picker-map-wrap">
                 <div id="origin-picker-map" class="origin-picker-map"></div>
                 <div class="origin-picker-center-pin" aria-hidden="true"></div>
-                <button type="button" class="origin-picker-locate" id="origin-picker-locate" aria-label="回到当前位置"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+                <button type="button" class="origin-picker-locate" id="origin-picker-locate" aria-label="${esc(t('settings.originLocateCurrent'))}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
               </div>
-              <div id="origin-picker-drag" class="origin-picker-drag" role="separator" aria-label="拖动调整"><span></span></div>
+              <div id="origin-picker-drag" class="origin-picker-drag" role="separator" aria-label="${esc(t('settings.originDragAdjust'))}"><span></span></div>
               <div class="origin-picker-list-panel">
-                <div class="origin-picker-search"><input id="origin-picker-query" type="search" placeholder="搜索地点" /></div>
+                <div class="origin-picker-search"><input id="origin-picker-query" type="search" placeholder="${esc(t('settings.originSearchPlaceholder'))}" /></div>
                 <div class="origin-picker-list-body">
                   <div id="origin-picker-pois" class="origin-picker-pois"></div>
                   <div id="origin-picker-search-results" class="origin-picker-search-results" hidden></div>
@@ -3579,12 +3684,12 @@
       if (!list) return;
       const origins = currentOrigins();
       list.innerHTML = origins.map((o, i) => `<div class="origin-swipe" data-origin-index="${i}">
-        <button type="button" class="origin-swipe-delete" data-origin-delete="${i}" aria-label="${esc(t('draft.delete') || '删除')}">${esc(t('draft.delete') || '删除')}</button>
+        <button type="button" class="origin-swipe-delete" data-origin-delete="${i}" aria-label="${esc(t('draft.delete'))}">${esc(t('draft.delete'))}</button>
         <div class="origin-swipe-row">
           <div class="origin-item-main"><strong>${esc(o.name || o.address || '—')}</strong><small>${esc(o.address || [o.district,o.city,o.province].filter(Boolean).join('') || '')}</small></div>
         </div>
       </div>`).join('')
-        || `<p class="origin-empty">${esc(t('settings.originEmpty') || '还没有常用地址')}</p>`;
+        || `<p class="origin-empty">${esc(t('settings.originEmpty'))}</p>`;
     };
     renderOrigins();
 
@@ -3743,11 +3848,13 @@
         };
         const timer = setTimeout(() => {
           s.remove();
-          finish(new Error(`${label}加载超时，请稍后重试`));
+          const error = new Error(t('settings.mapScriptTimeout', { name: label }));
+          error.retryHint = true;
+          finish(error);
         }, MAP_LOAD_TIMEOUT);
         s.src = src;
         s.onload = () => finish();
-        s.onerror = () => finish(new Error(`${label}加载失败`));
+        s.onerror = () => finish(new Error(t('settings.mapScriptFailed', { name: label })));
         document.head.appendChild(s);
       });
     }
@@ -3770,8 +3877,12 @@
         };
         window[cb] = () => finish();
         s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly&loading=async&callback=${cb}`;
-        s.onerror = () => finish(new Error('Google Maps 加载失败'));
-        timer = setTimeout(() => finish(new Error('Google Maps 加载超时，请稍后重试')), MAP_LOAD_TIMEOUT);
+        s.onerror = () => finish(new Error(t('settings.mapScriptFailed', { name: 'Google Maps' })));
+        timer = setTimeout(() => {
+          const error = new Error(t('settings.mapScriptTimeout', { name: 'Google Maps' }));
+          error.retryHint = true;
+          finish(error);
+        }, MAP_LOAD_TIMEOUT);
         document.head.appendChild(s);
       });
     }
@@ -3783,8 +3894,8 @@
           if (!mapReady.amap) {
             mapReady.amap = (async () => {
               const cfg = await mapConfig();
-              if (!cfg.amapKey) throw new Error('未配置高德地图 Key');
-              await loadMapScript(`https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(cfg.amapKey)}`, '高德地图');
+              if (!cfg.amapKey) throw new Error(t('settings.mapKeyMissing', { name: t('settings.mapAmapFullName') }));
+              await loadMapScript(`https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(cfg.amapKey)}`, t('settings.mapAmapFullName'));
               return window.AMap;
             })().catch((err) => { mapReady.amap = null; throw err; });
           }
@@ -3828,7 +3939,7 @@
           if (!mapReady.google) {
             mapReady.google = (async () => {
               const cfg = await mapConfig();
-              if (!cfg.googleKey) throw new Error('未配置 Google Maps Key');
+              if (!cfg.googleKey) throw new Error(t('settings.mapKeyMissing', { name: 'Google Maps' }));
               return loadGoogleMaps(cfg.googleKey);
             })().catch((err) => { mapReady.google = null; throw err; });
           }
@@ -3902,7 +4013,7 @@
       }
     }
     function providerLabel(provider) {
-      return provider === 'google' ? 'Google Maps' : (t('settings.mapProviderAmap') || '高德地图');
+      return provider === 'google' ? 'Google Maps' : t('settings.mapAmapFullName');
     }
     function syncMapProviderButtons() {
       document.querySelectorAll('[data-map-provider]').forEach((btn) => {
@@ -3928,12 +4039,13 @@
       if (!poisEl) return;
       poisEl.innerHTML = `<p class="${isError ? 'form-error' : 'origin-empty'}">${esc(message)}</p>`;
     }
-    function pickerErrorMessage(err, fallback) {
-      const msg = err?.message || fallback;
-      return msg.includes('重试') ? msg : `${msg}，请稍后重试。`;
+    function pickerErrorMessage(err, fallbackKey) {
+      if (err?.retryHint) return err.message;
+      const msg = err?.message || t(fallbackKey);
+      return `${msg}${t('settings.retrySuffix')}`;
     }
-    function showPickerError(err, fallback) {
-      showPickerStatus(pickerErrorMessage(err, fallback), true);
+    function showPickerError(err, fallbackKey) {
+      showPickerStatus(pickerErrorMessage(err, fallbackKey), true);
     }
     function refreshCurrentMap() {
       if (!picker || picker.hidden) return;
@@ -3941,7 +4053,7 @@
       if (searchResults) searchResults.hidden = true;
       if (!mapAdapter || !tmap) { openPicker(); return; }
       setMapStatus('');
-      showPickerStatus('正在获取附近地点…');
+      showPickerStatus(t('settings.originNearbyLoading'));
       const c = mapAdapter.center(tmap);
       if (c) fetchNearby(c.lat, c.lng);
       else locateCurrent();
@@ -3960,15 +4072,15 @@
       if (searchResults) searchResults.hidden = true;
       selectedPoi = null; nearbyPois = []; confirmBtn.disabled = true;
       if (searchInput) searchInput.value = '';
-      setMapStatus(`正在加载${providerLabel(next)}…`);
-      showPickerStatus('正在切换地图…');
+      setMapStatus(t('settings.mapLoading', { name: providerLabel(next) }));
+      showPickerStatus(t('settings.originSwitching'));
       try {
         await adapters[next].load();
       } catch (err) {
         if (seq !== mapSwitchSeq) return;
         switchingProvider = null;
         syncMapProviderButtons();
-        const msg = pickerErrorMessage(err, '地图加载失败');
+        const msg = pickerErrorMessage(err, 'settings.originMapLoadFailed');
         setMapStatus(msg);
         showPickerStatus(msg, true);
         return;
@@ -3980,13 +4092,13 @@
       mapAdapter = adapters[next];
       setMapStatus('');
       try {
-        showPickerStatus('正在获取附近地点…');
+        showPickerStatus(t('settings.originNearbyLoading'));
         createPickerMap();
         applyPickerRatio();
         setTimeout(() => applyPickerRatio(), 0);
         locateCurrent();
       } catch (err) {
-        const msg = pickerErrorMessage(err, '地图初始化失败');
+        const msg = pickerErrorMessage(err, 'settings.originMapInitFailed');
         setMapStatus(msg);
         showPickerStatus(msg, true);
       }
@@ -4084,8 +4196,8 @@
       poisEl.innerHTML = nearbyPois.map((p, i) => {
         const active = (selectedId != null ? (p.id && p.id === selectedId) || (!p.id && selectedId === i) : i === 0) ? ' active' : '';
         const dist = p.distance != null ? `<span class="poi-dist">${p.distance < 1000 ? Math.round(p.distance) + 'm' : (p.distance/1000).toFixed(1)+'km'}</span>` : '';
-        return `<button type="button" class="origin-poi${active}" data-poi-index="${i}"><div class="poi-main"><strong>${esc(p.name || '位置')}</strong><small>${esc(p.address || '')}</small></div>${dist}<span class="poi-check">✓</span></button>`;
-      }).join('') || `<p class="origin-empty">附近没有找到地点</p>`;
+        return `<button type="button" class="origin-poi${active}" data-poi-index="${i}"><div class="poi-main"><strong>${esc(p.name || t('settings.positionFallback'))}</strong><small>${esc(p.address || '')}</small></div>${dist}<span class="poi-check">✓</span></button>`;
+      }).join('') || `<p class="origin-empty">${esc(t('settings.originNoNearby'))}</p>`;
       if (nearbyPois.length) {
         let idx = 0;
         if (selectedId != null) {
@@ -4136,7 +4248,7 @@
         renderPois(list, selectedPoi?.id || '__center__');
       } catch (err) {
         if (seq !== nearbySeq) return;
-        if (poisEl) poisEl.innerHTML = `<p class="form-error">${esc(err.message || '获取附近地点失败')}</p>`;
+        if (poisEl) poisEl.innerHTML = `<p class="form-error">${esc(err?.localized ? err.message : t('settings.originNearbyFailed'))}</p>`;
       }
     }
 
@@ -4153,13 +4265,13 @@
       if (!tmap) return;
       if (moveToKnown && currentPos) {
         locateTo(currentPos.lat, currentPos.lng, 17);
-        toast('已回到当前位置');
+        toast(t('settings.originAtCurrent'));
         return;
       }
-      if (!navigator.geolocation) { toast('当前环境不支持定位', 'error'); return; }
+      if (!navigator.geolocation) { toast(t('settings.originLocationUnsupported'), 'error'); return; }
       if (locating) return;
       locating = true;
-      toast('正在定位…');
+      toast(t('settings.originLocating'));
       navigator.geolocation.getCurrentPosition((pos) => {
         locating = false;
         setMyLocation(pos.coords.latitude, pos.coords.longitude);
@@ -4168,9 +4280,9 @@
         locating = false;
         if (currentPos) {
           locateTo(currentPos.lat, currentPos.lng, 17);
-          toast('已回到当前位置');
+          toast(t('settings.originAtCurrent'));
         } else {
-          toast('无法获取当前位置，请检查定位权限', 'error');
+          toast(t('settings.originLocationFailed'), 'error');
         }
       }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 });
     }
@@ -4180,7 +4292,7 @@
       if (switchingProvider) {
         picker.hidden = false;
         applyPickerRatio();
-        showPickerStatus('正在切换地图…');
+        showPickerStatus(t('settings.originSwitching'));
         return;
       }
       hideError('origin-error');
@@ -4189,15 +4301,15 @@
       selectedPoi = null; nearbyPois = []; confirmBtn.disabled = true;
       if (searchInput) searchInput.value = '';
       if (searchResults) searchResults.hidden = true;
-      setMapStatus('正在加载地图…');
-      showPickerStatus('正在加载地图…');
+      setMapStatus(t('settings.originMapLoading'));
+      showPickerStatus(t('settings.originMapLoading'));
       const provider = currentMapProvider();
       try {
         await adapters[provider].load();
         mapAdapter = adapters[provider];
       } catch (err) {
         if (switchingProvider || currentMapProvider() !== provider) return;
-        const msg = pickerErrorMessage(err, '地图加载失败');
+        const msg = pickerErrorMessage(err, 'settings.originMapLoadFailed');
         setMapStatus(msg);
         showPickerStatus(msg, true);
         return;
@@ -4205,13 +4317,13 @@
       if (picker.hidden || switchingProvider || currentMapProvider() !== provider) return;
       try {
         setMapStatus('');
-        showPickerStatus('正在获取附近地点…');
+        showPickerStatus(t('settings.originNearbyLoading'));
         createPickerMap();
         applyPickerRatio();
         setTimeout(() => applyPickerRatio(), 0);
         locateCurrent();
       } catch (err) {
-        const msg = pickerErrorMessage(err, '地图初始化失败');
+        const msg = pickerErrorMessage(err, 'settings.originMapInitFailed');
         setMapStatus(msg);
         showPickerStatus(msg, true);
       }
@@ -4220,11 +4332,11 @@
     function closePicker() { if (picker) picker.hidden = true; if (searchResults) searchResults.hidden = true; }
     document.getElementById('origin-add')?.addEventListener('click', openPicker);
     async function confirmPick() {
-      if (!selectedPoi) { toast('请先选择一个地址'); return; }
+      if (!selectedPoi) { toast(t('settings.originNeedSelect')); return; }
       const origin = { name: selectedPoi.name || '', address: selectedPoi.address || '', lat: selectedPoi.lat, lng: selectedPoi.lng, province: selectedPoi.province || '', city: selectedPoi.city || '', district: selectedPoi.district || '' };
       try {
         await saveOrigins([...currentOrigins(), origin]);
-        toast(t('settings.originSaved') || '常用地址已保存');
+        toast(t('settings.originSaved'));
         closePicker();
       } catch (err) { toast(err.message, 'error'); }
     }
@@ -4256,7 +4368,7 @@
           if (seq !== searchSeq) return;
           const pois = Array.isArray(data.pois) ? data.pois : [];
           if (!searchResults) return;
-          searchResults.innerHTML = pois.map((p, i) => `<button type="button" class="origin-poi" data-search-index="${i}"><div class="poi-main"><strong>${esc(p.name||'')}</strong><small>${esc(p.address||'')}</small></div></button>`).join('') || '<p class="origin-empty">没有找到地点</p>';
+          searchResults.innerHTML = pois.map((p, i) => `<button type="button" class="origin-poi" data-search-index="${i}"><div class="poi-main"><strong>${esc(p.name||'')}</strong><small>${esc(p.address||'')}</small></div></button>`).join('') || `<p class="origin-empty">${esc(t('settings.originNoSearchResults'))}</p>`;
           searchResults._pois = pois;
           searchResults.hidden = false;
         } catch {}
@@ -4396,8 +4508,33 @@
         if (backupExportInProgress) break;
         backupExportInProgress = true;
         exportBackup()
-          .catch(error=>{backupStatus(`${t('backup.exportFailed')}: ${error.message}`,null,'error');toast(error.message,'error');})
-          .finally(()=>{backupExportInProgress = false;});
+          .catch((error) => {
+            if (isBackupCancelled(error)) {
+              backupStatus(statusText('backup.exportCancelled'), null, 'pending');
+              return;
+            }
+            const message = () => t('backup.exportFailedDetail', { message: backupErrorText(error, 'backup.saveFailed') });
+            backupStatus(message, null, 'error');
+            toast(message(), 'error');
+          })
+          .finally(() => { backupExportInProgress = false; });
+        break;
+      case 'import-review-confirm': {
+        if (!pendingImport) break;
+        const plan = pendingImport;
+        renderImportReview(null);
+        commitImport(plan)
+          .then(() => toast(t('backup.imported')))
+          .catch((error) => {
+            const message = () => t('backup.importFailedDetail', { message: backupErrorText(error, 'backup.importFailed') });
+            backupStatus(message, null, 'error');
+            toast(message(), 'error');
+          });
+        break;
+      }
+      case 'import-review-cancel':
+        renderImportReview(null);
+        backupStatus(statusText('backup.importCancelled'));
         break;
       case 'database-open':
         navigate('#/database');
@@ -4421,7 +4558,7 @@
       case 'copy-text': {
         const value = target.dataset.value || target.textContent.trim();
         copyText(value);
-        toast('已复制到剪贴板');
+        toast(t('settings.copied'));
         break;
       }
       case 'me':
@@ -4568,10 +4705,35 @@
   app.addEventListener('click', handleAction);
   app.addEventListener('change', async event => {
     if (event.target.id !== 'backup-file' || !event.target.files?.[0]) return;
-    try { backupStatus(`${t('backup.selectedFile')}: ${event.target.files[0].name}`); const imported=await importBackup(event.target.files[0]); if(imported)toast(t('backup.imported')); else backupStatus(t('backup.importCancelled')); }
-    catch (error) { backupStatus(`${t('backup.importFailed')}: ${error.message}`,null,'error'); toast(`${t('backup.importFailed')}: ${error.message}`,'error'); }
-    event.target.value='';
+    const file = event.target.files[0];
+    event.target.value = '';
+    if (!/\.(rpd|json)$/i.test(file.name)) {
+      backupStatus(invalidExtensionMessage, null, 'error');
+      toast(invalidExtensionMessage(), 'error');
+      return;
+    }
+    if (importPreparing) return;
+    importPreparing = true;
+    try {
+      renderImportReview(null);
+      backupStatus(statusText('backup.selectedFileDetail', { file: file.name }));
+      const plan = await prepareImport(file);
+      renderImportReview(plan);
+      backupStatus(statusText('backup.reviewReady'), 100, 'pending');
+    } catch (error) {
+      const message = () => t('backup.importFailedDetail', { message: backupErrorText(error, 'backup.invalidFile') });
+      backupStatus(message, null, 'error');
+      toast(message(), 'error');
+    } finally {
+      importPreparing = false;
+    }
   });
+
+  // Android calls this when the system picker returns a file with a wrong suffix.
+  window.__redPandaInvalidImportFile = () => {
+    backupStatus(invalidExtensionMessage, null, 'error');
+    toast(invalidExtensionMessage(), 'error');
+  };
   navHost?.addEventListener('click', handleAction);
 
   // ---- 加号手势：单击浮出草稿，双击 / 长按直接新建 ------------------------

@@ -1272,6 +1272,21 @@ html.is-offline .auth-screen {
 .backup-status[data-kind="error"] { color: var(--status-danger); }
 .backup-status[data-kind="pending"] { color: var(--status-warning); }
 .backup-status p { white-space: pre-line; }
+.import-review {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper, #fffdf9);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+.import-review-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.import-review-head strong { font-size: 15px; }
+.import-review-head span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; text-align: right; }
+.import-review-policy, .import-review-list { margin: 10px 0; font-size: 12.5px; line-height: 1.7; color: var(--muted); }
+.import-review-subtitle { margin-top: 12px; font-size: 12px; font-weight: 600; color: var(--ink, var(--muted)); }
+.import-review-list { padding-left: 18px; }
+.import-review-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
 .database-page { padding: calc(12px + env(safe-area-inset-top)) 20px 36px; }
 .database-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0 18px; }
 .database-summary > div { display: grid; gap: 4px; padding: 14px 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper, #fffdf9); }

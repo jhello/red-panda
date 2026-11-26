@@ -178,5 +178,52 @@ test('地图配置请求失败时透传错误，不再误报为未配置 Key', (
   assert.doesNotMatch(match[1], /\.catch\(\(\) => \(\{\}\)\)/);
   assert.match(match[1], /mapConfigPromise = null/);
   assert.match(match[1], /throw err/);
-  assert.match(appSource, /msg\.includes\('重试'\) \? msg : `\$\{msg\}，请稍后重试。`/);
+  assert.match(appSource, /function pickerErrorMessage\(err, fallbackKey\)[\s\S]*?t\('settings\.retrySuffix'\)/);
+  assert.doesNotMatch(appSource, /msg\.includes\('重试'\)/);
+});
+
+test('备份失败码全部本地化，导入改为页面确认卡片并按后缀筛选', () => {
+  const backupSource = fs.readFileSync(path.join(WEB_DIR, 'js', 'backup.js'), 'utf8');
+  const appSource = fs.readFileSync(path.join(WEB_DIR, 'app.js'), 'utf8');
+  const javaSource = fs.readFileSync(
+    path.resolve(HERE, '..', '..', 'android', 'app', 'src', 'main', 'java', 'com', 'redpanda', 'app', 'MainActivity.java'),
+    'utf8',
+  );
+
+  for (const key of [
+    'exportFailedDetail', 'importFailedDetail', 'exportBusy', 'saveFailed', 'streamStartFailed',
+    'chunkWriteFailed', 'bufferMissing', 'openFailed', 'invalidExtension', 'invalidFile', 'readFailed',
+  ]) {
+    for (const locale of ['zh', 'en', 'de']) {
+      assert.equal(typeof i18n.resolveKey(i18n.I18N[locale], `backup.${key}`), 'string', `${locale} 缺少 backup.${key}`);
+    }
+  }
+
+  // No raw English / Chinese system text leaks into a localized status message.
+  assert.doesNotMatch(backupSource, /Save failed|Unable to start device backup stream|Failed to write backup chunk/);
+  assert.doesNotMatch(javaSource, /Save cancelled|Unable to open selected file|Backup buffer missing|备份正在进行中/);
+  assert.match(javaSource, /reportBackupSave\(false, "cancelled"\)/);
+  assert.match(appSource, /function backupErrorText\(error, fallbackKey\)/);
+  assert.doesNotMatch(appSource, /\$\{t\('backup\.exportFailed'\)\}: \$\{error\.message\}/);
+  assert.doesNotMatch(appSource, /\$\{t\('backup\.importFailed'\)\}: \$\{error\.message\}/);
+
+  // Import no longer uses a native confirm dialog; details are shown in-page.
+  assert.doesNotMatch(appSource, /confirm\(t\('backup\.importConfirm'\)\)/);
+  assert.match(appSource, /data-action="import-review-confirm"/);
+  assert.match(appSource, /function prepareImport\(file\)/);
+  assert.match(appSource, /async function commitImport\(plan\)/);
+
+  // Statuses and the pending review card are rendered from factories, so switching
+  // locale cannot leave a stale "Import cancelled" in the new language's UI.
+  assert.match(appSource, /function statusText\(key, vars = \{\}\)/);
+  assert.match(appSource, /function renderBackupStatus\(\)/);
+  assert.match(appSource, /function setLocale\(locale\)[\s\S]*?renderBackupStatus\(\)/);
+  assert.match(appSource, /function importResults\(plan\)/);
+  assert.doesNotMatch(appSource, /backupStatus\(t\('backup\./);
+  assert.doesNotMatch(appSource, /databaseStatus\.message/);
+
+  // Only backup suffixes may be selected; unrelated files stay hidden in the native picker.
+  assert.match(appSource, /accept="\.rpd,\.json"/);
+  assert.doesNotMatch(appSource, /accept="[^"]*application\/octet-stream/);
+  assert.match(javaSource, /EXTRA_MIME_TYPES, new String\[\]\{"application\/json", "application\/octet-stream"\}/);
 });

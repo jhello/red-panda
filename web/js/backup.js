@@ -250,6 +250,13 @@
    * when supported by the host APK so large media backups do not hit WebView
    * IPC memory limits, and falls back to single-call saveBackup on older APKs.
    */
+  /** Machine-readable backup failure codes; the UI localizes them with t(). */
+  function backupError(code) {
+    const error = new Error(code);
+    error.code = code;
+    return error;
+  }
+
   async function saveBackupViaAndroid(androidBridge, filename, fileBlob, onProgress = null) {
     const canChunk =
       typeof androidBridge?.beginBackup === 'function' &&
@@ -260,19 +267,19 @@
       const done = (ok, message) => {
         if (typeof window !== 'undefined') window.__backupSaveResult = null;
         if (ok) resolve(message);
-        else reject(new Error(message || 'Save failed'));
+        else reject(backupError(message || 'saveFailed'));
       };
       if (typeof window !== 'undefined') window.__backupSaveResult = done;
 
       (async () => {
         if (canChunk) {
           const started = androidBridge.beginBackup(filename);
-          if (!started) throw new Error('Unable to start device backup stream');
+          if (!started) throw backupError('streamStartFailed');
           const buf = await fileBlob.arrayBuffer();
           const chunks = arrayBufferToBase64Chunks(buf);
           for (let i = 0; i < chunks.length; i++) {
             const ok = androidBridge.appendBackupChunk(chunks[i]);
-            if (!ok) throw new Error('Failed to write backup chunk');
+            if (!ok) throw backupError('chunkWriteFailed');
             if (onProgress) onProgress(Math.round(((i + 1) / Math.max(1, chunks.length)) * 100));
           }
           androidBridge.finishBackup();
@@ -284,7 +291,7 @@
         if (typeof androidBridge?.cancelBackup === 'function') {
           try { androidBridge.cancelBackup(); } catch {}
         }
-        done(false, error?.message || String(error));
+        done(false, error?.code || error?.message || 'saveFailed');
       });
     });
   }
@@ -306,6 +313,7 @@
     compareBackupRecords,
     parseBackupEnvelope,
     estimateDeviceStorage,
+    backupError,
     saveBackupViaAndroid,
   };
 
