@@ -170,3 +170,13 @@ test('创建旅程背景图按文档基址解析，拆分 CSS 后仍指向 paint
     assert.equal(fs.existsSync(path.join(WEB_DIR, 'paintings', name)), true);
   }
 });
+
+test('地图配置请求失败时透传错误，不再误报为未配置 Key', () => {
+  const appSource = fs.readFileSync(path.join(WEB_DIR, 'app.js'), 'utf8');
+  const match = /const mapConfig = \(\) => \{([\s\S]*?)\n    \};/.exec(appSource);
+  assert.ok(match, '找不到 mapConfig');
+  assert.doesNotMatch(match[1], /\.catch\(\(\) => \(\{\}\)\)/);
+  assert.match(match[1], /mapConfigPromise = null/);
+  assert.match(match[1], /throw err/);
+  assert.match(appSource, /msg\.includes\('重试'\) \? msg : `\$\{msg\}，请稍后重试。`/);
+});

@@ -42,9 +42,10 @@ export function createApp(config, options = {}) {
   const lanUrls = getLanUrls(config.port);
   for (const provider of ['amap', 'google']) {
     if (config.map?.[provider]?.browserKeyIsServerKey) {
+      const label = provider === 'amap' ? '高德地图' : 'Google Maps';
       console.warn(
-        `[red-panda] 警告：${provider} 未配置独立浏览器 Key，/api/map/config 会下发服务端 Key。` +
-          ' 请配置对应的 *_BROWSER_KEY，或设置 RED_PANDA_MAP_BROWSER_KEY_FALLBACK=0 禁止回退。',
+        `[red-panda] 提示：${label} 未配置独立浏览器 Key；已找到服务端 Key，将回退用于浏览器地图。` +
+          ' 如需独立浏览器 Key，请配置对应的 *_BROWSER_KEY；若要禁止回退，设置 RED_PANDA_MAP_BROWSER_KEY_FALLBACK=0。',
       );
     }
   }

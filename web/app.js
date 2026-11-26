@@ -3719,7 +3719,14 @@
     const MAP_LOAD_TIMEOUT = 15000;
     let mapScriptSeq = 0;
     const mapConfig = () => {
-      if (!mapConfigPromise) mapConfigPromise = api('/api/map/config').catch(() => ({}));
+      // 不要把请求失败伪装成“未配置 Key”：服务器离线或未登录时，地图页应
+      // 显示真实的连接/认证错误；同时清掉缓存，恢复后还能重试。
+      if (!mapConfigPromise) {
+        mapConfigPromise = api('/api/map/config').catch((err) => {
+          mapConfigPromise = null;
+          throw err;
+        });
+      }
       return mapConfigPromise;
     };
     function loadMapScript(src, label) {
@@ -3923,7 +3930,7 @@
     }
     function pickerErrorMessage(err, fallback) {
       const msg = err?.message || fallback;
-      return msg.includes('请稍后重试') ? msg : `${msg}，请稍后重试。`;
+      return msg.includes('重试') ? msg : `${msg}，请稍后重试。`;
     }
     function showPickerError(err, fallback) {
       showPickerStatus(pickerErrorMessage(err, fallback), true);
