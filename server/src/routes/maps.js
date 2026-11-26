@@ -100,7 +100,9 @@ export function registerMapRoutes({ route, config, state, mapLimiter, aiLimiter 
 
   function browserMapKey(provider) {
     const entry = config.map?.[provider];
-    return entry?.browserKey || entry?.key || '';
+    // config.js has already applied the (warning-only) server-key fallback.
+    // Never fall back to entry.key here: that is the server REST key.
+    return entry?.browserKey || '';
   }
 
   function mapUnavailable(provider) {

@@ -155,6 +155,58 @@
     return result;
   }
 
+  const SAFE_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+  function isSafeRecordId(value) {
+    if (typeof value === 'number') return Number.isSafeInteger(value) && value >= 0;
+    if (typeof value !== 'string') return false;
+    return SAFE_ID_RE.test(value);
+  }
+
+  function nextRecordId() {
+    return Date.now() * 1000 + Math.floor(Math.random() * 1000);
+  }
+
+  /**
+   * Imported IDs end up in HTML attributes and navigation hashes. Replace any
+   * unsafe value with a freshly generated ID and remap memory references.
+   */
+  function sanitizeBackupData(data) {
+    const remapped = new Map();
+    const usedIds = new Set(
+      [...(data.journeys || []), ...(data.memories || [])]
+        .map((item) => String(item?.id))
+        .filter(Boolean),
+    );
+    const freshId = () => {
+      let id;
+      do {
+        id = nextRecordId();
+      } while (usedIds.has(String(id)));
+      usedIds.add(String(id));
+      return id;
+    };
+
+    const journeys = (data.journeys || []).map((journey) => {
+      const item = { ...journey };
+      if (!isSafeRecordId(item.id)) {
+        const next = freshId();
+        remapped.set(String(item.id), next);
+        item.id = next;
+      }
+      return item;
+    });
+    const memories = (data.memories || []).map((memory) => {
+      const item = { ...memory };
+      if (!isSafeRecordId(item.id)) item.id = freshId();
+      if (item.journeyId !== null && item.journeyId !== undefined && remapped.has(String(item.journeyId))) {
+        item.journeyId = remapped.get(String(item.journeyId));
+      }
+      return item;
+    });
+    return { ...data, journeys, memories };
+  }
+
   async function parseBackupEnvelope(data) {
     if (!data || typeof data !== 'object' || data.format !== 'red-panda-backup') {
       return { ok: false, errorCode: 'notBackup' };
@@ -165,10 +217,14 @@
     const adapt = BACKUP_IMPORTERS[schemaVersion];
     if (!adapt) return { ok: false, errorCode: 'unsupportedVersion', version: schemaVersion };
     const normalized = await adapt(data);
-    if (!Array.isArray(normalized.journeys) || !Array.isArray(normalized.memories)) {
+    if (
+      !Array.isArray(normalized.journeys) ||
+      !Array.isArray(normalized.memories) ||
+      !Array.isArray(normalized.settings)
+    ) {
       return { ok: false, errorCode: 'incomplete' };
     }
-    return { ok: true, schemaVersion, data: normalized };
+    return { ok: true, schemaVersion, data: sanitizeBackupData(normalized) };
   }
 
   async function estimateDeviceStorage(nav = typeof navigator !== 'undefined' ? navigator : null) {

@@ -1,3 +1,5 @@
+import net from 'node:net';
+
 const MAX_BODY_BYTES = 1024 * 1024;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SUPPORTED_LOCALES = new Set(['zh', 'en', 'de']);
@@ -126,21 +128,33 @@ export function publicUser(row) {
   };
 }
 
+function parseIp(value) {
+  if (typeof value !== 'string') return null;
+  let ip = value.trim();
+  if (ip.startsWith('[') && ip.endsWith(']')) ip = ip.slice(1, -1);
+  return net.isIP(ip) ? ip : null;
+}
+
 /**
- * Resolve the client IP address. Only trusts X-Forwarded-For / X-Real-IP when
+ * Resolve the client IP address. Only trusts X-Forwarded-For when
  * RED_PANDA_TRUST_PROXY=1 is explicitly configured.
+ *
+ * Proxies append the address of the peer they actually connected from, while
+ * the leftmost entries are supplied by the client. Therefore we count hops
+ * from the right and validate every value. X-Real-IP is deliberately ignored:
+ * many proxies forward the client-provided header unchanged, which would let
+ * a client spoof its rate-limit key.
  */
 export function getClientIp(req, config) {
-  if (config?.trustProxy) {
-    const forwarded = req?.headers?.['x-forwarded-for'];
-    if (typeof forwarded === 'string' && forwarded.trim()) {
-      const first = forwarded.split(',')[0].trim();
-      if (first) return first;
-    }
-    const realIp = req?.headers?.['x-real-ip'];
-    if (typeof realIp === 'string' && realIp.trim()) {
-      return realIp.trim();
-    }
+  const fallback = parseIp(req?.socket?.remoteAddress) ?? req?.socket?.remoteAddress ?? 'unknown';
+  if (!config?.trustProxy) return fallback;
+
+  const forwarded = req?.headers?.['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    const hops =
+      Number.isInteger(config.trustProxyHops) && config.trustProxyHops > 0 ? config.trustProxyHops : 1;
+    const addresses = forwarded.split(',').map(parseIp).filter(Boolean);
+    if (addresses.length >= hops) return addresses[addresses.length - hops];
   }
-  return req?.socket?.remoteAddress ?? 'unknown';
+  return fallback;
 }

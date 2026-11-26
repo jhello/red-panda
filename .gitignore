@@ -4,6 +4,8 @@ data/
 .env.local
 amap_api_key.txt
 google_maps_api_key.txt
+amap_browser_key.txt
+google_maps_browser_key.txt
 
 # Build output
 build/

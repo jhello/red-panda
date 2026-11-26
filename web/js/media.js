@@ -89,9 +89,10 @@
       }
       ctx.drawImage(source, 0, 0, target.width, target.height);
 
-      // Keep PNG transparency when the source is PNG and not scaled down heavily;
-      // otherwise encode as JPEG for substantial size reduction.
-      const preferredMime = String(file.type).toLowerCase() === 'image/webp' ? 'image/webp' : 'image/jpeg';
+      // Keep the alpha channel for PNG/WebP sources; JPEG would flatten
+      // transparency to black. JPEG sources still get the usual size reduction.
+      const sourceType = String(file.type).toLowerCase();
+      const preferredMime = sourceType === 'image/webp' ? 'image/webp' : sourceType === 'image/png' ? 'image/png' : 'image/jpeg';
       const compressed = await new Promise((resolve) => canvas.toBlob(resolve, preferredMime, quality));
       if (!compressed || !compressed.size || compressed.size >= file.size) {
         return { blob: file, compressed: false, originalSize: file.size, finalSize: file.size };

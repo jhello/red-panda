@@ -591,6 +591,7 @@
   let databaseSort = 'count';
   let databaseStatus = { message: '', percent: null, kind: '' };
   let databaseSnapshotCache = null;
+  let backupExportInProgress = false;
   function backupStatus(message, percent = null, kind = '') {
     databaseStatus = { message, percent, kind };
     const host = document.getElementById('database-status');
@@ -664,7 +665,7 @@
     app.innerHTML = `<div class="screen settings-screen"><main class="page database-page">
       <div id="database-summary" class="database-summary"><div class="skeleton-block"></div></div>
       <div id="database-quota" class="database-quota" hidden></div>
-      <div class="database-actions"><button class="btn ghost" data-action="backup-export">${t('backup.exportData')}</button><label class="btn ghost" for="backup-file">${t('backup.chooseFile')}</label><input id="backup-file" type="file" accept=".rpd,.json,application/json,application/gzip" hidden /></div>
+      <div class="database-actions"><button class="btn ghost" data-action="backup-export">${t('backup.exportData')}</button><label class="btn ghost" for="backup-file">${t('backup.chooseFile')}</label><input id="backup-file" type="file" accept=".rpd,.json,application/json,application/gzip,application/octet-stream" hidden /></div>
       <div id="database-status" class="backup-status" role="status" aria-live="polite"></div>
       <section class="database-table"><div class="database-table-head"><strong>${t('backup.details')}</strong><div><button class="link subtle" data-action="database-sort-count">${t('backup.byCount')}<span class="database-sort-arrow" aria-hidden="true"></span></button><button class="link subtle" data-action="database-sort-size">${t('backup.bySize')}<span class="database-sort-arrow" aria-hidden="true"></span></button></div></div><div id="database-types"><div class="skeleton-block"></div></div></section>
       <p class="panel-sub">${t('backup.sizeNote')}</p>
@@ -2760,7 +2761,7 @@
       : '';
     const when = journey.depart_time ? fmtDate(journey.depart_time) : fmtDay(journey.updated_at);
     return `
-      <button class="journey-card" data-journey-id="${journey.id}">
+      <button class="journey-card" data-journey-id="${esc(journey.id)}">
         <span class="journey-top">
           <span class="journey-name">${esc(journey.name)}</span>
           <span class="journey-date">${esc(when)}</span>
@@ -4375,7 +4376,11 @@
         retryServer();
         break;
       case 'backup-export':
-        exportBackup().catch(error=>{backupStatus(`${t('backup.exportFailed')}: ${error.message}`,null,'error');toast(error.message,'error');});
+        if (backupExportInProgress) break;
+        backupExportInProgress = true;
+        exportBackup()
+          .catch(error=>{backupStatus(`${t('backup.exportFailed')}: ${error.message}`,null,'error');toast(error.message,'error');})
+          .finally(()=>{backupExportInProgress = false;});
         break;
       case 'database-open':
         navigate('#/database');

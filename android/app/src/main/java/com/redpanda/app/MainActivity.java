@@ -42,6 +42,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Thin native shell around the shared web client in assets/www.
@@ -68,10 +69,12 @@ public class MainActivity extends Activity {
     private GeolocationPermissions.Callback geolocationCallback;
     private String geolocationOrigin;
     private ValueCallback<Uri[]> fileChooserCallback;
-    private String pendingBackupBase64;
-    private File pendingBackupTempFile;
-    private String pendingBackupFilename;
-    private FileOutputStream stagedBackupStream;
+    private volatile String pendingBackupBase64;
+    private volatile File pendingBackupTempFile;
+    private volatile String pendingBackupFilename;
+    private volatile FileOutputStream stagedBackupStream;
+    private final AtomicBoolean backupBusy = new AtomicBoolean(false);
+    private volatile boolean backupPickerLaunched = false;
     private static final int FILE_CHOOSER_REQUEST_CODE = 7102;
     private static final int BACKUP_SAVE_REQUEST_CODE = 7103;
 
@@ -197,7 +200,8 @@ public class MainActivity extends Activity {
         webView.loadUrl(START_URL);
     }
 
-    private void cleanupStagedBackup() {
+    /** Clear staged backup state without releasing the one-backup-at-a-time lock. */
+    private synchronized void clearStagedBackup() {
         if (stagedBackupStream != null) {
             try { stagedBackupStream.close(); } catch (Exception ignored) {}
             stagedBackupStream = null;
@@ -208,13 +212,31 @@ public class MainActivity extends Activity {
             pendingBackupTempFile = null;
         }
         pendingBackupFilename = null;
+        pendingBackupBase64 = null;
+    }
+
+    /** Clear state and allow the next backup to start. */
+    private void cleanupStagedBackup() {
+        clearStagedBackup();
+        backupPickerLaunched = false;
+        backupBusy.set(false);
     }
 
     private class BackupBridge {
         @JavascriptInterface
         public void saveBackup(String filename, String base64) {
+            if (!backupBusy.compareAndSet(false, true)) {
+                runOnUiThread(() -> reportBackupSave(false, "备份正在进行中，请稍后再试"));
+                return;
+            }
             runOnUiThread(() -> {
-                cleanupStagedBackup();
+                if (backupPickerLaunched) {
+                    reportBackupSave(false, "备份正在进行中，请稍后再试");
+                    backupBusy.set(false);
+                    return;
+                }
+                backupPickerLaunched = true;
+                clearStagedBackup();
                 pendingBackupBase64 = base64;
                 launchBackupPicker(filename);
             });
@@ -223,9 +245,10 @@ public class MainActivity extends Activity {
         /** Start a chunked backup stream into app cache to avoid huge IPC strings. */
         @JavascriptInterface
         public boolean beginBackup(String filename) {
+            if (!backupBusy.compareAndSet(false, true)) return false;
             try {
-                cleanupStagedBackup();
-                pendingBackupBase64 = null;
+                clearStagedBackup();
+                backupPickerLaunched = false;
                 pendingBackupFilename = filename;
                 pendingBackupTempFile = File.createTempFile("red-panda-backup-", ".rpd", getCacheDir());
                 stagedBackupStream = new FileOutputStream(pendingBackupTempFile);
@@ -238,7 +261,7 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public boolean appendBackupChunk(String base64Chunk) {
+        public synchronized boolean appendBackupChunk(String base64Chunk) {
             try {
                 if (stagedBackupStream == null || base64Chunk == null) return false;
                 byte[] decoded = Base64.decode(base64Chunk, Base64.DEFAULT);
@@ -252,24 +275,29 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void finishBackup() {
-            runOnUiThread(() -> {
-                try {
-                    if (stagedBackupStream != null) {
-                        stagedBackupStream.flush();
-                        stagedBackupStream.close();
-                        stagedBackupStream = null;
-                    }
-                    if (pendingBackupTempFile == null || !pendingBackupTempFile.exists()) {
-                        reportBackupSave(false, "Backup buffer missing");
-                        return;
-                    }
-                    launchBackupPicker(pendingBackupFilename != null ? pendingBackupFilename : "red-panda-backup.rpd");
-                } catch (Exception error) {
-                    cleanupStagedBackup();
-                    reportBackupSave(false, error.getMessage());
+        public synchronized void finishBackup() {
+            if (!backupBusy.get() || backupPickerLaunched) return;
+            try {
+                if (stagedBackupStream != null) {
+                    stagedBackupStream.flush();
+                    stagedBackupStream.close();
+                    stagedBackupStream = null;
                 }
-            });
+                if (pendingBackupTempFile == null || !pendingBackupTempFile.exists()) {
+                    runOnUiThread(() -> {
+                        reportBackupSave(false, "Backup buffer missing");
+                        cleanupStagedBackup();
+                    });
+                    return;
+                }
+                backupPickerLaunched = true;
+                final String filename =
+                    pendingBackupFilename != null ? pendingBackupFilename : "red-panda-backup.rpd";
+                runOnUiThread(() -> launchBackupPicker(filename));
+            } catch (Exception error) {
+                cleanupStagedBackup();
+                runOnUiThread(() -> reportBackupSave(false, error.getMessage()));
+            }
         }
 
         @JavascriptInterface

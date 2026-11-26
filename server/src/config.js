@@ -64,6 +64,7 @@ export function loadConfig(env = process.env) {
   const aiRateLimit = positiveInt(value(env, 'RED_PANDA_AI_RATE_LIMIT', '30'), 30);
   const mapRateLimit = positiveInt(value(env, 'RED_PANDA_MAP_RATE_LIMIT', '120'), 120);
   const trustProxy = value(env, 'RED_PANDA_TRUST_PROXY', '0') === '1';
+  const trustProxyHops = positiveInt(value(env, 'RED_PANDA_TRUST_PROXY_HOPS', '1'), 1);
   const publicUrl = value(env, 'RED_PANDA_PUBLIC_URL', '').replace(/\/+$/, '');
 
   const smtpUser = value(env, 'RED_PANDA_SMTP_USER', '');
@@ -74,29 +75,33 @@ export function loadConfig(env = process.env) {
     smtpUser ? `Red Panda <${smtpUser}>` : 'Red Panda <no-reply@red-panda.local>',
   );
 
-  // Separate server-side REST keys from browser-side SDK keys, while staying
-  // backwards-compatible with single-key deployments (browserKey falls back to serverKey).
+  // Separate server-side REST keys from browser-side SDK keys. Falling back to
+  // the server key is kept for backwards compatibility but is warned about at
+  // startup and can be disabled with RED_PANDA_MAP_BROWSER_KEY_FALLBACK=0.
+  const mapBrowserFallback = value(env, 'RED_PANDA_MAP_BROWSER_KEY_FALLBACK', '1') !== '0';
   const amapServerKey = value(
     env,
     'AMAP_MAP_KEY',
     value(env, 'RED_PANDA_AMAP_MAP_KEY', readKeyFile('amap_api_key.txt')),
   );
-  const amapBrowserKey = value(
-    env,
-    'AMAP_BROWSER_KEY',
-    value(env, 'RED_PANDA_AMAP_BROWSER_KEY', readKeyFile('amap_browser_key.txt')),
-  ) || amapServerKey;
+  const amapBrowserKey =
+    value(
+      env,
+      'AMAP_BROWSER_KEY',
+      value(env, 'RED_PANDA_AMAP_BROWSER_KEY', readKeyFile('amap_browser_key.txt')),
+    ) || (mapBrowserFallback ? amapServerKey : '');
 
   const googleServerKey = value(
     env,
     'GOOGLE_MAPS_API_KEY',
     value(env, 'RED_PANDA_GOOGLE_MAPS_KEY', readKeyFile('google_maps_api_key.txt')),
   );
-  const googleBrowserKey = value(
-    env,
-    'GOOGLE_MAPS_BROWSER_KEY',
-    value(env, 'RED_PANDA_GOOGLE_MAPS_BROWSER_KEY', readKeyFile('google_maps_browser_key.txt')),
-  ) || googleServerKey;
+  const googleBrowserKey =
+    value(
+      env,
+      'GOOGLE_MAPS_BROWSER_KEY',
+      value(env, 'RED_PANDA_GOOGLE_MAPS_BROWSER_KEY', readKeyFile('google_maps_browser_key.txt')),
+    ) || (mapBrowserFallback ? googleServerKey : '');
 
   return {
     version: pkg.version,
@@ -113,6 +118,8 @@ export function loadConfig(env = process.env) {
     aiRateLimit,
     mapRateLimit,
     trustProxy,
+    trustProxyHops,
+    mapBrowserFallback,
     publicUrl: publicUrl || null,
     webDir: path.resolve(value(env, 'RED_PANDA_WEB_DIR', path.join(PROJECT_ROOT, 'web'))),
     dashboardDir: path.join(SERVER_DIR, 'public', 'dashboard'),
@@ -144,11 +151,13 @@ export function loadConfig(env = process.env) {
         key: amapServerKey,
         serverKey: amapServerKey,
         browserKey: amapBrowserKey,
+        browserKeyIsServerKey: Boolean(amapBrowserKey && amapBrowserKey === amapServerKey),
       },
       google: {
         key: googleServerKey,
         serverKey: googleServerKey,
         browserKey: googleBrowserKey,
+        browserKeyIsServerKey: Boolean(googleBrowserKey && googleBrowserKey === googleServerKey),
       },
     },
   };

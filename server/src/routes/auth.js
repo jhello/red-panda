@@ -32,8 +32,8 @@ export function registerAuthRoutes({
     return { token, expiresAt: expiresAt.toISOString() };
   }
 
-  function checkLoginRate(ip) {
-    if (!loginLimiter.check(ip)) {
+  function consumeLoginRate(ip) {
+    if (!loginLimiter.consume(ip)) {
       throw new HttpError(429, '尝试次数过多，请十分钟后再试', 'rate_limited');
     }
   }
@@ -181,17 +181,18 @@ export function registerAuthRoutes({
 
   route('POST', /^\/api\/auth\/login$/, async ({ body, req }) => {
     const ip = getClientIp(req, config);
-    checkLoginRate(ip);
     const identifier = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
     const password = typeof body.password === 'string' ? body.password : '';
     if (!identifier) throw new HttpError(400, '请输入邮箱', 'validation_error');
     if (!password) throw new HttpError(400, '请输入密码', 'validation_error');
+    // Consume the slot before awaiting scrypt verification. A check/note pair
+    // would let concurrent requests all pass the check before any is counted.
+    consumeLoginRate(ip);
 
     // Email is the only login identifier; username-only legacy accounts are
     // removed by database migration and are no longer accepted.
     const user = db.findUserByEmail(identifier);
     if (!user || !(await verifyPasswordAsync(password, user.password_hash))) {
-      loginLimiter.note(ip);
       throw new HttpError(401, '邮箱或密码不正确', 'invalid_credentials');
     }
     if (!user.email_verified) {

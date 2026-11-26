@@ -100,6 +100,24 @@ test('前端备份工具支持分块 Base64 无损往返、信封校验、记录
   assert.equal(valid.ok, true);
   assert.deepEqual(valid.data.settings, []);
 
+  const dirty = await backup.parseBackupEnvelope({
+    format: 'red-panda-backup',
+    schemaVersion: 1,
+    journeys: [
+      { id: '1" onmouseover="alert(1)', name: 'A' },
+      { id: '2" onmouseover="alert(2)', name: 'B' },
+    ],
+    memories: [{ id: 'm" onfocus="x', journeyId: '1" onmouseover="alert(1)' }],
+  });
+  assert.equal(dirty.ok, true);
+  assert.match(String(dirty.data.journeys[0].id), /^[0-9]+$/);
+  assert.notEqual(dirty.data.journeys[0].id, dirty.data.journeys[1].id);
+  assert.equal(dirty.data.memories[0].journeyId, dirty.data.journeys[0].id);
+  assert.equal(
+    (await backup.parseBackupEnvelope({ format: 'red-panda-backup', schemaVersion: 1, journeys: [], memories: [], settings: {} })).errorCode,
+    'incomplete',
+  );
+
   // 3. Record diffing
   const stats = await backup.compareBackupRecords(
     [

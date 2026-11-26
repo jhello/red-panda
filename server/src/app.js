@@ -40,6 +40,14 @@ export function createApp(config, options = {}) {
   const mailer = options.mailer || createMailer(config);
   const startedAt = new Date();
   const lanUrls = getLanUrls(config.port);
+  for (const provider of ['amap', 'google']) {
+    if (config.map?.[provider]?.browserKeyIsServerKey) {
+      console.warn(
+        `[red-panda] 警告：${provider} 未配置独立浏览器 Key，/api/map/config 会下发服务端 Key。` +
+          ' 请配置对应的 *_BROWSER_KEY，或设置 RED_PANDA_MAP_BROWSER_KEY_FALLBACK=0 禁止回退。',
+      );
+    }
+  }
   const state = {
     startedAt,
     lanUrls,

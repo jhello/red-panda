@@ -9,7 +9,7 @@ export class RateLimiter {
     this.entries = new Map();
   }
 
-  /** Check without incrementing (e.g. login attempts counted only on failure). */
+  /** Check without incrementing. Prefer consume() so check and increment are atomic. */
   check(key) {
     const current = this.now();
     const entry = this.entries.get(key);
@@ -20,7 +20,7 @@ export class RateLimiter {
     return entry.count < this.max;
   }
 
-  /** Increment counter for key (used after a failed login). */
+  /** Increment counter for key. Kept for compatibility; new code should use consume(). */
   note(key) {
     const current = this.now();
     const entry = this.entries.get(key);

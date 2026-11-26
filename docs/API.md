@@ -17,7 +17,8 @@ application/json; charset=utf-8`），`204` 响应无正文。
 
 - **登录限流**：同一 IP 10 分钟内最多失败 20 次，超出返回 `429`。
 - **邮件限流**：同一 IP 10 分钟内最多触发 20 次注册 / 重发 / 找回操作（可用 `RED_PANDA_EMAIL_RATE_LIMIT` 调整），超出返回 `429`。
-- **AI 与地图限流**：按登录用户计数，10 分钟内默认最多 30 次 AI 请求（`RED_PANDA_AI_RATE_LIMIT`）与 120 次地图代理请求（`RED_PANDA_MAP_RATE_LIMIT`），超出返回 `429`。部署在反向代理后可设置 `RED_PANDA_TRUST_PROXY=1` 以识别真实客户端 IP。
+- **AI 与地图限流**：按登录用户计数，10 分钟内默认最多 30 次 AI 请求（`RED_PANDA_AI_RATE_LIMIT`）与 120 次地图代理请求（`RED_PANDA_MAP_RATE_LIMIT`），超出返回 `429`。部署在反向代理后可设置 `RED_PANDA_TRUST_PROXY=1`，此时从 `X-Forwarded-For` 右向左按 `RED_PANDA_TRUST_PROXY_HOPS`（默认 1）取真实客户端 IP；客户端伪造的左侧值与 `X-Real-IP` 均被忽略。代理必须覆盖或追加 `X-Forwarded-For`，例如 `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`。
+- **地图浏览器 Key**：`/api/map/config` 只返回浏览器端 Key。未单独配置 `*_BROWSER_KEY` 时默认回退到服务端 Key（启动日志会告警），可设置 `RED_PANDA_MAP_BROWSER_KEY_FALLBACK=0` 禁止回退，避免服务端 Key 下发到浏览器。
 
 ## 状态码
 

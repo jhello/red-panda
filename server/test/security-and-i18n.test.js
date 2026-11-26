@@ -50,13 +50,23 @@ test('RateLimiter 支持窗口限流、重置与过期条目清理', () => {
   assert.equal(limiter.consume('u1'), true);
 });
 
-test('getClientIp 仅在开启 trustProxy 时采信 X-Forwarded-For', () => {
+test('getClientIp 开启 trustProxy 时只取右侧可信跳，忽略伪造值', () => {
   const fakeReq = {
-    headers: { 'x-forwarded-for': '203.0.113.9, 10.0.0.1' },
+    headers: {
+      'x-forwarded-for': '203.0.113.9, 10.0.0.1',
+      'x-real-ip': '198.51.100.77',
+    },
     socket: { remoteAddress: '127.0.0.1' },
   };
   assert.equal(getClientIp(fakeReq, { trustProxy: false }), '127.0.0.1');
-  assert.equal(getClientIp(fakeReq, { trustProxy: true }), '203.0.113.9');
+  assert.equal(getClientIp(fakeReq, { trustProxy: true }), '10.0.0.1');
+  assert.equal(getClientIp(fakeReq, { trustProxy: true, trustProxyHops: 2 }), '203.0.113.9');
+  const spoofed = {
+    headers: { 'x-forwarded-for': 'garbage, 203.0.113.9, 192.0.2.44' },
+    socket: { remoteAddress: '127.0.0.1' },
+  };
+  assert.equal(getClientIp(spoofed, { trustProxy: true }), '192.0.2.44');
+  assert.equal(getClientIp({ headers: { 'x-real-ip': '198.51.100.77' }, socket: { remoteAddress: '127.0.0.1' } }, { trustProxy: true }), '127.0.0.1');
 });
 
 test('地图双 Key 配置拆分生效且向下兼容回退', () => {
@@ -87,6 +97,23 @@ test('地图双 Key 配置拆分生效且向下兼容回退', () => {
   });
   assert.equal(fallback.map.amap.browserKey, 'only-one-amap-key');
   assert.equal(fallback.map.google.browserKey, 'only-one-google-key');
+
+  const strict = loadConfig({
+    ...process.env,
+    RED_PANDA_DATA_DIR: tempDir,
+    RED_PANDA_DB: path.join(tempDir, 'strict.db'),
+    RED_PANDA_MAP_BROWSER_KEY_FALLBACK: '0',
+    AMAP_MAP_KEY: 'amap-server-secret',
+    AMAP_BROWSER_KEY: '',
+    RED_PANDA_AMAP_BROWSER_KEY: '',
+    GOOGLE_MAPS_API_KEY: 'google-server-secret',
+    GOOGLE_MAPS_BROWSER_KEY: '',
+    RED_PANDA_GOOGLE_MAPS_BROWSER_KEY: '',
+  });
+  assert.equal(strict.map.amap.browserKey, '');
+  assert.equal(strict.map.google.browserKey, '');
+  assert.equal(strict.map.amap.serverKey, 'amap-server-secret');
+  assert.equal(strict.map.google.serverKey, 'google-server-secret');
 });
 
 test('AI 提示词与 mockRecap 支持 zh / en / de 三语', () => {
@@ -192,6 +219,60 @@ test('接口级验证：地图浏览器 Key 下发、AI 按用户限流与 sw.js
     assert.equal(blocked.status, 429);
     const errBody = await blocked.json();
     assert.equal(errBody.code, 'rate_limited');
+  } finally {
+    await app.close();
+  }
+});
+
+test('并发错误登录不会绕过失败次数限流', async () => {
+  const dbPath = path.join(tempDir, 'concurrent-login.db');
+  const outbox = [];
+  const config = loadConfig({
+    ...process.env,
+    RED_PANDA_DATA_DIR: tempDir,
+    RED_PANDA_DB: dbPath,
+    RED_PANDA_TRUST_PROXY: '1',
+    PORT: '0',
+    HOST: '127.0.0.1',
+  });
+  const app = createApp(config, {
+    mailer: {
+      mode: 'test',
+      async send(msg) {
+        outbox.push(msg);
+      },
+    },
+  });
+  await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${app.server.address().port}`;
+  const ip = '198.51.100.20';
+  const headers = { 'Content-Type': 'application/json', 'X-Forwarded-For': ip };
+
+  try {
+    const reg = await fetch(`${base}/api/auth/register`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ email: 'brute@example.com', password: 'password123' }),
+    });
+    assert.equal(reg.status, 201);
+    const link = /https?:\/\/\S+/.exec(outbox.at(-1).text)[0];
+    const tokenParam = /[?&]token=([^&\s]+)/.exec(link)[1];
+    const verify = await fetch(`${base}/api/auth/verify?token=${tokenParam}`, { redirect: 'manual' });
+    assert.equal(verify.status, 302);
+
+    // A real user forces the async scrypt verification to yield to the event loop.
+    const responses = await Promise.all(
+      Array.from({ length: 25 }, () =>
+        fetch(`${base}/api/auth/login`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ email: 'brute@example.com', password: 'wrong-password' }),
+        }),
+      ),
+    );
+    const statuses = responses.map((response) => response.status);
+    assert.equal(statuses.filter((status) => status === 401).length, 20);
+    assert.equal(statuses.filter((status) => status === 429).length, 5);
   } finally {
     await app.close();
   }
