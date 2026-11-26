@@ -3,6 +3,7 @@ package com.redpanda.app;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.Manifest;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.content.res.Configuration;
@@ -36,6 +37,10 @@ import android.webkit.JsResult;
 import android.webkit.WebChromeClient.FileChooserParams;
 
 import org.json.JSONObject;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.OutputStream;
 
 /**
@@ -64,6 +69,9 @@ public class MainActivity extends Activity {
     private String geolocationOrigin;
     private ValueCallback<Uri[]> fileChooserCallback;
     private String pendingBackupBase64;
+    private File pendingBackupTempFile;
+    private String pendingBackupFilename;
+    private FileOutputStream stagedBackupStream;
     private static final int FILE_CHOOSER_REQUEST_CODE = 7102;
     private static final int BACKUP_SAVE_REQUEST_CODE = 7103;
 
@@ -79,8 +87,9 @@ public class MainActivity extends Activity {
         int paperColor = darkMode ? DARK_PAPER_COLOR : PAPER_COLOR;
         getWindow().setBackgroundDrawable(new ColorDrawable(paperColor));
 
-        // Allows chrome://inspect debugging while developing over adb.
-        WebView.setWebContentsDebuggingEnabled(true);
+        // Allow chrome://inspect debugging only in debuggable builds.
+        boolean isDebuggable = (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        WebView.setWebContentsDebuggingEnabled(isDebuggable);
 
         // Wrap the WebView in a container that owns the system-bar and
         // display-cutout insets (see configureSystemBars).
@@ -188,24 +197,100 @@ public class MainActivity extends Activity {
         webView.loadUrl(START_URL);
     }
 
+    private void cleanupStagedBackup() {
+        if (stagedBackupStream != null) {
+            try { stagedBackupStream.close(); } catch (Exception ignored) {}
+            stagedBackupStream = null;
+        }
+        if (pendingBackupTempFile != null) {
+            //noinspection ResultOfMethodCallIgnored
+            pendingBackupTempFile.delete();
+            pendingBackupTempFile = null;
+        }
+        pendingBackupFilename = null;
+    }
+
     private class BackupBridge {
         @JavascriptInterface
         public void saveBackup(String filename, String base64) {
             runOnUiThread(() -> {
+                cleanupStagedBackup();
                 pendingBackupBase64 = base64;
-                Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-                intent.addCategory(Intent.CATEGORY_OPENABLE);
-                // octet-stream keeps the .rpd name instead of letting the picker
-                // append .gz for the gzip MIME type. The file is still gzip data.
-                intent.setType("application/octet-stream");
-                intent.putExtra(Intent.EXTRA_TITLE, filename);
+                launchBackupPicker(filename);
+            });
+        }
+
+        /** Start a chunked backup stream into app cache to avoid huge IPC strings. */
+        @JavascriptInterface
+        public boolean beginBackup(String filename) {
+            try {
+                cleanupStagedBackup();
+                pendingBackupBase64 = null;
+                pendingBackupFilename = filename;
+                pendingBackupTempFile = File.createTempFile("red-panda-backup-", ".rpd", getCacheDir());
+                stagedBackupStream = new FileOutputStream(pendingBackupTempFile);
+                return true;
+            } catch (Exception error) {
+                cleanupStagedBackup();
+                runOnUiThread(() -> reportBackupSave(false, error.getMessage()));
+                return false;
+            }
+        }
+
+        @JavascriptInterface
+        public boolean appendBackupChunk(String base64Chunk) {
+            try {
+                if (stagedBackupStream == null || base64Chunk == null) return false;
+                byte[] decoded = Base64.decode(base64Chunk, Base64.DEFAULT);
+                stagedBackupStream.write(decoded);
+                return true;
+            } catch (Exception error) {
+                cleanupStagedBackup();
+                runOnUiThread(() -> reportBackupSave(false, error.getMessage()));
+                return false;
+            }
+        }
+
+        @JavascriptInterface
+        public void finishBackup() {
+            runOnUiThread(() -> {
                 try {
-                    startActivityForResult(intent, BACKUP_SAVE_REQUEST_CODE);
+                    if (stagedBackupStream != null) {
+                        stagedBackupStream.flush();
+                        stagedBackupStream.close();
+                        stagedBackupStream = null;
+                    }
+                    if (pendingBackupTempFile == null || !pendingBackupTempFile.exists()) {
+                        reportBackupSave(false, "Backup buffer missing");
+                        return;
+                    }
+                    launchBackupPicker(pendingBackupFilename != null ? pendingBackupFilename : "red-panda-backup.rpd");
                 } catch (Exception error) {
-                    pendingBackupBase64 = null;
+                    cleanupStagedBackup();
                     reportBackupSave(false, error.getMessage());
                 }
             });
+        }
+
+        @JavascriptInterface
+        public void cancelBackup() {
+            runOnUiThread(MainActivity.this::cleanupStagedBackup);
+        }
+    }
+
+    private void launchBackupPicker(String filename) {
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        // octet-stream keeps the .rpd name instead of letting the picker
+        // append .gz for the gzip MIME type. The file is still gzip data.
+        intent.setType("application/octet-stream");
+        intent.putExtra(Intent.EXTRA_TITLE, filename);
+        try {
+            startActivityForResult(intent, BACKUP_SAVE_REQUEST_CODE);
+        } catch (Exception error) {
+            pendingBackupBase64 = null;
+            cleanupStagedBackup();
+            reportBackupSave(false, error.getMessage());
         }
     }
 
@@ -324,16 +409,30 @@ public class MainActivity extends Activity {
         } else if (requestCode == BACKUP_SAVE_REQUEST_CODE) {
             String encoded = pendingBackupBase64;
             pendingBackupBase64 = null;
-            if (resultCode != RESULT_OK || data == null || data.getData() == null || encoded == null) {
+            File tempFile = pendingBackupTempFile;
+            if (resultCode != RESULT_OK || data == null || data.getData() == null || (encoded == null && tempFile == null)) {
+                cleanupStagedBackup();
                 reportBackupSave(false, "Save cancelled");
                 return;
             }
             try (OutputStream output = getContentResolver().openOutputStream(data.getData())) {
                 if (output == null) throw new IllegalStateException("Unable to open selected file");
-                output.write(Base64.decode(encoded, Base64.DEFAULT));
+                if (tempFile != null && tempFile.exists()) {
+                    try (InputStream input = new FileInputStream(tempFile)) {
+                        byte[] buffer = new byte[64 * 1024];
+                        int read;
+                        while ((read = input.read(buffer)) != -1) {
+                            output.write(buffer, 0, read);
+                        }
+                    }
+                } else if (encoded != null) {
+                    output.write(Base64.decode(encoded, Base64.DEFAULT));
+                }
                 reportBackupSave(true, displayName(data.getData()));
             } catch (Exception error) {
                 reportBackupSave(false, error.getMessage());
+            } finally {
+                cleanupStagedBackup();
             }
         }
     }
@@ -460,6 +559,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        cleanupStagedBackup();
         if (webView != null) {
             webView.destroy();
             webView = null;
