@@ -19,6 +19,8 @@
         back: '返回',
         pleaseWait: '请稍候…',
         retry: '重试',
+        confirm: '确认',
+        cancel: '取消',
       },
       loading: '正在打开小熊猫…',
       lang: {
@@ -536,6 +538,8 @@
         back: 'Back',
         pleaseWait: 'One moment…',
         retry: 'Retry',
+        confirm: 'Confirm',
+        cancel: 'Cancel',
       },
       loading: 'Opening Red Panda…',
       lang: {
@@ -1057,6 +1061,8 @@
         back: 'Zurück',
         pleaseWait: 'Einen Moment…',
         retry: 'Erneut versuchen',
+        confirm: 'Bestätigen',
+        cancel: 'Abbrechen',
       },
       loading: 'Red Panda wird geöffnet…',
       lang: {

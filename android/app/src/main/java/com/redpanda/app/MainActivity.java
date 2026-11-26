@@ -1,7 +1,6 @@
 package com.redpanda.app;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.Manifest;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
@@ -33,6 +32,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.ValueCallback;
 import android.webkit.JavascriptInterface;
+import android.webkit.JsPromptResult;
 import android.webkit.JsResult;
 import android.webkit.WebChromeClient.FileChooserParams;
 
@@ -56,7 +56,6 @@ public class MainActivity extends Activity {
     private static final int DARK_PAPER_COLOR = Color.rgb(20, 25, 26);
     private static final String PREFS_NAME = "red-panda";
     private static final String PREF_THEME = "theme_mode";
-    private static final int GEOLOCATION_REQUEST_CODE = 7101;
 
     private WebView webView;
     private FrameLayout root;
@@ -67,8 +66,6 @@ public class MainActivity extends Activity {
     private int imeBottom;
     private String themeMode = "system";
     private boolean darkMode = false;
-    private GeolocationPermissions.Callback geolocationCallback;
-    private String geolocationOrigin;
     private ValueCallback<Uri[]> fileChooserCallback;
     private volatile boolean backupChooserLaunched;
     private volatile String pendingBackupBase64;
@@ -137,37 +134,36 @@ public class MainActivity extends Activity {
             }
             @Override
             public boolean onJsAlert(WebView view, String url, String message, JsResult result) {
-                dialogBuilder()
-                    .setMessage(message)
-                    .setPositiveButton(android.R.string.ok, (dialog, which) -> result.confirm())
-                    .setOnCancelListener(dialog -> result.cancel())
-                    .show();
+                // Dismiss immediately; never replace a web toast with a native dialog.
+                result.confirm();
                 return true;
             }
 
             @Override
             public boolean onJsConfirm(WebView view, String url, String message, JsResult result) {
-                dialogBuilder()
-                    .setMessage(message)
-                    .setPositiveButton(android.R.string.ok, (dialog, which) -> result.confirm())
-                    .setNegativeButton(android.R.string.cancel, (dialog, which) -> result.cancel())
-                    .setOnCancelListener(dialog -> result.cancel())
-                    .show();
+                // The app uses in-page cards for confirmations, so any leftover
+                // script prompt is treated as cancelled without interrupting.
+                result.cancel();
+                return true;
+            }
+
+            @Override
+            public boolean onJsPrompt(WebView view, String url, String message, String defaultValue, JsPromptResult result) {
+                result.cancel();
+                return true;
+            }
+
+            @Override
+            public boolean onJsBeforeUnload(WebView view, String url, String message, JsResult result) {
+                result.confirm();
                 return true;
             }
 
             @Override
             public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-                if (hasLocationPermission()) {
-                    callback.invoke(origin, true, false);
-                    return;
-                }
-                geolocationOrigin = origin;
-                geolocationCallback = callback;
-                requestPermissions(new String[] {
-                        Manifest.permission.ACCESS_COARSE_LOCATION,
-                        Manifest.permission.ACCESS_FINE_LOCATION
-                }, GEOLOCATION_REQUEST_CODE);
+                // A runtime permission sheet blocks the whole app. Use location
+                // only when it was already granted; otherwise fail silently.
+                callback.invoke(origin, hasLocationPermission(), false);
             }
         });
         webView.addJavascriptInterface(new BackupBridge(), "AndroidBackup");
@@ -415,13 +411,6 @@ public class MainActivity extends Activity {
         return night == Configuration.UI_MODE_NIGHT_YES;
     }
 
-    private AlertDialog.Builder dialogBuilder() {
-        int theme = darkMode
-                ? android.R.style.Theme_Material_Dialog_Alert
-                : android.R.style.Theme_Material_Light_Dialog_Alert;
-        return new AlertDialog.Builder(this, theme);
-    }
-
     /** Repaint the native layers to match the web theme. */
     private void applyWindowTheme() {
         int paperColor = darkMode ? DARK_PAPER_COLOR : PAPER_COLOR;
@@ -611,16 +600,6 @@ public class MainActivity extends Activity {
     private boolean hasLocationPermission() {
         return checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
                 || checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == GEOLOCATION_REQUEST_CODE && geolocationCallback != null) {
-            geolocationCallback.invoke(geolocationOrigin, hasLocationPermission(), false);
-            geolocationCallback = null;
-            geolocationOrigin = null;
-        }
     }
 
     @Override

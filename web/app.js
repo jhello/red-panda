@@ -211,6 +211,7 @@
     }
     // 语言切换只是换一套文案，不需要播放页面入场动画，也不应该丢失滚动位置。
     render({ animate: false });
+    renderInlineConfirm();
     window.scrollTo(scrollX, scrollY);
     if (focusedLang) {
       app.querySelector(`[data-lang="${focusedLang}"]`)?.focus({ preventScroll: true });
@@ -406,6 +407,7 @@
 
   /** 切换主页面：不新增历史记录，返回键依然直接退出应用。 */
   function navigateTab(hash, after = null) {
+    closeInlineConfirm();
     pendingTabAfter = after;
     if (historyDepth === 0) {
       if (location.hash === hash) {
@@ -445,6 +447,7 @@
 
   /** 进入子页面：在主页面之上叠一层历史记录。 */
   function navigate(hash) {
+    closeInlineConfirm();
     if (location.hash === hash) {
       render();
     } else {
@@ -640,6 +643,39 @@
 
   function invalidExtensionMessage() {
     return t('backup.importFailedDetail', { message: t('backup.invalidExtension') });
+  }
+
+  // Inline confirmation replaces every native blocking prompt. It is just a
+  // card in the current page, so the rest of the app stays usable.
+  let pendingInlineConfirm = null;
+
+  function renderInlineConfirm() {
+    const host = document.getElementById('delete-confirm');
+    if (!host) return;
+    if (!pendingInlineConfirm) {
+      host.hidden = true;
+      host.innerHTML = '';
+      return;
+    }
+    host.hidden = false;
+    host.innerHTML = `
+      <div class="inline-confirm">
+        <p>${esc(pendingInlineConfirm.message())}</p>
+        <div class="inline-confirm-actions">
+          <button type="button" class="btn ghost" data-action="inline-confirm-no">${esc(t('common.cancel'))}</button>
+          <button type="button" class="btn danger" data-action="inline-confirm-yes">${esc(t('common.confirm'))}</button>
+        </div>
+      </div>`;
+  }
+
+  function showInlineConfirm(message, onConfirm) {
+    pendingInlineConfirm = { message, onConfirm };
+    renderInlineConfirm();
+  }
+
+  function closeInlineConfirm() {
+    pendingInlineConfirm = null;
+    renderInlineConfirm();
   }
 
   function isBackupCancelled(error) {
@@ -3041,7 +3077,9 @@
         <main class="page has-nav" id="memory-detail">
           <div class="skeleton-block"></div>
         </main>
+        <div id="delete-confirm" class="inline-confirm-host" hidden></div>
       </div>`;
+    renderInlineConfirm();
 
     Promise.all([api(`/api/journeys/${id}`), api(`/api/memories?journeyId=${id}`)])
       .then(([{ journey }, { memories }]) => {
@@ -3193,15 +3231,16 @@
     }
   }
 
-  async function deleteMemory(id) {
-    if (!confirm(t('memories.deleteConfirm'))) return;
-    try {
-      await api(`/api/memories/${id}`, { method: 'DELETE' });
-      toast(t('memories.deletedToast'));
-      renderMemoryDetail(state.memoryJourneyId);
-    } catch (error) {
-      toast(error.message, 'error');
-    }
+  function deleteMemory(id) {
+    showInlineConfirm(() => t('memories.deleteConfirm'), async () => {
+      try {
+        await api(`/api/memories/${id}`, { method: 'DELETE' });
+        toast(t('memories.deletedToast'));
+        renderMemoryDetail(state.memoryJourneyId);
+      } catch (error) {
+        toast(error.message, 'error');
+      }
+    });
   }
 
   function renderJourneyDetail(id) {
@@ -3283,7 +3322,9 @@
             <button class="btn danger" data-action="delete">${t('detail.delete')}</button>
           </div>
         </main>
+        <div id="delete-confirm" class="inline-confirm-host" hidden></div>
       </div>`;
+    renderInlineConfirm();
   }
 
   function renderJourneyEdit(journey) {
@@ -4473,18 +4514,22 @@
     render();
   }
 
-  async function deleteCurrentJourney() {
+  function deleteCurrentJourney() {
     const journey = state.currentJourney;
     if (!journey) return;
-    if (!confirm(t('journey.deleteConfirm', { name: journey.name }))) return;
-    try {
-      await api(`/api/journeys/${journey.id}`, { method: 'DELETE' });
-      toast(t('journey.deletedToast'));
-      state.currentJourney = null;
-      navigate('#/journeys');
-    } catch (error) {
-      toast(error.message, 'error');
-    }
+    showInlineConfirm(
+      () => t('journey.deleteConfirm', { name: journey.name }),
+      async () => {
+        try {
+          await api(`/api/journeys/${journey.id}`, { method: 'DELETE' });
+          toast(t('journey.deletedToast'));
+          state.currentJourney = null;
+          navigate('#/journeys');
+        } catch (error) {
+          toast(error.message, 'error');
+        }
+      },
+    );
   }
 
   function handleAction(event) {
@@ -4536,6 +4581,15 @@
         renderImportReview(null);
         backupStatus(statusText('backup.importCancelled'));
         break;
+      case 'inline-confirm-no':
+        closeInlineConfirm();
+        break;
+      case 'inline-confirm-yes': {
+        const confirmation = pendingInlineConfirm;
+        closeInlineConfirm();
+        confirmation?.onConfirm();
+        break;
+      }
       case 'database-open':
         navigate('#/database');
         break;
@@ -5048,7 +5102,10 @@
     refreshAccountSettings().catch(() => {});
   });
 
-  window.addEventListener('hashchange', render);
+  window.addEventListener('hashchange', () => {
+    closeInlineConfirm();
+    render();
+  });
   window.addEventListener('resize', () => {
     positionDraftLayer();
     updateNavHeight();
@@ -5056,6 +5113,7 @@
 
   /** 浏览器历史回退：只维护子页面深度，浮层状态由 __redPandaSystemBack 处理。 */
   window.addEventListener('popstate', () => {
+    closeInlineConfirm();
     if (suppressPopCount > 0) {
       suppressPopCount -= 1;
       if (pendingTabHash) {

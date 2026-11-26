@@ -227,3 +227,40 @@ test('备份失败码全部本地化，导入改为页面确认卡片并按后�
   assert.doesNotMatch(appSource, /accept="[^"]*application\/octet-stream/);
   assert.match(javaSource, /EXTRA_MIME_TYPES, new String\[\]\{"application\/json", "application\/octet-stream"\}/);
 });
+
+test('整个项目不再出现阻断用户操作的对话框或弹窗', () => {
+  const jsDir = path.join(WEB_DIR, 'js');
+  const webFiles = [
+    path.join(WEB_DIR, 'index.html'),
+    path.join(WEB_DIR, 'app.js'),
+    ...fs.readdirSync(jsDir).filter((file) => file.endsWith('.js')).map((file) => path.join(jsDir, file)),
+  ];
+  const webSource = webFiles.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
+  const javaSource = fs.readFileSync(
+    path.resolve(HERE, '..', '..', 'android', 'app', 'src', 'main', 'java', 'com', 'redpanda', 'app', 'MainActivity.java'),
+    'utf8',
+  );
+
+  // Native window dialogs and modal elements are forbidden everywhere in the web app.
+  assert.doesNotMatch(webSource, /(?:^|[^\w.])(?:window\.)?(?:confirm|alert|prompt)\s*\(/i);
+  assert.doesNotMatch(webSource, /showModal\s*\(|<dialog\b|role=["']dialog["']/i);
+  assert.match(webSource, /id="delete-confirm" class="inline-confirm-host"/g);
+  assert.match(webSource, /data-action="inline-confirm-yes"/);
+  assert.match(webSource, /data-action="inline-confirm-no"/);
+  assert.equal((webSource.match(/id="delete-confirm" class="inline-confirm-host"/g) || []).length, 2);
+  assert.equal(typeof i18n.resolveKey(i18n.I18N.zh, 'common.confirm'), 'string');
+  assert.equal(typeof i18n.resolveKey(i18n.I18N.de, 'common.cancel'), 'string');
+
+  // WebView JavaScript dialogs are answered immediately instead of being
+  // rendered as native AlertDialog popups.
+  assert.doesNotMatch(javaSource, /AlertDialog|Dialog|PopupWindow|dialogBuilder|\.show\s*\(/);
+  assert.match(javaSource, /public boolean onJsAlert[\s\S]*?result\.confirm\(\)/);
+  assert.match(javaSource, /public boolean onJsConfirm[\s\S]*?result\.cancel\(\)/);
+  assert.match(javaSource, /public boolean onJsPrompt[\s\S]*?result\.cancel\(\)/);
+  assert.match(javaSource, /public boolean onJsBeforeUnload[\s\S]*?result\.confirm\(\)/);
+
+  // Location permission requests used to put a full-screen system sheet over
+  // the app; only an already granted permission is honoured now.
+  assert.doesNotMatch(javaSource, /requestPermissions|onRequestPermissionsResult|GEOLOCATION_REQUEST_CODE/);
+  assert.match(javaSource, /callback\.invoke\(origin, hasLocationPermission\(\), false\)/);
+});
