@@ -21,7 +21,7 @@
 - 拆分 `server/src/app.js`（1482 → 366 行）为 `http-utils.js`、`rate-limit.js`、`static.js`、`routes/auth.js`、`routes/maps.js`、`routes/ai.js`。
 - 拆分 `web/app.js`（6531 → 4925 行）与 `web/styles.css`（2872 → 1581 + 985 + 363 行），拆出 `web/js/i18n.js`、`storage.js`、`media.js`、`backup.js`、`sw-register.js` 与 `web/css/*`（保持零构建、兼容 `file://` WebView）。
 - 让 AI 行程简介、行程计划、回忆生成提示词及 `mockRecap` 跟随 `zh / en / de` 三语设置，前端 AI 调用透传 `locale`。
-- 新增 `server/test/security-and-i18n.test.js` 与 `server/test/web-modules.test.js`，自动化测试增至 63 个并全部通过。
+- 新增 `server/test/security-and-i18n.test.js` 与 `server/test/web-modules.test.js`，自动化测试增至 64 个并全部通过。
 - 新增 GitHub Actions 自动测试工作流 `.github/workflows/test.yml`（push / PR 自动执行前端语法检查与 `node --test`）。
 
 ### 第 3 阶段：离线优先与媒体存储优化（HTML5 / 模块层已验证）
@@ -36,7 +36,8 @@
 - 地图浏览器 Key 不再在路由层回退到服务端 Key；未单独配置时启动告警，可用 `RED_PANDA_MAP_BROWSER_KEY_FALLBACK=0` 禁止回退。
 - 修复导入备份 ID 注入、行程卡片属性未转义、导出按钮重入与 Android 备份桥并发竞态；导入选择器兼容 `.rpd` 的 `application/octet-stream` MIME。
 - PNG / WebP 压缩保留透明通道；GitHub Actions 固定到具体 commit；`android:allowBackup` 设为 `false`。
-- 扩充文档（`.env.example`、`docs/API.md`）与测试，测试总数 63/63 通过。
+- 修复 CSS 拆分后创建旅程背景图被解析到 `css/paintings/` 的回归：背景路径改为按 `document.baseURI` 解析，HTTP 与 `file://` WebView 均正常。
+- 扩充文档（`.env.example`、`docs/API.md`）与测试，测试总数 64/64 通过。
 
 ## 进行中 / 待验证
 
@@ -54,4 +55,4 @@
 
 ## 最近验证
 
-- 2026-11-26：`node --check web/*.js web/js/*.js` 通过；`cd server && node --test` 通过（63/63）；`./scripts/build-android.sh` 构建通过并在 `ELI AN00`（`192.168.10.51`）完成真机回归：登录、行程、回忆、AI mock、zh/en/de 切换、数据页、分块导出、文件导入、备份桥并发均正常，导出 `.rpd` 通过 `gzip -t`。
+- 2026-11-26：`node --check web/*.js web/js/*.js` 通过；`cd server && node --test` 通过（64/64）；`./scripts/build-android.sh` 构建通过并在 `ELI AN00`（`192.168.10.51`）完成真机回归：登录、行程、回忆、AI mock、zh/en/de 切换、数据页、分块导出、文件导入、备份桥并发均正常，导出 `.rpd` 通过 `gzip -t`，创建旅程背景图在 `file://` WebView 中解析到 `file:///android_asset/www/paintings/athens.jpg` 且图片加载成功。

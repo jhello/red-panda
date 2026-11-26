@@ -157,3 +157,16 @@ test('Service Worker 预缓存列表中的每个静态文件都真实存在', ()
     assert.equal(fs.existsSync(full), true, `Service Worker 预缓存文件不存在: ${rel}`);
   }
 });
+
+test('创建旅程背景图按文档基址解析，拆分 CSS 后仍指向 paintings/ 而非 css/paintings/', () => {
+  const appSource = fs.readFileSync(path.join(WEB_DIR, 'app.js'), 'utf8');
+  assert.match(appSource, /function planBackgroundUrl\([^)]*\)\s*\{[\s\S]*?new URL\(path, document\.baseURI\)/);
+  assert.match(appSource, /const background = planBackgroundUrl\(plan\.backgroundIndex\)/);
+
+  const cssSource = fs.readFileSync(path.join(WEB_DIR, 'css', 'journey-memories.css'), 'utf8');
+  assert.match(cssSource, /\.plan-screen\.has-bg::before\s*\{[\s\S]*?var\(--plan-bg\)/);
+
+  for (const name of ['athens.jpg', 'louvre.jpg', 'neuschwanstein.jpg']) {
+    assert.equal(fs.existsSync(path.join(WEB_DIR, 'paintings', name)), true);
+  }
+});

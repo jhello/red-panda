@@ -2101,6 +2101,16 @@
     return hash % PLAN_BACKGROUNDS.length;
   }
 
+  /**
+   * Resolve against the document, not the stylesheet: the background-image
+   * rule lives in css/journey-memories.css, so a relative URL here would be
+   * looked up under /css/ instead of / (and break file:// WebView too).
+   */
+  function planBackgroundUrl(index) {
+    const path = PLAN_BACKGROUNDS[index];
+    return path ? new URL(path, document.baseURI).href : '';
+  }
+
   /** Pick a fresh hint together with the painting that goes with it. */
   function pickPlanSuggestion() {
     const pool = planPlaceholders();
@@ -2261,7 +2271,7 @@
     }
     // 还没开口时展示可发送的示例；聊起来之后改成引导用户继续回复。
     const placeholder = esc(plan.messages.length ? t('plan.replyHint') : plan.suggestion);
-    const background = PLAN_BACKGROUNDS[plan.backgroundIndex] || '';
+    const background = planBackgroundUrl(plan.backgroundIndex);
 
     const chatMarkup = () => {
       const parts = [];
