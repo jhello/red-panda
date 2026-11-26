@@ -193,7 +193,6 @@ test('备份失败码全部本地化，导入改为页面确认卡片并按后�
   for (const key of [
     'exportFailedDetail', 'importFailedDetail', 'exportBusy', 'saveFailed', 'streamStartFailed',
     'chunkWriteFailed', 'bufferMissing', 'openFailed', 'invalidExtension', 'invalidFile', 'readFailed',
-    'pickerTitle', 'pickerEmpty', 'pickerCancel',
   ]) {
     for (const locale of ['zh', 'en', 'de']) {
       assert.equal(typeof i18n.resolveKey(i18n.I18N[locale], `backup.${key}`), 'string', `${locale} 缺少 backup.${key}`);
@@ -227,14 +226,4 @@ test('备份失败码全部本地化，导入改为页面确认卡片并按后�
   assert.match(appSource, /accept="\.rpd,\.json"/);
   assert.doesNotMatch(appSource, /accept="[^"]*application\/octet-stream/);
   assert.match(javaSource, /EXTRA_MIME_TYPES, new String\[\]\{"application\/json", "application\/octet-stream"\}/);
-
-  // The Android system picker only greys out unrelated files. A native tree
-  // picker plus an explicit suffix filter hides them from the list entirely.
-  assert.match(javaSource, /new Intent\(Intent\.ACTION_OPEN_DOCUMENT_TREE\)/);
-  assert.match(javaSource, /collectBackupFiles\(treeUri, rootId, "", files, 0\)/);
-  assert.match(javaSource, /hasBackupExtensionName\(name\)/);
-  assert.match(javaSource, /setItems\(labels, \(dialog, which\) -> deliverBackupFile\(files\.get\(which\)\)\)/);
-  assert.match(appSource, /data-action="backup-import"/);
-  assert.match(appSource, /function startAndroidImportPicker\(\)/);
-  assert.match(appSource, /window\.AndroidBackup\.pickBackupFile\(t\('backup\.pickerTitle'\)/);
 });

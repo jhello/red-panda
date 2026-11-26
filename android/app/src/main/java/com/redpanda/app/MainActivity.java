@@ -12,7 +12,6 @@ import android.content.ClipData;
 import android.content.Context;
 import android.database.Cursor;
 import android.graphics.drawable.ColorDrawable;
-import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
 import android.util.Base64;
 import android.graphics.Color;
@@ -25,7 +24,6 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
-import android.widget.ArrayAdapter;
 import android.widget.FrameLayout;
 import android.webkit.WebChromeClient;
 import android.webkit.GeolocationPermissions;
@@ -44,9 +42,6 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -82,12 +77,8 @@ public class MainActivity extends Activity {
     private volatile FileOutputStream stagedBackupStream;
     private final AtomicBoolean backupBusy = new AtomicBoolean(false);
     private volatile boolean backupPickerLaunched = false;
-    private String pendingImportTitle;
-    private String pendingImportEmptyMessage;
-    private String pendingImportCancelLabel;
     private static final int FILE_CHOOSER_REQUEST_CODE = 7102;
     private static final int BACKUP_SAVE_REQUEST_CODE = 7103;
-    private static final int BACKUP_PICK_TREE_REQUEST_CODE = 7104;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -318,16 +309,6 @@ public class MainActivity extends Activity {
         public void cancelBackup() {
             runOnUiThread(MainActivity.this::cleanupStagedBackup);
         }
-
-        /**
-         * Open a folder picker, then offer only files whose names end in .rpd or
-         * .json. The system document picker greys out mismatched MIME types but
-         * still lists them, so the filtered list is rendered here instead.
-         */
-        @JavascriptInterface
-        public void pickBackupFile(String title, String emptyMessage, String cancelLabel) {
-            runOnUiThread(() -> launchBackupImportTree(title, emptyMessage, cancelLabel));
-        }
     }
 
     /**
@@ -369,96 +350,8 @@ public class MainActivity extends Activity {
             String segment = uri.getLastPathSegment();
             name = segment == null ? "" : segment;
         }
-        return hasBackupExtensionName(name);
-    }
-
-    private boolean hasBackupExtensionName(String name) {
-        if (name == null) return false;
         String lower = name.toLowerCase(Locale.ROOT);
         return lower.endsWith(".rpd") || lower.endsWith(".json");
-    }
-
-    private static final class BackupFile {
-        final Uri uri;
-        final String label;
-
-        BackupFile(Uri uri, String label) {
-            this.uri = uri;
-            this.label = label;
-        }
-    }
-
-    /** Ask the user for a folder and remember the localized dialog labels. */
-    private void launchBackupImportTree(String title, String emptyMessage, String cancelLabel) {
-        pendingImportTitle = title;
-        pendingImportEmptyMessage = emptyMessage;
-        pendingImportCancelLabel = cancelLabel;
-        try {
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-            // Most devices keep backups in Download; open there when possible.
-            intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI,
-                    DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:Download"));
-            startActivityForResult(intent, BACKUP_PICK_TREE_REQUEST_CODE);
-        } catch (Exception error) {
-            notifyImportPickerCancelled();
-        }
-    }
-
-    /** Recursively collect only files with a backup suffix from a SAF tree. */
-    private void collectBackupFiles(Uri treeUri, String parentId, String prefix, List<BackupFile> out, int depth) {
-        if (out.size() >= 200 || depth > 6) return;
-        Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId);
-        String[] projection = {
-                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                DocumentsContract.Document.COLUMN_MIME_TYPE,
-        };
-        try (Cursor cursor = getContentResolver().query(children, projection, null, null, null)) {
-            if (cursor == null) return;
-            while (cursor.moveToNext() && out.size() < 200) {
-                String id = cursor.getString(cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID));
-                String name = cursor.getString(cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME));
-                String mime = cursor.getString(cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE));
-                if (id == null || name == null) continue;
-                Uri documentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, id);
-                if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
-                    collectBackupFiles(treeUri, id, prefix + name + "/", out, depth + 1);
-                } else if (hasBackupExtensionName(name)) {
-                    out.add(new BackupFile(documentUri, prefix + name));
-                }
-            }
-        } catch (Exception ignored) {
-            // Unreadable branches are skipped; other folders may still contain backups.
-        }
-    }
-
-    /** Stream only the chosen backup file back into the WebView in small chunks. */
-    private void deliverBackupFile(BackupFile file) {
-        final int chunkBytes = 256 * 1024;
-        try (InputStream input = getContentResolver().openInputStream(file.uri)) {
-            if (input == null) throw new IllegalStateException("openFailed");
-            List<String> chunks = new ArrayList<>();
-            byte[] buffer = new byte[chunkBytes];
-            int read;
-            while ((read = input.read(buffer)) != -1) {
-                chunks.add(Base64.encodeToString(Arrays.copyOf(buffer, read), Base64.NO_WRAP));
-            }
-            String name = file.label.substring(file.label.lastIndexOf('/') + 1);
-            for (int i = 0; i < chunks.size(); i++) {
-                webView.evaluateJavascript("window.__backupImportChunk && window.__backupImportChunk("
-                        + i + "," + chunks.size() + "," + JSONObject.quote(chunks.get(i)) + ")", null);
-            }
-            webView.evaluateJavascript("window.__backupImportReady && window.__backupImportReady("
-                    + JSONObject.quote(name) + "," + chunks.size() + ")", null);
-        } catch (Exception error) {
-            notifyImportPickerCancelled();
-        }
-    }
-
-    private void notifyImportPickerCancelled() {
-        webView.evaluateJavascript(
-                "window.__redPandaImportPickerCancelled && window.__redPandaImportPickerCancelled()", null);
     }
 
     private void launchBackupPicker(String filename) {
@@ -583,39 +476,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == BACKUP_PICK_TREE_REQUEST_CODE) {
-            if (resultCode != RESULT_OK || data == null || data.getData() == null) {
-                notifyImportPickerCancelled();
-                return;
-            }
-            final Uri treeUri = data.getData();
-            try {
-                getContentResolver().takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            } catch (Exception ignored) {
-                // Temporary access is enough for this import.
-            }
-            final List<BackupFile> files = new ArrayList<>();
-            String rootId;
-            try {
-                rootId = DocumentsContract.getTreeDocumentId(treeUri);
-            } catch (Exception error) {
-                rootId = null;
-            }
-            if (rootId != null) collectBackupFiles(treeUri, rootId, "", files, 0);
-            if (files.isEmpty()) {
-                webView.evaluateJavascript("window.__redPandaBackupFilesEmpty && window.__redPandaBackupFilesEmpty("
-                        + JSONObject.quote(pendingImportEmptyMessage == null ? "" : pendingImportEmptyMessage) + ")", null);
-                return;
-            }
-            final String[] labels = new String[files.size()];
-            for (int i = 0; i < files.size(); i++) labels[i] = files.get(i).label;
-            new AlertDialog.Builder(this)
-                    .setTitle(pendingImportTitle)
-                    .setItems(labels, (dialog, which) -> deliverBackupFile(files.get(which)))
-                    .setNegativeButton(pendingImportCancelLabel, (dialog, which) -> notifyImportPickerCancelled())
-                    .setOnCancelListener(dialog -> notifyImportPickerCancelled())
-                    .show();
-        } else if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
+        if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
             if (fileChooserCallback != null) {
                 Uri[] result = resultCode == RESULT_OK && data != null ? FileChooserParams.parseResult(resultCode, data) : null;
                 if (backupChooserLaunched) {

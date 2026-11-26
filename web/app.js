@@ -600,8 +600,6 @@
   let backupExportInProgress = false;
   let pendingImport = null;
   let importPreparing = false;
-  let androidImportPickerActive = false;
-  const androidImportPicker = typeof window.AndroidBackup?.pickBackupFile === 'function';
 
   const BACKUP_ERROR_KEYS = {
     cancelled: 'backup.exportCancelled',
@@ -727,7 +725,7 @@
     app.innerHTML = `<div class="screen settings-screen"><main class="page database-page">
       <div id="database-summary" class="database-summary"><div class="skeleton-block"></div></div>
       <div id="database-quota" class="database-quota" hidden></div>
-      <div class="database-actions"><button class="btn ghost" data-action="backup-export">${t('backup.exportData')}</button><label class="btn ghost" data-action="backup-import" for="backup-file">${t('backup.chooseFile')}</label><input id="backup-file" type="file" accept=".rpd,.json" hidden /></div>
+      <div class="database-actions"><button class="btn ghost" data-action="backup-export">${t('backup.exportData')}</button><label class="btn ghost" for="backup-file">${t('backup.chooseFile')}</label><input id="backup-file" type="file" accept=".rpd,.json" hidden /></div>
       <div id="import-review" class="import-review" role="group" aria-label="${t('backup.reviewTitle')}" hidden></div>
       <div id="database-status" class="backup-status" role="status" aria-live="polite"></div>
       <section class="database-table"><div class="database-table-head"><strong>${t('backup.details')}</strong><div><button class="link subtle" data-action="database-sort-count">${t('backup.byCount')}<span class="database-sort-arrow" aria-hidden="true"></span></button><button class="link subtle" data-action="database-sort-size">${t('backup.bySize')}<span class="database-sort-arrow" aria-hidden="true"></span></button></div></div><div id="database-types"><div class="skeleton-block"></div></div></section>
@@ -853,63 +851,6 @@
         <button type="button" class="btn ghost" data-action="import-review-cancel">${esc(t('backup.reviewCancel'))}</button>
         <button type="button" class="btn primary" data-action="import-review-confirm">${esc(t('backup.reviewConfirm'))}</button>
       </div>`;
-  }
-
-  // On Android the system picker greys out unrelated files instead of hiding
-  // them. Ask native code for a folder, then read back only backup-suffixed
-  // files it found there. HTML5 keeps using the ordinary file input.
-  function clearAndroidImportCallbacks() {
-    androidImportPickerActive = false;
-    delete window.__backupImportChunk;
-    delete window.__backupImportReady;
-    delete window.__redPandaImportPickerCancelled;
-    delete window.__redPandaBackupFilesEmpty;
-  }
-
-  function startAndroidImportPicker() {
-    if (importPreparing || androidImportPickerActive) return;
-    androidImportPickerActive = true;
-    const chunks = [];
-    window.__backupImportChunk = (index, total, base64) => {
-      chunks[index] = base64ToUint8Array(base64);
-    };
-    window.__backupImportReady = (name, total) => {
-      clearAndroidImportCallbacks();
-      handleBackupFile(new File(chunks.slice(0, total), name, { type: 'application/octet-stream' }));
-    };
-    window.__redPandaImportPickerCancelled = () => clearAndroidImportCallbacks();
-    window.__redPandaBackupFilesEmpty = () => {
-      clearAndroidImportCallbacks();
-      backupStatus(statusText('backup.pickerEmpty'), null, 'pending');
-    };
-    try {
-      window.AndroidBackup.pickBackupFile(t('backup.pickerTitle'), t('backup.pickerEmpty'), t('backup.pickerCancel'));
-    } catch {
-      clearAndroidImportCallbacks();
-    }
-  }
-
-  async function handleBackupFile(file) {
-    if (!/\.(rpd|json)$/i.test(file.name)) {
-      backupStatus(invalidExtensionMessage, null, 'error');
-      toast(invalidExtensionMessage(), 'error');
-      return;
-    }
-    if (importPreparing) return;
-    importPreparing = true;
-    try {
-      renderImportReview(null);
-      backupStatus(statusText('backup.selectedFileDetail', { file: file.name }));
-      const plan = await prepareImport(file);
-      renderImportReview(plan);
-      backupStatus(statusText('backup.reviewReady'), 100, 'pending');
-    } catch (error) {
-      const message = () => t('backup.importFailedDetail', { message: backupErrorText(error, 'backup.invalidFile') });
-      backupStatus(message, null, 'error');
-      toast(message(), 'error');
-    } finally {
-      importPreparing = false;
-    }
   }
 
   // Read and compare only. The returned plan is held until the user confirms.
@@ -4563,12 +4504,6 @@
       case 'retry-server':
         retryServer();
         break;
-      case 'backup-import':
-        if (androidImportPicker) {
-          event.preventDefault();
-          startAndroidImportPicker();
-        }
-        break;
       case 'backup-export':
         if (backupExportInProgress) break;
         backupExportInProgress = true;
@@ -4768,11 +4703,30 @@
   }
 
   app.addEventListener('click', handleAction);
-  app.addEventListener('change', event => {
+  app.addEventListener('change', async event => {
     if (event.target.id !== 'backup-file' || !event.target.files?.[0]) return;
     const file = event.target.files[0];
     event.target.value = '';
-    handleBackupFile(file);
+    if (!/\.(rpd|json)$/i.test(file.name)) {
+      backupStatus(invalidExtensionMessage, null, 'error');
+      toast(invalidExtensionMessage(), 'error');
+      return;
+    }
+    if (importPreparing) return;
+    importPreparing = true;
+    try {
+      renderImportReview(null);
+      backupStatus(statusText('backup.selectedFileDetail', { file: file.name }));
+      const plan = await prepareImport(file);
+      renderImportReview(plan);
+      backupStatus(statusText('backup.reviewReady'), 100, 'pending');
+    } catch (error) {
+      const message = () => t('backup.importFailedDetail', { message: backupErrorText(error, 'backup.invalidFile') });
+      backupStatus(message, null, 'error');
+      toast(message(), 'error');
+    } finally {
+      importPreparing = false;
+    }
   });
 
   // Android calls this when the system picker returns a file with a wrong suffix.
