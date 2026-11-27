@@ -2207,6 +2207,8 @@
     tab: 'chat',
     // 每次新建或发送都递增，离开页面后丢弃还在路上的 AI 回复。
     turn: 0,
+    splitView: false,
+    splitPreferred: false,
   };
   let planScrollSettleTimer = null;
 
@@ -2227,6 +2229,8 @@
     planState.draftId = '';
     planState.draftCreatedAt = '';
     planState.tab = 'chat';
+    planState.splitView = false;
+    // splitPreferred 保留用户偏好，不在每次重置时清掉
   }
 
   let currentRouteName = '';
@@ -2409,9 +2413,9 @@
 
   function renderNewJourney() {
     const plan = planState;
+    plan.splitView = plan.splitPreferred && window.innerWidth >= 700;
     // 重新渲染会换掉滚动容器，旧容器上的延时回写不能再改当前标签。
     clearTimeout(planScrollSettleTimer);
-
     if (!plan.suggestion) {
       const picked = pickPlanSuggestion();
       plan.suggestion = picked.text;
@@ -2500,11 +2504,14 @@
     };
 
     app.innerHTML = `
-      <div class="screen plan-screen${background ? ' has-bg' : ''}"${background ? ` style="--plan-bg: url('${background}')"` : ''}>
-        <div class="plan-switch" id="plan-switch" data-active="${plan.tab}" role="tablist" aria-label="${t('plan.tabChat')} / ${t('plan.tabTrip')}">
-          <span class="plan-switch-thumb" aria-hidden="true"></span>
-          <button type="button" role="tab" class="${plan.tab === 'chat' ? 'active' : ''}" aria-selected="${plan.tab === 'chat'}" data-action="plan-tab" data-plan-tab="chat">${t('plan.tabChat')}</button>
-          <button type="button" role="tab" class="${plan.tab === 'trip' ? 'active' : ''}" aria-selected="${plan.tab === 'trip'}" data-action="plan-tab" data-plan-tab="trip">${t('plan.tabTrip')}</button>
+      <div class="screen plan-screen${background ? ' has-bg' : ''}${plan.splitView ? ' is-split' : ''}"${background ? ` style="--plan-bg: url('${background}')"` : ''}>
+        <div class="plan-toolbar">
+          <button class="plan-split-btn" type="button" data-action="plan-toggle-split" aria-label="Split view" title="Split view">${plan.splitView ? '⧉' : '⛶'}</button>
+          <div class="plan-switch" id="plan-switch" data-active="${plan.tab}" role="tablist" aria-label="${t('plan.tabChat')} / ${t('plan.tabTrip')}">
+            <span class="plan-switch-thumb" aria-hidden="true"></span>
+            <button type="button" role="tab" class="${plan.tab === 'chat' ? 'active' : ''}" aria-selected="${plan.tab === 'chat'}" data-action="plan-tab" data-plan-tab="chat">${t('plan.tabChat')}</button>
+            <button type="button" role="tab" class="${plan.tab === 'trip' ? 'active' : ''}" aria-selected="${plan.tab === 'trip'}" data-action="plan-tab" data-plan-tab="trip">${t('plan.tabTrip')}</button>
+          </div>
         </div>
         <div class="plan-pages" id="plan-pages">
           <section class="plan-page plan-chat-page" role="tabpanel" aria-label="${t('plan.tabChat')}">
@@ -2519,12 +2526,12 @@
           <section class="plan-page plan-trip-page" role="tabpanel" aria-label="${t('plan.tabTrip')}">
             <div class="plan-trip-scroll plan-edge-fade">
               ${tripMarkup()}
-            </div>
-            <div class="plan-actions">
-              <button class="btn primary block" type="button" data-action="plan-save">${t('plan.save')}</button>
-              <div class="row plan-actions-sub">
-                <button class="btn ghost" type="button" data-action="plan-save-draft">${t('plan.saveDraft')}</button>
-                <button class="btn danger" type="button" data-action="plan-delete-draft">${t('plan.deleteDraft')}</button>
+              <div class="plan-actions">
+                <button class="btn primary block" type="button" data-action="plan-save">${t('plan.save')}</button>
+                <div class="row plan-actions-sub">
+                  <button class="btn ghost" type="button" data-action="plan-save-draft">${t('plan.saveDraft')}</button>
+                  <button class="btn danger" type="button" data-action="plan-delete-draft">${t('plan.deleteDraft')}</button>
+                </div>
               </div>
             </div>
           </section>
@@ -4711,6 +4718,11 @@
       case 'plan-tab':
         paintPlanTab(target.dataset.planTab === 'trip' ? 'trip' : 'chat');
         break;
+      case 'plan-toggle-split':
+        planState.splitPreferred = !planState.splitPreferred;
+        planState.splitView = planState.splitPreferred && window.innerWidth >= 700;
+        renderNewJourney();
+        break;
       case 'plan-edit-title':
         planState.editingTitle = true;
         renderNewJourney();
@@ -5121,7 +5133,8 @@
     positionDraftLayer();
     updateNavHeight();
     if (currentRouteName === 'new') {
-      // 屏幕方向/尺寸变化时刷新背景图（宽图/窄图切换）
+      // 宽屏时按用户偏好显示分屏，窄屏时不分屏
+      planState.splitView = planState.splitPreferred && window.innerWidth >= 700;
       render();
     }
   });

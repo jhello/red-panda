@@ -29,13 +29,36 @@
   background-repeat: no-repeat;
 }
 
-/* 顶部「聊天 / 行程」切换滑块，悬浮在滚动内容之上，滑块随当前子页面平移 */
-.plan-switch {
+/* 顶部工具栏 */
+.plan-toolbar {
   position: absolute;
   z-index: 10;
   top: calc(var(--top-inset) + 10px);
   left: 16px;
   right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.plan-split-btn {
+  display: none;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 50%;
+  background: var(--glass-bar-strong);
+  color: var(--ink-soft);
+  font-size: 18px;
+  line-height: 1;
+  align-items: center;
+  justify-content: center;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.plan-switch {
+  position: relative;
+  flex: 1;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 4px;
@@ -77,6 +100,29 @@
 
 .plan-switch button.active {
   color: var(--seal-dark);
+}
+
+/* 宽屏显示分屏按钮 */
+@media (min-width: 700px) {
+  .plan-split-btn { display: inline-flex; }
+}
+
+/* 分屏模式：左边行程，右边聊天 */
+.plan-screen.is-split .plan-switch {
+  display: none;
+}
+.plan-screen.is-split .plan-pages {
+  overflow: hidden;
+}
+.plan-screen.is-split .plan-page {
+  flex: 0 0 50%;
+  width: 50%;
+}
+.plan-screen.is-split .plan-trip-page {
+  order: 1;
+}
+.plan-screen.is-split .plan-chat-page {
+  order: 2;
 }
 
 /* 两个子页面横向排列，手指左右滑动即可切换；铺满屏幕上下边缘 */
@@ -335,11 +381,10 @@
   stroke-linejoin: round;
 }
 
-/* 行程：从聊天里提取出的信息，底部悬浮三个操作按钮 */
+/* 行程：从聊天里提取出的信息 */
 .plan-trip-page {
   overflow: hidden;
-  /* 按钮比输入框更高，渐隐区也要相应上移，才能在按钮上方看到淡出 */
-  --plan-fade-bottom: 140px;
+  --plan-fade-bottom: 60px;
 }
 
 .plan-trip-scroll {
@@ -347,8 +392,7 @@
   inset: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  /* 上下留白避开悬浮的胶囊和按钮，内容本身仍延伸到屏幕边缘 */
-  padding: calc(var(--top-inset) + 72px) 16px calc(150px + env(safe-area-inset-bottom));
+  padding: calc(var(--top-inset) + 72px) 16px calc(24px + env(safe-area-inset-bottom));
 }
 
 .plan-empty {
@@ -455,11 +499,9 @@
 }
 
 .plan-actions {
-  position: absolute;
-  z-index: 10;
-  left: 16px;
-  right: 16px;
-  bottom: calc(10px + env(safe-area-inset-bottom));
+  position: relative;
+  margin-top: 16px;
+  padding-bottom: 8px;
   display: grid;
   gap: 12px;
 }
