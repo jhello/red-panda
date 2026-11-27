@@ -1,6 +1,6 @@
 /* ---- wider screens ------------------------------------------------------ */
 
-@media (min-width: 700px) {
+@media (min-width: 700px) and (orientation: portrait) {
   body {
     padding: 28px 0;
   }
@@ -19,7 +19,6 @@
     min-height: calc(100dvh - 56px - var(--top-inset));
   }
 
-  /* 宽屏时导航栏贴住卡片底边，而不是视口最底部 */
   .app-nav {
     bottom: 28px;
   }

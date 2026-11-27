@@ -33,6 +33,28 @@
             var top = window.AndroidBars.getTopInsetDp();
             if (top > 0) root.style.setProperty('--status-h', top + 'px');
           }
+          try {
+            if (window.AndroidBars) {
+              if (typeof window.AndroidBars.getLeftInsetDp === 'function') {
+                var l = window.AndroidBars.getLeftInsetDp();
+                if (l > 0) root.style.setProperty('--safe-left', l + 'px');
+              }
+              if (typeof window.AndroidBars.getRightInsetDp === 'function') {
+                var r = window.AndroidBars.getRightInsetDp();
+                if (r > 0) root.style.setProperty('--safe-right', r + 'px');
+              }
+            }
+          } catch (e) {}
+          window.__redPandaInsets = function(insets) {
+            try {
+              if (!insets) return;
+              if (typeof insets.top === 'number' && insets.top >= 0) root.style.setProperty('--status-h', (insets.top > 0 ? insets.top : 0) + 'px');
+              if (typeof insets.left === 'number' && insets.left >= 0) root.style.setProperty('--safe-left', Math.max(insets.left, 0) + 'px');
+              if (typeof insets.right === 'number' && insets.right >= 0) root.style.setProperty('--safe-right', Math.max(insets.right, 0) + 'px');
+              if (typeof insets.bottom === 'number' && insets.bottom >= 0) root.style.setProperty('--safe-bottom-native', Math.max(insets.bottom, 0) + 'px');
+              root.style.setProperty('--safe-bottom', 'max(var(--safe-bottom-native), env(safe-area-inset-bottom, 0px))');
+            } catch (e) {}
+          };
           var meta = document.getElementById('theme-color');
           if (meta) meta.setAttribute('content', dark ? '#14191a' : '#f7f2e8');
         } catch (error) {}

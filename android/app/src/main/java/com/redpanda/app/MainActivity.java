@@ -200,8 +200,8 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 // The first insets callback may arrive before the page defines
-                // __redPandaTopInset, so repeat it once the document is ready.
-                publishTopInset(barsTop);
+                // __redPandaInsets, so repeat it once the document is ready.
+                publishInsets();
             }
         });
 
@@ -390,11 +390,19 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Gives the page the top inset synchronously, before the first paint. */
+    /** Gives the page the inset values synchronously, before the first paint. */
     private class BarsBridge {
         @JavascriptInterface
         public int getTopInsetDp() {
             return Math.round(barsTop / getResources().getDisplayMetrics().density);
+        }
+        @JavascriptInterface
+        public int getLeftInsetDp() {
+            return Math.round(barsLeft / getResources().getDisplayMetrics().density);
+        }
+        @JavascriptInterface
+        public int getRightInsetDp() {
+            return Math.round(barsRight / getResources().getDisplayMetrics().density);
         }
     }
 
@@ -553,16 +561,22 @@ public class MainActivity extends Activity {
      */
     private void applyRootPadding() {
         if (root == null) return;
-        root.setPadding(barsLeft, 0, barsRight, Math.max(barsBottom, imeBottom));
-        publishTopInset(barsTop);
+        // Let web handle all insets for consistent background; only ime bottom.
+        root.setPadding(0, 0, 0, imeBottom);
+        publishInsets();
     }
 
-    /** Tell the page how much top padding its content still needs (dp). */
-    private void publishTopInset(int topPx) {
+    /** Tell the page about insets (dp) it may need to account for. */
+    private void publishInsets() {
         if (webView == null) return;
-        float topDp = topPx / getResources().getDisplayMetrics().density;
-        webView.evaluateJavascript(
-                "window.__redPandaTopInset && window.__redPandaTopInset(" + topDp + ")", null);
+        float density = getResources().getDisplayMetrics().density;
+        float topDp = barsTop / density;
+        float leftDp = barsLeft / density;
+        float rightDp = barsRight / density;
+        float bottomDp = Math.max(barsBottom, imeBottom) / density;
+        String js = "window.__redPandaInsets && window.__redPandaInsets({top:" + topDp
+                + ",left:" + leftDp + ",right:" + rightDp + ",bottom:" + bottomDp + "})";
+        webView.evaluateJavascript(js, null);
     }
 
     private void configureSystemBars() {

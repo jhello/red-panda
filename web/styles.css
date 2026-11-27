@@ -20,6 +20,10 @@
   --status-h: 0px;
   --top-inset: var(--status-h);
   --top-inset: max(var(--status-h), env(safe-area-inset-top, 0px));
+  --safe-left: 0px;
+  --safe-right: 0px;
+  --safe-bottom-native: 0px;
+  --safe-bottom: 0px;
   /* 底部导航栏高度（JS 实测），离线提示条就贴在它上边 */
   --nav-h: 84px;
   /* 离线提示条的高度，页面和浮层据此让位 */
@@ -197,6 +201,8 @@ code {
   max-width: 620px;
   margin: 0 auto;
   padding-top: var(--top-inset);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
   min-height: 100vh;
   min-height: 100dvh;
 }
@@ -207,6 +213,8 @@ code {
   min-height: calc(100dvh - var(--top-inset));
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* ---- language switch ---------------------------------------------------- */
@@ -639,7 +647,7 @@ img.seal {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 5px 14px;
+  padding: 5px max(14px, var(--safe-left)) 5px max(14px, var(--safe-right));
   background: rgba(168, 58, 44, 0.95);
   color: #fff6ec;
   font-size: 12px;
@@ -681,15 +689,15 @@ img.seal {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(84px + var(--offline-h, 0px));
+  bottom: calc(var(--nav-h, 84px) + var(--offline-h, 0px));
   z-index: 35;
   display: flex;
   flex-direction: column;
   width: 100%;
   max-width: 620px;
   margin: 0 auto;
-  max-height: calc(100dvh - 84px - var(--offline-h, 0px));
-  padding: 0 18px;
+  max-height: calc(100dvh - var(--nav-h, 84px) - var(--offline-h, 0px));
+  padding: 0 max(18px, var(--safe-left)) 0 max(18px, var(--safe-right));
   overflow-y: auto;
   pointer-events: auto;
   overscroll-behavior: contain;
@@ -1586,7 +1594,7 @@ html.is-offline .auth-screen {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 14px calc(8px + env(safe-area-inset-bottom));
+  padding: 8px max(14px, var(--safe-left)) max(8px, var(--safe-bottom)) max(14px, var(--safe-right));
   background: var(--glass-bar-strong);
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
@@ -1596,11 +1604,95 @@ html.is-offline .auth-screen {
 
 /* 带悬浮导航栏的页面底部留出空间 */
 .page.has-nav {
-  padding-bottom: calc(104px + env(safe-area-inset-bottom) + var(--offline-h, 0px));
+  padding-bottom: calc(var(--nav-h, 84px) + var(--offline-h, 0px));
 }
 
 /* toast 抬到导航栏之上 */
 .toast {
-  bottom: calc(96px + env(safe-area-inset-bottom));
+  bottom: calc(var(--nav-h, 84px) + 12px);
+}
+
+/* ========== Landscape & small-height tweaks (mobile) ========== */
+@media (orientation: landscape) and (max-height: 520px) {
+  .topbar {
+    padding: 6px 14px;
+    gap: 8px;
+  }
+  .topbar-title {
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+  .center-screen {
+    justify-content: flex-start;
+    padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .hero {
+    padding-top: 4px;
+  }
+  .hero-title {
+    font-size: clamp(26px, 6vh, 40px);
+  }
+  .hero-sub {
+    margin-top: 8px;
+    font-size: 13px;
+  }
+  .main-nav {
+    padding-top: 2px;
+  }
+  .nav-bar {
+    max-width: 100%;
+    padding: 4px max(10px, var(--safe-left)) max(4px, var(--safe-bottom)) max(10px, var(--safe-right));
+    gap: 6px;
+  }
+  .nav-btn {
+    padding: 6px 2px;
+    font-size: 12px;
+  }
+  .nav-btn.nav-create {
+    width: 46px;
+    height: 46px;
+    font-size: 22px;
+  }
+  .toast {
+    bottom: calc(var(--nav-h, 64px) + 8px + env(safe-area-inset-bottom));
+  }
+  .app-status {
+    bottom: var(--nav-h, 64px);
+    font-size: 10px;
+    padding: 2px max(8px, var(--safe-left)) 2px max(8px, var(--safe-right));
+    gap: 6px;
+  }
+  .app-status-text {
+    max-width: 70vw;
+  }
+  .draft-layer {
+    max-height: calc(100dvh - var(--nav-h, 64px) - var(--offline-h, 0px));
+    bottom: calc(var(--nav-h, 64px) + var(--offline-h, 0px));
+    padding: 0 max(12px, var(--safe-left)) 0 max(12px, var(--safe-right));
+  }
+  .lang-switch {
+    top: 8px;
+    right: 8px;
+  }
+  .trip-hero {
+    padding: 14px 16px;
+  }
+  .panel, .card, .journey-card {
+    padding: 14px 16px;
+  }
+}
+
+/* Very short heights in any orientation */
+@media (max-height: 420px) {
+  .center-screen {
+    justify-content: flex-start;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .topbar {
+    padding: 6px 14px;
+  }
 }
 

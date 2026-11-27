@@ -2817,16 +2817,17 @@
     if (!offline) {
       statusHost.innerHTML = '';
       document.documentElement.style.setProperty('--offline-h', '0px');
+      positionDraftLayer();
+      updateNavHeight();
       return;
     }
     statusHost.innerHTML = `
       <span class="app-status-text">${esc(t('offline.banner'))}</span>
       <button type="button" data-action="retry-server">${esc(t('offline.action'))}</button>`;
-    // 量出实际高度，让页面底部和浮层给它让位。
     const height = Math.round(statusHost.getBoundingClientRect().height);
     document.documentElement.style.setProperty('--offline-h', `${height}px`);
-    // 草稿浮层是 JS 定位的，横幅出现后要重新让位。
     positionDraftLayer();
+    updateNavHeight();
   }
 
   function navBar() {
