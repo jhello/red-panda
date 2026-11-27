@@ -2212,6 +2212,7 @@
 
   /** Full-screen painting behind the plan page, in the same order as the suggestions. */
   const PLAN_BACKGROUNDS = ['paintings/athens.jpg', 'paintings/louvre.jpg', 'paintings/neuschwanstein.jpg'];
+  const PLAN_BACKGROUNDS_WIDE = ['paintings/athens-wide.png', 'paintings/louvre-wide.png', 'paintings/neuschwanstein-wide.png'];
 
   function resetPlanState() {
     planState.turn += 1;
@@ -2255,7 +2256,9 @@
    * looked up under /css/ instead of / (and break file:// WebView too).
    */
   function planBackgroundUrl(index) {
-    const path = PLAN_BACKGROUNDS[index];
+    const useWide = (window.matchMedia && window.matchMedia('(min-width: 600px)').matches) || (typeof window.innerWidth === 'number' && window.innerWidth >= 600);
+    const list = useWide ? PLAN_BACKGROUNDS_WIDE : PLAN_BACKGROUNDS;
+    const path = list[index];
     return path ? new URL(path, document.baseURI).href : '';
   }
 
@@ -5117,6 +5120,10 @@
   window.addEventListener('resize', () => {
     positionDraftLayer();
     updateNavHeight();
+    if (currentRouteName === 'new') {
+      // 屏幕方向/尺寸变化时刷新背景图（宽图/窄图切换）
+      render();
+    }
   });
 
   /** 浏览器历史回退：只维护子页面深度，浮层状态由 __redPandaSystemBack 处理。 */
